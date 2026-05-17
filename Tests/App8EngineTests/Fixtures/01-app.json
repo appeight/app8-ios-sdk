@@ -1,0 +1,146 @@
+
+{
+    "title": "App8",
+    "styles": [
+        {
+            "id": "surface-fill-1",
+            "type": "fill",
+            "content": {
+                "solid": "#FFFFFF"
+            }
+        },
+        {
+            "id": "outline-1",
+            "type": "outline",
+            "content": {
+                "lineWidth": 2,
+                "position": "inside",
+                "fill": {
+                    "solid": "#E0E0E0"
+                }
+            }
+        },
+        {
+            "id": "gradient-1",
+            "type": "fill",
+            "content": {
+                "start": {
+                    "color": "#000000",
+                    "x": 0,
+                    "y": 0
+                },
+                "end": {
+                    "color": "#FF0000",
+                    "x": 0,
+                    "y": 1
+                },
+                "middlePoints": [
+                    {
+                        "position": 0.33,
+                        "color": "00FF00"
+                    },
+                    {
+                        "position": 0.66,
+                        "color": "0000FF"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "icon-32",
+            "type": "icon",
+            "content": {
+                "tint": "#0000FF",
+                "renderingMode": "template",
+                "symbolFontSize": 14
+            }
+        },
+        {
+            "id": "surface-blur-1",
+            "type": "visualEffect",
+            "content": {
+                "bgBlur": "systemUltraThinMaterial"
+            }
+        },
+        {
+            "id": "font-primary",
+            "type": "font",
+            "content": {
+                "family": {
+                    "displayName": "SFPro",
+                    "isSystemFont": true
+                }
+            }
+        },
+        {
+            "id": "text.body",
+            "type": "text",
+            "content": {
+                "font": {
+                    "id": "font-primary"
+                },
+                "fontSize": 18,
+                "fontWeight": "regular",
+                "color": "#000000",
+                "alignment": "left",
+                "lineHeight": {
+                    "type": "auto",
+                    "value": 0
+                },
+                "letterSpacing": {
+                    "type": "auto",
+                    "value": 0
+                }
+            }
+        },
+        {
+            "id": "material-plate-1",
+            "type": "material",
+            "content": [
+                {
+                    "id": "material-plate-1-shadow",
+                    "type": "shadow",
+                    "content": {
+                        "layers": [
+                            {
+                                "color": "#000000",
+                                "radius": 20,
+                                "offset": {"x": 0, "y": 10},
+                                "opacity": 0.1,
+                                "isHollow": true
+                            }
+                        ]
+                    }
+                },
+                {
+                    "type": "fill",
+                    "id": "surface-fill-1"
+                },
+                {
+                    "type": "outline",
+                    "id": "outline-1"
+                }
+            ]
+        }
+    ],
+    "templates": [
+        {
+            "id": "primary-button",
+            "type": "button",
+            "content": {
+                "properties": {},
+                "style": {},
+                "defaultStateName": "normal"
+            }
+        }
+    ],
+    "navigation": {
+        "startFlow": "main",
+        "flows": [
+            {
+                "id": "main",
+                "startScreen": "launchscreen"
+            }
+        ]
+    }
+}
