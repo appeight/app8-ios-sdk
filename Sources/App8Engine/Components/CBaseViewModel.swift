@@ -1,0 +1,552 @@
+import Combine
+import Foundation
+import SafariServices
+import UIKit
+
+/// Abstract protocol for component view models - enables ViewModel reuse in collections
+@MainActor
+protocol ComponentViewModelAbstract: AnyObject {
+    var variableStore: ScopedVariableStore { get }
+    var componentPath: String { get }
+}
+
+protocol ComponentService: AnyObject, ComponentRenderer, A8.DataSourceHolder {
+    @MainActor var componentRegistry: ComponentRegistry { get }
+    @MainActor var appVariableStore: VariableStore { get }
+    @MainActor var imageLoader: ImageLoader { get }
+    @MainActor var context: App8Context { get }
+
+    /// Resolve a template by name from the app's template registry
+    @MainActor func resolveTemplate(named name: String) -> DSL.Model.Component.`Any`?
+}
+
+@MainActor
+class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.StatefulContent & DSL.Model.VariablesHolder & DSL.Model.EventTriggersHolder> {
+
+    typealias Props = Component.Properties
+    typealias State = Component.StateType
+
+    let component: Component
+    unowned let service: ComponentService
+
+    /// Full hierarchical path for this component (e.g., "parent.child.grandchild")
+    /// Used for scoped childStates resolution in template instances
+    let componentPath: String
+
+    /// Parent's component path (for sibling constraint resolution in ViewRegistry)
+    /// e.g., if componentPath is "card-1.email-label", parentPath is "card-1"
+    var parentPath: String? {
+        guard let lastDot = componentPath.lastIndex(of: ".") else { return nil }
+        return String(componentPath[..<lastDot])
+    }
+
+    // MARK: - Variable Store
+
+    /// This component's variable store (scoped to parent)
+    let variableStore: ScopedVariableStore
+
+    /// Strong reference to parent variable store to prevent deallocation
+    /// Needed when the parent store is not otherwise retained (e.g., screen params store)
+    private var retainedParentStore: VariableStoreProtocol?
+
+    /// Property resolver for evaluating {{expressions}}
+    private let propertyResolver = PropertyResolver()
+
+    /// Handler for variable actions
+    private let variableActionHandler = VariableActionHandler()
+
+    // MARK: - State Manager
+
+    private(set) lazy var stateManager: ComponentStateManager<Component> = {
+        let manager = ComponentStateManager(content: component)
+        manager.delegate = self
+        // Re-apply initial state now delegate is set, so childStates propagate.
+        if let initialState = manager.currentStateNameValue {
+            manager.setState(initialState, animated: false)
+        }
+        return manager
+    }()
+
+    private var cancellables = Set<AnyCancellable>()
+
+    /// Active timers from onEvent triggers
+    private var activeTimers: [Timer] = []
+
+    var layout: AnyPublisher<DSL.Model.Layout?, Never> {
+        stateManager.effectiveLayout
+    }
+
+    /// Layout combined with variable changes - use this for expression-based dimensions
+    var layoutWithVariables: AnyPublisher<DSL.Model.Layout?, Never> {
+        Publishers.CombineLatest(
+            stateManager.effectiveLayout,
+            variableStore.anyVariableChanged.prepend("").map { _ in () }
+        )
+        .map { layout, _ in layout }
+        .eraseToAnyPublisher()
+    }
+
+    var style: AnyPublisher<Component.Style?, Never> {
+        stateManager.effectiveStyle.eraseToAnyPublisher()
+    }
+
+    var properties: AnyPublisher<Component.Properties, Never> {
+        stateManager.effectiveProperties
+    }
+
+    /// Properties combined with variable changes - use this to trigger re-resolution
+    var propertiesWithVariables: AnyPublisher<Component.Properties, Never> {
+        Publishers.CombineLatest(
+            stateManager.effectiveProperties,
+            variableStore.anyVariableChanged.prepend("").map { _ in () }
+        )
+        .map { props, _ in props }
+        .eraseToAnyPublisher()
+    }
+
+    /// Fires when any variable in this component's scope changes
+    var variablesChanged: AnyPublisher<String, Never> {
+        variableStore.anyVariableChanged
+    }
+
+    var animation: AnyPublisher<DSL.Model.Animation?, Never> {
+        stateManager.animation
+    }
+
+    var currentStyle: Component.Style? {
+        stateManager.currentEffectiveStyle
+    }
+
+    var currentProperties: Component.Properties {
+        stateManager.currentEffectiveProperties
+    }
+
+    // MARK: - Init
+
+    init?(component: any DSL.Model.Component.Entity, service: ComponentService, componentPath: String, parentVariableStore: VariableStoreProtocol? = nil) {
+        guard let c = component.content as? Component else {
+            return nil
+        }
+        self.component = c
+        self.service = service
+        self.componentPath = componentPath
+
+        let parent = parentVariableStore ?? service.appVariableStore
+        let store = ScopedVariableStore(parent: parent)
+        store.logger = service.context.logger
+        self.variableStore = store
+        self.variableActionHandler.logger = service.context.logger
+
+        // appVariableStore is retained by service; an explicit parent is not, so retain it.
+        if parentVariableStore != nil {
+            self.retainedParentStore = parentVariableStore
+        }
+
+        if let variables = c.variables {
+            service.context.logger.debug("Initializing \(variables.count) variables for component: \(componentPath)")
+
+            var effectiveDefinitions: [String: VariableDefinition] = [:]
+            for (name, definition) in variables {
+                if definition.hasExternalSource,
+                   let resolvedValue = parent.getValue(name: "__datasource_\(name)") {
+                    effectiveDefinitions[name] = definition.withResolvedValue(resolvedValue)
+                    service.context.logger.debug("Using resolved datasource for '\(name)'")
+                } else if definition.initialValue == nil, !definition.hasExternalSource,
+                          let injectedValue = parent.getValue(name: name) {
+                    effectiveDefinitions[name] = definition.withResolvedValue(injectedValue)
+                    service.context.logger.debug("Using injected param for '\(name)'")
+                } else {
+                    effectiveDefinitions[name] = definition
+                    if definition.schema != nil, definition.initialValue == nil, !definition.hasExternalSource {
+                        let hint = definition.preview != nil ? "preview datasource resolution failed — check earlier logs" : "pass it via the push action's 'params' or add a 'preview' to the variable definition"
+                        service.context.logger.warning("Variable '\(name)' in '\(componentPath)' declares schema '\(definition.schema!)' but has no value after all resolution. It will be empty. Hint: \(hint).")
+                    }
+                }
+            }
+
+            do {
+                try variableStore.defineVariables(effectiveDefinitions)
+            } catch {
+                service.context.logger.error("Failed to define variables for '\(componentPath)': \(error)")
+            }
+        }
+
+        setupStateBinding()
+        setup()
+    }
+
+    /// Override in children
+    func setup() {
+
+    }
+
+    // MARK: - State Binding
+
+    /// Set up reactive state binding if defaultStateName is an expression
+    private func setupStateBinding() {
+        guard let defaultState = component.defaultStateName else { return }
+        guard defaultState.contains("{{") else { return }
+
+        evaluateStateBinding(defaultState, animated: false)
+
+        variableStore.anyVariableChanged
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                self.evaluateStateBinding(defaultState, animated: true)
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Evaluate state expression and set the resulting state
+    private func evaluateStateBinding(_ expression: String, animated: Bool) {
+        let resolvedStateName = resolvePropertyToString(expression)
+        if !resolvedStateName.isEmpty && resolvedStateName != currentStateName {
+            setState(resolvedStateName, animated: animated)
+        }
+    }
+
+    // MARK: - Variable Context
+
+    /// Get a variable context for property resolution
+    func getVariableContext() -> VariableContext {
+        return VariableContext(store: variableStore)
+    }
+
+    /// Resolve a string property that may contain {{expressions}}
+    func resolveProperty(_ value: String) -> Any {
+        do {
+            return try propertyResolver.resolve(value, context: getVariableContext())
+        } catch {
+            service.context.logger.error("Failed to resolve property '\(value)': \(error)")
+            return value
+        }
+    }
+
+    /// Resolve a string property to string (for text properties)
+    func resolvePropertyToString(_ value: String) -> String {
+        do {
+            return try propertyResolver.resolveToString(value, context: getVariableContext())
+        } catch {
+            service.context.logger.error("Failed to resolve property '\(value)': \(error)")
+            return value
+        }
+    }
+
+    /// Resolve a string expression to a CGFloat (for layout dimensions)
+    func resolvePropertyToFloat(_ value: String) -> CGFloat? {
+        let resolved = resolveProperty(value)
+        if let num = resolved as? Double {
+            return CGFloat(num)
+        } else if let num = resolved as? Int {
+            return CGFloat(num)
+        } else if let num = resolved as? NSNumber {
+            return CGFloat(num.doubleValue)
+        } else if let str = resolved as? String, let num = Double(str), num.isFinite {
+            return CGFloat(num)
+        }
+        return nil
+    }
+
+    /// Resolve a string expression to a Bool (for visibility, etc.)
+    func resolvePropertyToBool(_ value: String) -> Bool? {
+        let resolved = resolveProperty(value)
+        if let bool = resolved as? Bool {
+            return bool
+        } else if let num = resolved as? Int {
+            return num != 0
+        } else if let num = resolved as? Double {
+            return num != 0
+        } else if let str = resolved as? String {
+            return str.lowercased() == "true" || str == "1"
+        }
+        return nil
+    }
+
+    // MARK: - Action Execution
+
+    /// Execute a variable action
+    func executeVariableAction(_ action: DSL.Model.Action) {
+        try? variableActionHandler.execute(action: action, store: variableStore, context: getVariableContext())
+    }
+
+    /// Execute an action from component actions (by trigger name)
+    func executeAction(for trigger: DSL.Model.ActionTrigger) {
+        guard let action = component.actions?[trigger] else { return }
+        executeAction(action)
+    }
+
+    // MARK: - State API
+
+    /// Transition to a named state
+    func setState(_ stateName: String?, animated: Bool = true) {
+        stateManager.setState(stateName, animated: animated)
+    }
+
+    /// Force re-apply a state (even if it's the current state)
+    /// Used after children are rendered to propagate childStates
+    func forceReapplyState(_ stateName: String) {
+        stateManager.setState(stateName, animated: false, force: true)
+    }
+
+    /// Get current state name
+    var currentStateName: String? {
+        stateManager.currentStateNameValue
+    }
+
+    // MARK: - Trigger API
+
+    /// Fire a trigger - looks up state name in component.triggers
+    func fireTrigger(_ trigger: DSL.Model.Trigger) {
+        guard let triggers = component.triggers,
+              let stateName = triggers[trigger] else { return }
+        setState(stateName, animated: true)
+    }
+
+    // MARK: - Event Triggers (onEvent)
+
+    /// Start event triggers defined in onEvent array
+    func startEventTriggers() {
+        guard let events = component.onEvent else { return }
+
+        for event in events {
+            switch event.event {
+            case .timer:
+                startTimer(for: event)
+            case .appear:
+                executeAction(event.action)
+            case .disappear:
+                break // handled by cancelEventTriggers
+            }
+        }
+    }
+
+    /// Cancel all active event triggers
+    func cancelEventTriggers() {
+        // Fire disappear events before cancelling.
+        if let events = component.onEvent {
+            for event in events where event.event == .disappear {
+                executeAction(event.action)
+            }
+        }
+
+        for timer in activeTimers {
+            timer.invalidate()
+        }
+        activeTimers.removeAll()
+    }
+
+    /// Start a timer for a timer event
+    private func startTimer(for event: DSL.Model.EventTrigger) {
+        let initialDelay = event.delay ?? 0
+        let repeats = event.repeats ?? false
+        let interval = event.interval ?? event.delay ?? 1.0
+        let action = event.action
+
+        if initialDelay == 0 {
+            executeAction(action)
+
+            if repeats {
+                let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] timer in
+                    guard let self = self else {
+                        timer.invalidate()
+                        return
+                    }
+                    Task { @MainActor in
+                        self.executeAction(action)
+                    }
+                }
+                activeTimers.append(timer)
+            }
+        } else {
+            let timer = Timer.scheduledTimer(withTimeInterval: initialDelay, repeats: false) { [weak self] _ in
+                guard let self = self else { return }
+                Task { @MainActor in
+                    self.executeAction(action)
+
+                    if repeats && !self.activeTimers.isEmpty {
+                        let repeatTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] timer in
+                            guard let self = self else {
+                                timer.invalidate()
+                                return
+                            }
+                            Task { @MainActor in
+                                self.executeAction(action)
+                            }
+                        }
+                        self.activeTimers.append(repeatTimer)
+                    }
+                }
+            }
+            activeTimers.append(timer)
+        }
+    }
+
+    /// Execute an action directly (for event triggers)
+    func executeAction(_ action: DSL.Model.Action) {
+        switch action.type {
+        case .updateVariable, .incrementVariable, .updateMultipleVariables, .resetVariables, .toggleArrayValue, .appendToArray:
+            executeVariableAction(action)
+
+        case .setState:
+            if let stateName = action.stateName {
+                let animated = action.animated ?? true
+                let resolvedStateName = resolvePropertyToString(stateName)
+                setState(resolvedStateName, animated: animated)
+            }
+
+        case .navigation:
+            if action.isBack == true {
+                let request = NavigationRequest(type: .pop)
+                NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
+            } else if let nextScreen = action.nextScreen {
+                var resolvedParams: [String: Any] = [:]
+                if let params = action.params {
+                    for (key, value) in params {
+                        if let stringValue = value.value as? String {
+                            resolvedParams[key] = resolveProperty(stringValue)
+                        } else {
+                            resolvedParams[key] = value.value
+                        }
+                    }
+                }
+
+                if let presentation = action.presentation, presentation != .push {
+                    let modalStyle = presentation.toModalPresentationStyle
+                    let request = NavigationRequest(type: .presentModal(
+                        screenId: nextScreen,
+                        params: resolvedParams,
+                        style: modalStyle,
+                        detents: action.detents
+                    ))
+                    NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
+                } else {
+                    let request = NavigationRequest(type: .push(screenId: nextScreen, params: resolvedParams))
+                    NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
+                }
+            }
+
+        case .completeFlow:
+            if let destination = action.destination {
+                let request = NavigationRequest(type: .completeFlow(destination: destination))
+                NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
+            }
+
+        case .dismiss:
+            let request = NavigationRequest(type: .dismiss)
+            NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
+
+        case .selectTab:
+            let request = NavigationRequest(type: .selectTab(index: action.tabIndex, id: action.tabId))
+            NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
+
+        case .focus:
+            if let targetId = action.target {
+                let fullPath = targetId.contains(".") ? targetId : "\(componentPath).\(targetId)"
+                service.context.focusManager.focus(id: fullPath)
+            }
+
+        case .focusNext:
+            service.context.focusManager.focusNext()
+
+        case .focusPrevious:
+            service.context.focusManager.focusPrevious()
+
+        case .dismissKeyboard:
+            service.context.focusManager.dismissKeyboard()
+
+        case .showAlert:
+            let title = action.alertTitle.map { resolvePropertyToString($0) }
+            let message = action.alertMessage.map { resolvePropertyToString($0) }
+            let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+
+            if let alertActions = action.alertActions {
+                for alertAction in alertActions {
+                    let style: UIAlertAction.Style
+                    switch alertAction.style {
+                    case .cancel: style = .cancel
+                    case .destructive: style = .destructive
+                    default: style = .default
+                    }
+                    alert.addAction(UIAlertAction(title: alertAction.title, style: style) { [weak self] _ in
+                        if let followUp = alertAction.action {
+                            self?.executeAction(followUp)
+                        }
+                    })
+                }
+            } else {
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+            }
+
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let root = scene.keyWindow?.rootViewController {
+                var top = root
+                while let presented = top.presentedViewController { top = presented }
+                top.present(alert, animated: true)
+            }
+
+        case .haptic:
+            switch action.hapticStyle ?? .medium {
+            case .light:
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            case .medium:
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            case .heavy:
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+            case .success:
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            case .warning:
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            case .error:
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            case .selection:
+                UISelectionFeedbackGenerator().selectionChanged()
+            }
+
+        case .openURL:
+            if let urlString = action.url {
+                let resolved = resolvePropertyToString(urlString)
+                if let url = URL(string: resolved) {
+                    let presentation = action.urlPresentation ?? .external
+                    // SFSafariViewController only supports http/https. Non-web URLs (tel:, mailto:, etc.)
+                    // always fall back to the system handler regardless of requested presentation.
+                    let isWebURL = (url.scheme == "http" || url.scheme == "https")
+                    if presentation == .external || !isWebURL {
+                        UIApplication.shared.open(url)
+                    } else {
+                        let safariVC = SFSafariViewController(url: url)
+                        safariVC.modalPresentationStyle = (presentation == .fullScreen) ? .fullScreen : .pageSheet
+                        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                           let root = scene.keyWindow?.rootViewController {
+                            var top = root
+                            while let presented = top.presentedViewController { top = presented }
+                            top.present(safariVC, animated: true)
+                        }
+                    }
+                }
+            }
+
+        case .executeFunction, .complete:
+            break
+        }
+    }
+}
+
+// MARK: - ComponentStateManagerDelegate
+
+extension CBaseViewModel: ComponentStateManagerDelegate {
+    func stateManagerDidRequestChildStates(_ childStates: [String: String], animated: Bool) {
+        // Resolve child IDs to full paths by prepending this component's path.
+        let resolvedStates = Dictionary(uniqueKeysWithValues: childStates.map { key, value in
+            ("\(componentPath).\(key)", value)
+        })
+        service.componentRegistry.setStates(resolvedStates, animated: animated)
+    }
+}
+
+// MARK: - StateControllable
+
+extension CBaseViewModel: StateControllable {}
+
+// MARK: - ComponentViewModelAbstract
+
+extension CBaseViewModel: ComponentViewModelAbstract {}
