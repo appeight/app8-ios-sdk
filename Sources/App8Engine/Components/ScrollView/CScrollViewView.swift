@@ -395,7 +395,23 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         let advance = autoScroll.speed * CGFloat(dt)
         let direction = viewModel.component.properties.direction ?? .vertical
         let infinite = autoScroll.infinite ?? true
-        let length = autoScrollOriginalLength
+
+        // Wrap length is recomputed live from the marquee container's current
+        // main-axis size rather than the value measured once at install. The
+        // duplicate is pinned by constraints (`duplicate.leading == container.trailing
+        // + loopGap`, `duplicate.width == container.width`), so its start always
+        // sits at `container.length + loopGap` from the origin. If the content
+        // resizes after install (async image loads, layout compression, a corner
+        // re-resolve, …) a cached length would no longer match that seam — the
+        // loop would jump by the stale-vs-current delta on every wrap. Reading
+        // the live container size keeps the seam exact and self-correcting.
+        let containerLength: CGFloat = marqueeContainer.map {
+            direction == .horizontal ? $0.bounds.width : $0.bounds.height
+        } ?? 0
+        let loopGap = autoScroll.loopGap ?? 0
+        let length = containerLength > 0
+            ? (infinite ? containerLength + loopGap : containerLength)
+            : autoScrollOriginalLength
 
         var offset = scrollView.contentOffset
         switch direction {

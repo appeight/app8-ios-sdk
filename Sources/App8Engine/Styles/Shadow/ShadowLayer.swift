@@ -107,7 +107,7 @@ extension DSL.Model.Style.Shadow {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
 
-            let radius = cornerStyle?.radius ?? 0
+            let radius = cornerStyle?.resolvedRadius(in: bounds.size) ?? 0
             let path = roundedRectCGPath(in: bounds, radius: radius)
 
             if ownStyle.layers.count == 1 {

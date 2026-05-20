@@ -70,13 +70,17 @@ class CImageView: App8BaseView<DSL.Model.Component.Image.C>, CViewProtocol {
         imageView.tintColor = style?.tintColor?.ui
 
         // Corner radius: direct corner takes precedence over the material's corner.
+        // Register the corner so a `fraction` radius is re-resolved on resize.
         if let corner = style?.corner {
             imageView.layer.apply(cornerStyle: corner)
+            trackRelativeCorner(corner, on: imageView.layer)
         } else if let material = style?.material,
                   let cornerStyle = MaterialView.cornerStyle(inMaterial: material) {
             imageView.layer.apply(cornerStyle: cornerStyle.content)
+            trackRelativeCorner(cornerStyle.content, on: imageView.layer)
         } else {
             imageView.layer.cornerRadius = 0
+            trackRelativeCorner(.none, on: imageView.layer)
         }
     }
     

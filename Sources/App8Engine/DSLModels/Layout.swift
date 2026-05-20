@@ -115,7 +115,7 @@ extension DSL.Model.Layout {
         }
 
         enum Target: Decodable {
-            case superview, sibling(String), keyboard, safeArea
+            case superview, sibling(String), keyboard, safeArea, selfView
             init(from decoder: any Decoder) throws {
                 let container = try decoder.singleValueContainer()
                 let targetString = try container.decode(String.self)
@@ -126,6 +126,8 @@ extension DSL.Model.Layout {
                     self = .keyboard
                 case "safearea":
                     self = .safeArea
+                case "self":
+                    self = .selfView
                 default:
                     self = .sibling(targetString)
                 }

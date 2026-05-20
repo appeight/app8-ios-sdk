@@ -373,8 +373,22 @@ Corner radius configuration.
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `radius` | number | | Corner radius in points |
+| `radius` | number \| string \| object | | Corner radius — see [Radius](#radius) |
 | `curve` | Curve | `circular` | Corner curve type |
+
+### Radius
+
+`radius` accepts an absolute or a relative value. A relative radius is a
+fraction of the view's **smaller** dimension and is re-resolved whenever the
+view is resized, so it stays correct when a layout compresses. `"50%"` always
+yields a perfect circle/capsule.
+
+| Form | Example | Meaning |
+|------|---------|---------|
+| Fixed | `16` | Absolute radius in points |
+| Percent string | `"50%"` | Fraction of `min(width, height)` |
+| Keyed object | `{ "type": "fraction", "value": 0.5 }` | Fraction of `min(width, height)` |
+| Keyed object | `{ "type": "fixed", "value": 16 }` | Absolute radius in points |
 
 ### Curve Values
 
@@ -390,6 +404,17 @@ Corner radius configuration.
   "corner": {
     "radius": 16,
     "curve": "continuous"
+  }
+}
+```
+
+Circular avatar that stays round at any size:
+
+```json
+{
+  "corner": {
+    "radius": "50%",
+    "curve": "circular"
   }
 }
 ```

@@ -23,6 +23,10 @@ final class MaterialView: UIView {
     private var trackedLayers: [TrackedLayer] = []
     private var trackedViews: [TrackedView] = []
 
+    /// Corner of the current material, kept so a `fraction` radius can be
+    /// re-resolved against the real bounds on every layout pass.
+    private var cornerStyleForLayout: DSL.Model.Style.Corner?
+
     override func layoutSubviews() {
         super.layoutSubviews()
         for tracked in trackedLayers {
@@ -30,6 +34,17 @@ final class MaterialView: UIView {
         }
         for tracked in trackedViews {
             tracked.view?.frame = bounds
+        }
+        // Re-resolve a size-dependent (fraction) corner now that bounds are known.
+        // Outline / shadow layers self-resolve in their own `layoutSublayers`;
+        // only flat fill layers and visual-effect views need an explicit re-apply.
+        if let cornerStyle = cornerStyleForLayout, cornerStyle.radius.isRelative {
+            for tracked in trackedLayers where tracked.typeKey == .fill {
+                tracked.layer?.apply(cornerStyle: cornerStyle)
+            }
+            for tracked in trackedViews where tracked.typeKey == .visualEffect {
+                tracked.view?.layer.apply(cornerStyle: cornerStyle)
+            }
         }
     }
 
@@ -45,6 +60,7 @@ final class MaterialView: UIView {
 
     func update(material: DSL.Model.Style.Material) {
         let cornerStyle = Self.cornerStyle(inMaterial: material)
+        cornerStyleForLayout = cornerStyle?.content
 
         var expectedLayers: [(typeKey: DSL.Model.Style.SType.Key, style: DSL.Model.Style.`Any`)] = []
         for layerStyle in material.layers where !layerStyle.type.isKeyed(.corner) {
@@ -361,8 +377,7 @@ final class MaterialView: UIView {
 
         let view = UIVisualEffectView(effect: effect)
         if let cornerStyle {
-            view.layer.cornerRadius = cornerStyle.radius
-            view.layer.cornerCurve = cornerStyle.curve.ca
+            view.layer.apply(cornerStyle: cornerStyle)
             view.clipsToBounds = true
         }
         return view
