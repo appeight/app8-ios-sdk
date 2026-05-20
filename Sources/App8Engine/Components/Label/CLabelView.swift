@@ -52,6 +52,21 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         label.cMakeEqualToSuperview()
     }
 
+    // UILabel.intrinsicContentSize reports a single-line size unless
+    // `preferredMaxLayoutWidth` is set, so multi-line labels (numberOfLines = 0,
+    // text containing `\n`, or wrapping text) under-report their height and get
+    // truncated when their container is under vertical pressure. Sync the
+    // preferred width to the laid-out bounds so intrinsic stays correct.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let newWidth = label.bounds.width
+        if abs(label.preferredMaxLayoutWidth - newWidth) > 0.5, newWidth > 0 {
+            label.preferredMaxLayoutWidth = newWidth
+            label.invalidateIntrinsicContentSize()
+            invalidateIntrinsicContentSize()
+        }
+    }
+
     func configure(viewModel: CLabelViewModel, superview: UIView? = nil, animated: Bool = true) {
         self.viewModel = viewModel
 
@@ -197,6 +212,13 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             }
             label.attributedText = attributed
         }
+        // Seed preferredMaxLayoutWidth so multi-line intrinsic reports correct
+        // height before the first layout pass establishes bounds. `layoutSubviews`
+        // refines it to the actual width once we have one.
+        if label.bounds.width <= 0, label.preferredMaxLayoutWidth <= 0 {
+            label.preferredMaxLayoutWidth = UIScreen.main.bounds.width
+        }
+        invalidateIntrinsicContentSize()
     }
 
     /// Apply each span's overrides on top of the base attributes. Out-of-range

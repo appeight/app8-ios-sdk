@@ -148,7 +148,7 @@ extension DSL.Model.Style.Outline {
 
             content.frame = bounds.insetBy(dx: -grow, dy: -grow)
 
-            let baseR  = cornerStyle?.radius ?? 0
+            let baseR  = cornerStyle?.resolvedRadius(in: bounds.size) ?? 0
             let outerR = max(0, baseR + grow)
             let innerR = max(0, outerR - w)
 

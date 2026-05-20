@@ -4,6 +4,9 @@ import UIKit
 @MainActor
 protocol App8BaseViewProtocol {
     func setup()
+    /// Keep `layer`'s corner radius resolved against this view's size on every
+    /// layout pass. A fixed-radius corner clears any prior registration.
+    func trackRelativeCorner(_ corner: DSL.Model.Style.Corner, on layer: CALayer)
 }
 
 /// Lets the shared `applyBaseStyle` extension reach the view's `activeStateAnimation`
@@ -218,7 +221,35 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
     override var intrinsicContentSize: CGSize {
         intrinsicContentSource?.intrinsicContentSize ?? super.intrinsicContentSize
     }
-    
+
+    // MARK: - Relative corner radius
+
+    /// Layers whose corner radius is size-dependent (a `fraction` radius) and
+    /// must be re-resolved whenever this view re-layouts.
+    private var trackedRelativeCorners: [(layer: CALayer, corner: DSL.Model.Style.Corner)] = []
+
+    /// Register `layer` so its corner radius is re-resolved against the current
+    /// size on every layout pass. Only `fraction` corners are tracked; passing
+    /// a fixed-radius corner clears any prior registration for that layer
+    /// (the caller has already applied the static value).
+    func trackRelativeCorner(_ corner: DSL.Model.Style.Corner, on layer: CALayer) {
+        trackedRelativeCorners.removeAll { $0.layer === layer }
+        if corner.radius.isRelative {
+            trackedRelativeCorners.append((layer, corner))
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Resolve against this component's own bounds, not the layer's. The
+        // tracked layer is nested below this view (imageView / contentView),
+        // so during this layout pass its own `bounds` are still stale — but
+        // it is pinned equal to this view, so this view's size is the target.
+        for entry in trackedRelativeCorners {
+            entry.layer.apply(cornerStyle: entry.corner, in: bounds.size)
+        }
+    }
+
     // MARK: - Trait change wiring (iOS 17+ registration, ≤16 fallback)
 
     override func willMove(toWindow newWindow: UIWindow?) {
@@ -331,21 +362,30 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
     /// Sets content hugging and compression-resistance priorities for the axes
     /// that the DSL specifies. Unspecified axes are left untouched so UIKit
     /// defaults (e.g. UILabel's vertical hugging) remain intact.
+    ///
+    /// Also forwards the same priorities to the `intrinsicContentSource` (typically
+    /// the inner UILabel / UIImageView) so the Auto Layout solver sees the
+    /// configured priority on the view that actually has an intrinsic size.
     private func applyContentPriorities(from layout: DSL.Model.Layout?) {
+        let intrinsicSource = intrinsicContentSource
         if let hugging = layout?.contentHuggingPriority {
             if let h = hugging.h {
                 setContentHuggingPriority(h.ui, for: .horizontal)
+                intrinsicSource?.setContentHuggingPriority(h.ui, for: .horizontal)
             }
             if let v = hugging.v {
                 setContentHuggingPriority(v.ui, for: .vertical)
+                intrinsicSource?.setContentHuggingPriority(v.ui, for: .vertical)
             }
         }
         if let resistance = layout?.contentCompressionResistancePriority {
             if let h = resistance.h {
                 setContentCompressionResistancePriority(h.ui, for: .horizontal)
+                intrinsicSource?.setContentCompressionResistancePriority(h.ui, for: .horizontal)
             }
             if let v = resistance.v {
                 setContentCompressionResistancePriority(v.ui, for: .vertical)
+                intrinsicSource?.setContentCompressionResistancePriority(v.ui, for: .vertical)
             }
         }
     }
@@ -389,7 +429,7 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
                 if let target = c.target,
                    let targetView = resolveTarget(target, in: superview) {
                     let to = c.attribute ?? c.type
-                    let made = makeRelation(from: c.type, to: to, target: targetView, constant: constant, relation: relation)
+                    let made = makeRelation(from: c.type, to: to, target: targetView, constant: constant, multiplier: c.multiplier.map { CGFloat($0) }, relation: relation)
                     applyPriority(c.priority, to: made)
                     constraints.append(made)
                 }
@@ -448,7 +488,7 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
             if ignoresSafeArea && from == .top && targetView === superview {
                 adjustedConstant += safeAreaTopOffset
             }
-            let made = makeRelation(from: from, to: to, target: targetView, constant: adjustedConstant, relation: relation)
+            let made = makeRelation(from: from, to: to, target: targetView, constant: adjustedConstant, multiplier: c.multiplier.map { CGFloat($0) }, relation: relation)
             applyPriority(c.priority, to: made)
             constraints.append(made)
         }
@@ -614,12 +654,13 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
         _ from: NSLayoutDimension,
         _ to: NSLayoutDimension,
         _ relation: DSL.Model.Layout.Constraint.Relation,
-        _ constant: CGFloat
+        _ constant: CGFloat,
+        _ multiplier: CGFloat = 1
     ) -> NSLayoutConstraint {
         switch relation {
-        case .equal:              return from.constraint(equalTo: to, constant: constant)
-        case .greaterThanOrEqual: return from.constraint(greaterThanOrEqualTo: to, constant: constant)
-        case .lessThanOrEqual:    return from.constraint(lessThanOrEqualTo: to, constant: constant)
+        case .equal:              return from.constraint(equalTo: to, multiplier: multiplier, constant: constant)
+        case .greaterThanOrEqual: return from.constraint(greaterThanOrEqualTo: to, multiplier: multiplier, constant: constant)
+        case .lessThanOrEqual:    return from.constraint(lessThanOrEqualTo: to, multiplier: multiplier, constant: constant)
         }
     }
 
@@ -627,6 +668,8 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
         switch target {
         case .superview:
             return container
+        case .selfView:
+            return self
         case .sibling(let name):
             // Prefer ViewRegistry for sibling resolution (decoupled from accessibilityIdentifier)
             if let registry = viewRegistry {
@@ -653,7 +696,9 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
                               to: DSL.Model.Layout.Constraint.Attribute,
                               target: UIView,
                               constant: CGFloat,
+                              multiplier: CGFloat? = nil,
                               relation: DSL.Model.Layout.Constraint.Relation = .equal) -> NSLayoutConstraint {
+        let m = multiplier ?? 1
         switch (from, to) {
         case (.leading,  .leading):  return relate(leadingAnchor,  target.leadingAnchor,  relation, constant)
         case (.leading,  .trailing): return relate(leadingAnchor,  target.trailingAnchor, relation, constant)
@@ -673,8 +718,10 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
         case (.centerY,  .top):      return relate(centerYAnchor,  target.topAnchor,      relation, constant)
         case (.centerY,  .bottom):   return relate(centerYAnchor,  target.bottomAnchor,   relation, constant)
 
-        case (.width,    .width):    return relateDim(widthAnchor,  target.widthAnchor,  relation, constant)
-        case (.height,   .height):   return relateDim(heightAnchor, target.heightAnchor, relation, constant)
+        case (.width,    .width):    return relateDim(widthAnchor,  target.widthAnchor,  relation, constant, m)
+        case (.height,   .height):   return relateDim(heightAnchor, target.heightAnchor, relation, constant, m)
+        case (.width,    .height):   return relateDim(widthAnchor,  target.heightAnchor, relation, constant, m)
+        case (.height,   .width):    return relateDim(heightAnchor, target.widthAnchor,  relation, constant, m)
 
         default:
             // Fallback: align like-to-like for the from-attribute.
@@ -685,8 +732,8 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
             case .bottom:   return relate(bottomAnchor,   target.bottomAnchor,   relation, constant)
             case .centerX:  return relate(centerXAnchor,  target.centerXAnchor,  relation, constant)
             case .centerY:  return relate(centerYAnchor,  target.centerYAnchor,  relation, constant)
-            case .width:    return relateDim(widthAnchor,  target.widthAnchor,  relation, constant)
-            case .height:   return relateDim(heightAnchor, target.heightAnchor, relation, constant)
+            case .width:    return relateDim(widthAnchor,  target.widthAnchor,  relation, constant, m)
+            case .height:   return relateDim(heightAnchor, target.heightAnchor, relation, constant, m)
             }
         }
     }

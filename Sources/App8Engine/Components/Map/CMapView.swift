@@ -114,6 +114,7 @@ final class CMapView: App8BaseView<MapContent>, CViewProtocol, MKMapViewDelegate
         if let corner = style?.corner {
             mapView.layer.apply(cornerStyle: corner)
             mapView.clipsToBounds = true
+            trackRelativeCorner(corner, on: mapView.layer)
         }
     }
 
