@@ -100,13 +100,14 @@ struct DSLExampleValidator {
         "screen", "tabBarScreen", "map", "shape"
     ]
 
-    // Valid action types
+    // Valid action types — mirrors DSL.Model.Action.`Type`
     private static let actionTypes: Set<String> = [
         "navigation", "dismiss", "completeFlow", "selectTab",
         "updateVariable", "incrementVariable", "toggleArrayValue",
-        "updateMultipleVariables", "resetVariables",
+        "appendToArray", "updateMultipleVariables", "resetVariables",
         "setState", "focus", "focusNext", "focusPrevious",
-        "dismissKeyboard", "executeFunction"
+        "dismissKeyboard", "executeFunction",
+        "showAlert", "haptic", "openURL"
     ]
 
     private static func validateWithInferredType(data: Data, json: [String: Any]) -> ValidationResult {

@@ -144,6 +144,7 @@ extension CViewProtocol where Self: UIView {
             materialView?.alpha = 0
             backgroundColor = UIColor.black.withAlphaComponent(0.1)
             contentView.layer.apply(cornerStyle: .none)
+            (self as? App8BaseViewProtocol)?.trackRelativeCorner(.none, on: contentView.layer)
             layer.borderWidth = 1
             layer.borderColor = UIColor.black.withAlphaComponent(0.35).cgColor
             applyLayoutModeCornerLabels()
@@ -198,8 +199,10 @@ extension CViewProtocol where Self: UIView {
                             // material so child views get clipped consistently.
                             if let cornerStyle = MaterialView.cornerStyle(inMaterial: material) {
                                 self.contentView.layer.apply(cornerStyle: cornerStyle.content)
+                                (self as? App8BaseViewProtocol)?.trackRelativeCorner(cornerStyle.content, on: self.contentView.layer)
                             } else {
                                 self.contentView.layer.apply(cornerStyle: .none)
+                                (self as? App8BaseViewProtocol)?.trackRelativeCorner(.none, on: self.contentView.layer)
                             }
                         }
                     )
@@ -216,6 +219,7 @@ extension CViewProtocol where Self: UIView {
                 layerBlock: { [self] in
                     self.materialView?.rfs(animatables: { $0?.alpha = .zero }, animated: true)
                     self.contentView.layer.apply(cornerStyle: .none)
+                    (self as? App8BaseViewProtocol)?.trackRelativeCorner(.none, on: self.contentView.layer)
                 },
                 viewBlock: { [self] in
                     self.alpha = targetAlpha
