@@ -164,12 +164,12 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             // which makes the label invisible in layout mode.
             // If resolved is empty (e.g. unresolvable {{item.label}} template var),
             // fall back to the raw DSL string so the label keeps non-zero intrinsic width.
-            let resolved = viewModel?.resolvePropertyToString(properties.text) ?? properties.text
-            setLabelText(resolved.isEmpty ? properties.text : resolved)
+            let resolved = viewModel?.resolveLocalizedToString(properties.text) ?? properties.text.rawValue
+            setLabelText(resolved.isEmpty ? properties.text.rawValue : resolved)
             label.textColor = UIColor.label.withAlphaComponent(0.4)
             return
         }
-        let resolved = viewModel?.resolvePropertyToString(properties.text) ?? properties.text
+        let resolved = viewModel?.resolveLocalizedToString(properties.text) ?? properties.text.rawValue
         setLabelText(resolved)
         applyBackgroundColor(properties.backgroundColor?.value)
     }

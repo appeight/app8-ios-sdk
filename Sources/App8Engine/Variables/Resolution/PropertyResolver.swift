@@ -5,13 +5,21 @@
 
 import Foundation
 
-/// Resolves {{expression}} placeholders in property values
+/// Resolves {{expression}} placeholders in property values.
+///
+/// Also owns the i18n lookup chain (`LocalizedString` → translated string,
+/// then `{{var}}` interpolation on top). When constructed with a
+/// `TranslationStore`, lookups follow the store's active-locale rules and
+/// number/date formatters in `ExpressionEvaluator` honour the same locale.
 @MainActor
 public final class PropertyResolver {
     private let parser = ExpressionParser()
     private let evaluator = ExpressionEvaluator()
+    private weak var translationStore: TranslationStore?
 
-    public init() {}
+    public init(translationStore: TranslationStore? = nil) {
+        self.translationStore = translationStore
+    }
 
     /// Check if a string contains expression placeholders
     public func containsExpression(_ string: String) -> Bool {
@@ -24,6 +32,7 @@ public final class PropertyResolver {
     ///   - context: Variable context for evaluation
     /// - Returns: Resolved string with expressions evaluated
     public func resolve(_ value: String, context: VariableContext) throws -> Any {
+        syncEvaluatorLocale()
         let trimmed = value.trimmingCharacters(in: .whitespaces)
 
         // A single whole-string expression returns the raw result, not stringified
@@ -42,6 +51,23 @@ public final class PropertyResolver {
     public func resolveToString(_ value: String, context: VariableContext) throws -> String {
         let result = try resolve(value, context: context)
         return stringify(result)
+    }
+
+    /// Resolve a `LocalizedString` to a final user-facing string.
+    /// Pipeline: i18n lookup → `{{var}}` interpolation on the looked-up text.
+    ///
+    /// `.literal` values go straight to `resolveToString`, preserving existing
+    /// behaviour. `.key` values look up via the `TranslationStore`'s fallback
+    /// chain (active → language-only → app default); a miss returns the key
+    /// itself so authors immediately see which key is unlocalised.
+    public func resolveLocalizedToString(_ value: LocalizedString, context: VariableContext) throws -> String {
+        switch value {
+        case .literal(let s):
+            return try resolveToString(s, context: context)
+        case .key(let k):
+            let raw = translationStore?.lookup(key: k) ?? k
+            return try resolveToString(raw, context: context)
+        }
     }
 
     /// Resolve a value that might be Any type
@@ -65,6 +91,16 @@ public final class PropertyResolver {
     }
 
     // MARK: - Private
+
+    /// Push state from the TranslationStore into the shared evaluator before
+    /// each evaluate: (a) active locale for `formatDate`/`formatCurrency`/etc.
+    /// honouring `setLocale(...)`, and (b) translation lookup closure for the
+    /// `i18n(key)` function so template expressions can i18n variable values.
+    private func syncEvaluatorLocale() {
+        guard let store = translationStore else { return }
+        evaluator.locale = store.activeLocaleObject
+        evaluator.translationLookup = { [weak store] key in store?.lookup(key: key) }
+    }
 
     private func resolveInterpolated(_ value: String, context: VariableContext) throws -> String {
         var result = ""

@@ -45,6 +45,22 @@ public extension App8 {
         /// Whether layout-mode shows component-id labels in corners. Default `true`.
         var layoutModeShowsLabels: Bool { get set }
 
+        // MARK: - Localisation
+
+        /// Override the active locale used when resolving `{"$i18n": "..."}` text
+        /// values and locale-sensitive expression formatters (currency, number,
+        /// date). Pass `nil` to revert to the device's first preferred language.
+        ///
+        /// The change is visible on the **next** render — already-rendered text
+        /// is not re-resolved in v1. Callers that need live re-rendering can
+        /// pop and re-push the current screen.
+        func setLocale(_ locale: String?)
+
+        /// The locale currently used for translation lookup and formatter
+        /// output. Returns the override if one was set via `setLocale(_:)`,
+        /// otherwise the device default, otherwise the app's default_locale.
+        var currentLocale: String { get }
+
         // MARK: - Asset discovery
 
         /// Walks the decoded DSL tree for `screenId` and returns every
