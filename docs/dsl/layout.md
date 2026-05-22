@@ -267,7 +267,8 @@ For complex layouts, use explicit constraints.
 | Value | Description |
 |-------|-------------|
 | `superview` | Parent view |
-| `safeArea` | Screen safe area layout guide |
+| `safeArea` | Superview's safe area layout guide |
+| `safeArea(id)` | Safe area layout guide of the sibling component with that ID |
 | `sibling(id)` | Another component by ID |
 | `keyboard` | Keyboard frame |
 
@@ -547,6 +548,60 @@ Use `"target": "safeArea"` with `attribute` to anchor a component edge to the sa
 ```
 
 This pins the bottom of the component to the **top** of the safe area — useful for a topbar that extends behind the status bar. Similarly, `"type": "top", "attribute": "bottom"` anchors to the bottom of the safe area for a bottom bar.
+
+#### Pin to the top / bottom safe area
+
+`safeArea` resolves to the **superview's** safe area layout guide. Anchor a
+component just inside the safe area like this:
+
+```json
+{
+  "layout": {
+    "constraints": [
+      { "type": "top",      "target": "safeArea" },
+      { "type": "leading",  "target": "superview", "constant": 25 },
+      { "type": "trailing", "target": "superview", "constant": -25 }
+    ]
+  }
+}
+```
+
+```json
+{
+  "layout": {
+    "constraints": [
+      { "type": "bottom",   "target": "safeArea", "constant": -10 },
+      { "type": "leading",  "target": "superview", "constant": 25 },
+      { "type": "trailing", "target": "superview", "constant": -25 }
+    ]
+  }
+}
+```
+
+The first pins the component's top to the top of the safe area; the second
+keeps the component 10pt above the bottom safe area (home indicator).
+
+#### Safe area of an adjacent component
+
+`"target": "safeArea(id)"` resolves to the safe area layout guide of the
+sibling component with that ID, mirroring `someView.safeAreaLayoutGuide` in
+Swift Auto Layout. Use it to align a component against another view's safe
+area rather than the superview's:
+
+```json
+{
+  "layout": {
+    "constraints": [
+      { "type": "top",      "target": "safeArea(headerCard)", "attribute": "bottom", "constant": 12 },
+      { "type": "leading",  "target": "safeArea(headerCard)", "attribute": "leading" },
+      { "type": "trailing", "target": "safeArea(headerCard)", "attribute": "trailing" }
+    ]
+  }
+}
+```
+
+The ID inside the parentheses is case-sensitive and resolved the same way as a
+plain `sibling` target. Whitespace around it is ignored.
 
 ### Additional Safe Area Insets (Screen Level)
 
