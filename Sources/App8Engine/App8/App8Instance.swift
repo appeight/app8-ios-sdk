@@ -86,5 +86,19 @@ public extension App8 {
         // Screen analysis
         func analyzeScreen(screenId: String) async throws -> ScreenAnalysis
         func getAllScreenManifest() async throws -> [ScreenManifestEntry]
+
+        /// Renders a screen with host-supplied safe-area insets, for tooling that
+        /// renders screens onto a transformed / zoomed canvas (e.g. the App8 design
+        /// canvas), where UIKit's propagated safe area is unreliable.
+        ///
+        /// The supplied insets are ADDED to the screen's live `safeAreaInsets`
+        /// (alongside any `additionalSafeAreaInsets` declared by the DSL). This
+        /// assumes the host renders into a container whose real safe area is ~zero
+        /// — against a normal window with non-zero system insets the values would
+        /// double-count. Non-finite or negative components are sanitized to 0.
+        ///
+        /// Not part of the production `Instance` API.
+        func renderScreen(screenId: String, options: ScreenRenderOptions,
+                          fixedSafeAreaInsets: UIEdgeInsets) async throws -> UIViewController
     }
 }
