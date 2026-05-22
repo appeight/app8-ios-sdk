@@ -221,10 +221,9 @@ final class A8: App8.DebugInstance {
                 self.styles = styleItemsDict
             }
 
-            // Load translations once at boot — before any screen renders so
-            // i18n keys resolve immediately instead of flashing as raw keys.
-            // Errors are non-fatal: a failed fetch leaves the store empty
-            // (keys render as debug placeholders) but doesn't block infra.
+            // Must run before any screen renders so i18n keys don't flash as
+            // raw keys. Non-fatal: a failure leaves the store empty and keys
+            // render as debug placeholders.
             do {
                 let translationsData = try await ds.getTranslations()
                 let bundle = try JSONDecoder().decode(TranslationStore.Bundle.self, from: translationsData)
