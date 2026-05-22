@@ -206,13 +206,9 @@ extension App8Service: ComponentRenderer, ComponentService {
         let dslInsets: UIEdgeInsets? = entity.content.additionalSafeAreaInsets.map {
             UIEdgeInsets(top: $0.top ?? 0, left: $0.left ?? 0, bottom: $0.bottom ?? 0, right: $0.right ?? 0)
         }
-        // Fixed insets are ADDED to the live safe area, not replacing it — assumes
-        // a canvas with ~zero real safe area. DSL extra is summed on top. Against
-        // a real, non-zero safe area this would double-count.
         let additionalSafeAreaInsets: UIEdgeInsets?
         if let fixed = fixedSafeAreaInsets {
-            // Host input is untrusted: drop non-finite values (NaN/inf would
-            // crash Auto Layout) and clamp negatives.
+            // NaN/inf would crash Auto Layout.
             func sanitize(_ v: CGFloat) -> CGFloat { v.isFinite ? max(0, v) : 0 }
             let extra = dslInsets ?? .zero
             additionalSafeAreaInsets = UIEdgeInsets(

@@ -432,7 +432,6 @@ extension A8 {
         try await renderScreenInternal(screenId: screenId, options: options, fixedSafeAreaInsets: nil)
     }
 
-    /// `DebugInstance` variant — takes host-supplied fixed safe-area insets.
     func renderScreen(screenId: String, options: ScreenRenderOptions,
                       fixedSafeAreaInsets: UIEdgeInsets) async throws -> UIViewController {
         try await renderScreenInternal(screenId: screenId, options: options,
