@@ -272,6 +272,10 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
 
         label.font = textModel.resolveUIFont()
         label.numberOfLines = textModel.numberOfLines ?? 0
+        label.adjustsFontSizeToFitWidth = textModel.adjustsFontSizeToFitWidth ?? false
+        if label.adjustsFontSizeToFitWidth {
+            label.minimumScaleFactor = textModel.minimumScaleFactor ?? 0.5
+        }
         textAttributes = buildTextAttributes(for: textModel)
 
         if let currentText = label.attributedText?.string ?? label.text {
