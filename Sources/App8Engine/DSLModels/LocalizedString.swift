@@ -19,23 +19,20 @@ public enum LocalizedString: Sendable, Decodable {
     }
 
     public init(from decoder: Decoder) throws {
-        // Try the literal form first — by far the common case.
         if let single = try? decoder.singleValueContainer(),
            let s = try? single.decode(String.self) {
             self = .literal(s)
             return
         }
-
-        // Otherwise expect { "$i18n": "key" }. Reject anything else so authors
-        // get a decode error instead of silently rendering an empty string.
+        // Object form must be `{ "$i18n": "key" }` — anything else throws so
+        // schema typos surface at decode time, not as silent empty strings.
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let key = try c.decode(String.self, forKey: .i18n)
         self = .key(key)
     }
 
-    /// The raw string for layout-mode rendering / debugging / non-localised paths.
-    /// For `.literal` this is the literal; for `.key` it's the key itself (used as
-    /// the visible placeholder when a translation is missing).
+    /// Raw string for debug / non-localised paths. For `.key`, returns the key
+    /// itself — used as the visible placeholder on a missing translation.
     public var rawValue: String {
         switch self {
         case .literal(let s): return s

@@ -10,10 +10,6 @@ final class App8Context {
     let layoutMode: App8LayoutMode
     let focusManager: FocusManager
     let keyboardService: KeyboardHeightServiceProtocol
-    /// Localised string table for the running app. Populated at boot from
-    /// `App8DataSource.getTranslations()`. Empty by default — text values that
-    /// use `{"$i18n": "key"}` render as the key itself when no translations
-    /// have been loaded.
     let translationStore: TranslationStore
 
     init(

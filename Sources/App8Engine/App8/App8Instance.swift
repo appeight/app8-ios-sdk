@@ -47,18 +47,13 @@ public extension App8 {
 
         // MARK: - Localisation
 
-        /// Override the active locale used when resolving `{"$i18n": "..."}` text
-        /// values and locale-sensitive expression formatters (currency, number,
-        /// date). Pass `nil` to revert to the device's first preferred language.
-        ///
-        /// The change is visible on the **next** render — already-rendered text
-        /// is not re-resolved in v1. Callers that need live re-rendering can
-        /// pop and re-push the current screen.
+        /// Override the locale used for `{"$i18n": ...}` lookups and locale-aware
+        /// formatters (currency, number, date). Pass `nil` to revert to the
+        /// device's first preferred language. Visible on the next render only —
+        /// already-rendered text is not re-resolved.
         func setLocale(_ locale: String?)
 
-        /// The locale currently used for translation lookup and formatter
-        /// output. Returns the override if one was set via `setLocale(_:)`,
-        /// otherwise the device default, otherwise the app's default_locale.
+        /// Override → device default → app `defaultLocale`.
         var currentLocale: String { get }
 
         // MARK: - Asset discovery

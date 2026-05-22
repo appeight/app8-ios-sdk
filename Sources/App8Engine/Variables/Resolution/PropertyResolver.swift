@@ -5,12 +5,9 @@
 
 import Foundation
 
-/// Resolves {{expression}} placeholders in property values.
-///
-/// Also owns the i18n lookup chain (`LocalizedString` → translated string,
-/// then `{{var}}` interpolation on top). When constructed with a
-/// `TranslationStore`, lookups follow the store's active-locale rules and
-/// number/date formatters in `ExpressionEvaluator` honour the same locale.
+/// Resolves `{{expression}}` placeholders and `LocalizedString` lookups. When
+/// constructed with a `TranslationStore`, the same active locale also drives
+/// `ExpressionEvaluator`'s number/date formatters.
 @MainActor
 public final class PropertyResolver {
     private let parser = ExpressionParser()
@@ -53,13 +50,8 @@ public final class PropertyResolver {
         return stringify(result)
     }
 
-    /// Resolve a `LocalizedString` to a final user-facing string.
-    /// Pipeline: i18n lookup → `{{var}}` interpolation on the looked-up text.
-    ///
-    /// `.literal` values go straight to `resolveToString`, preserving existing
-    /// behaviour. `.key` values look up via the `TranslationStore`'s fallback
-    /// chain (active → language-only → app default); a miss returns the key
-    /// itself so authors immediately see which key is unlocalised.
+    /// Pipeline: i18n lookup (for `.key`) → `{{var}}` interpolation on the
+    /// looked-up text. A missed key resolves to the key itself.
     public func resolveLocalizedToString(_ value: LocalizedString, context: VariableContext) throws -> String {
         switch value {
         case .literal(let s):
@@ -92,10 +84,9 @@ public final class PropertyResolver {
 
     // MARK: - Private
 
-    /// Push state from the TranslationStore into the shared evaluator before
-    /// each evaluate: (a) active locale for `formatDate`/`formatCurrency`/etc.
-    /// honouring `setLocale(...)`, and (b) translation lookup closure for the
-    /// `i18n(key)` function so template expressions can i18n variable values.
+    /// Push active locale and translation closure into the evaluator before
+    /// each evaluate so `formatDate`/`formatCurrency`/`i18n(...)` see the
+    /// current `setLocale(...)` override.
     private func syncEvaluatorLocale() {
         guard let store = translationStore else { return }
         evaluator.locale = store.activeLocaleObject

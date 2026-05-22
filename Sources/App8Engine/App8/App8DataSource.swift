@@ -34,11 +34,10 @@ public protocol App8DataSource: AnyObject, Sendable {
     /// Return nil if this data source does not support style streaming.
     func streamStyles() -> AsyncStream<Data>?
 
-    /// Localised string table for the app. Returns a JSON-encoded
-    /// `TranslationStore.Bundle` ({ defaultLocale, locales: { [locale]: {key:value} } }).
-    /// Loaded once at app boot in `ensureInfrastructureReady`. The default
-    /// implementation returns an empty bundle so existing data sources that
-    /// pre-date localisation keep working without changes.
+    /// JSON-encoded `TranslationStore.Bundle`
+    /// (`{ defaultLocale, locales: { [locale]: {key: value} } }`), loaded once
+    /// at boot. Default impl returns an empty bundle so pre-i18n data sources
+    /// keep working unchanged.
     func getTranslations() async throws -> Data
 }
 
@@ -70,8 +69,6 @@ extension App8DataSource {
         return nil
     }
 
-    /// Default implementation: no translations. Engine renders i18n keys as
-    /// their key string (debug placeholder) and literal text unchanged.
     public func getTranslations() async throws -> Data {
         return Data(#"{"defaultLocale":"en","locales":{}}"#.utf8)
     }
@@ -159,9 +156,8 @@ extension A8 {
     }
 }
 
-/// Internal-protocol default so mocks that pre-date localisation still
-/// conform without explicitly implementing `getTranslations()`. Mirrors
-/// the default on the public `App8DataSource` protocol.
+/// Mirrors the public-protocol default so internal mocks that pre-date i18n
+/// keep compiling.
 extension A8.DataSourceProtocol {
     func getTranslations() async throws -> Data {
         return Data(#"{"defaultLocale":"en","locales":{}}"#.utf8)

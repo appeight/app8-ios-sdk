@@ -16,7 +16,6 @@ public final class ExpressionEvaluator {
         "formatDate", "formatTime", "formatDuration", "formatMinutes",
         "ageInYears", "daysBetween", "timeAgo", "daysUntil",
         "formatCurrency", "formatNumber", "plural",
-        // i18n — mirrors the `{"$i18n": "key"}` DSL marker.
         "i18n",
         // String manipulation
         "uppercase", "lowercase", "trim", "replace", "split",
@@ -33,12 +32,9 @@ public final class ExpressionEvaluator {
     /// SDK's `setLocale(...)` override also drives number/date formatting.
     public var locale: Locale = .current
 
-    /// Translation lookup used by the `i18n(key)` expression function. nil when
-    /// no `TranslationStore` is wired (rare — tests, host apps without i18n).
-    /// `PropertyResolver` populates this from its `TranslationStore` before
-    /// each evaluate so the engine's active-locale chain (including the iOS
-    /// `Bundle.main` fallback) is honoured inside template expressions like
-    /// `text: "{{i18n(title)}}"`.
+    /// Backs the `i18n(key)` function. Populated by `PropertyResolver` before
+    /// each evaluate so the active-locale chain (incl. `Bundle.main` fallback)
+    /// applies inside template expressions like `"{{i18n(title)}}"`.
     public var translationLookup: ((String) -> String?)?
 
     /// AST recursion depth — `evaluate` is the recursion point. The class is
@@ -759,13 +755,8 @@ public final class ExpressionEvaluator {
             return count == 1 ? "\(count) \(singularVal)" : "\(count) \(pluralVal)"
 
         case "i18n":
-            // i18n lookup against the active TranslationStore. Mirrors the
-            // top-level `{"$i18n": "key"}` DSL marker — same lookup chain,
-            // usable inside any `{{expression}}`. Lets templates like
-            // `text: "{{i18n(title)}}"` resolve a variable's value as a
-            // translation key. Honors active → language-only → bundle →
-            // defaultLocale. On miss returns the key itself so authors
-            // notice unlocalised values immediately.
+            // Inline form of the `{"$i18n": "key"}` marker — same lookup chain.
+            // On miss returns the key itself so unlocalised values are visible.
             guard arguments.count == 1 else {
                 throw ExpressionError.parseError("i18n() expects 1 argument: key")
             }
