@@ -429,6 +429,18 @@ extension A8 {
 
     /// Render a screen independently, outside the normal app flow.
     func renderScreen(screenId: String, options: ScreenRenderOptions) async throws -> UIViewController {
+        try await renderScreenInternal(screenId: screenId, options: options, fixedSafeAreaInsets: nil)
+    }
+
+    /// `DebugInstance` variant — takes host-supplied fixed safe-area insets.
+    func renderScreen(screenId: String, options: ScreenRenderOptions,
+                      fixedSafeAreaInsets: UIEdgeInsets) async throws -> UIViewController {
+        try await renderScreenInternal(screenId: screenId, options: options,
+                                       fixedSafeAreaInsets: fixedSafeAreaInsets)
+    }
+
+    private func renderScreenInternal(screenId: String, options: ScreenRenderOptions,
+                                      fixedSafeAreaInsets: UIEdgeInsets?) async throws -> UIViewController {
         try await ensureInfrastructureReady()
 
         guard let appService else {
@@ -520,7 +532,8 @@ extension A8 {
         return await appService.renderScreen(
             component,
             screenId: screenId,
-            params: finalParams.isEmpty ? nil : finalParams
+            params: finalParams.isEmpty ? nil : finalParams,
+            fixedSafeAreaInsets: fixedSafeAreaInsets
         )
     }
 
