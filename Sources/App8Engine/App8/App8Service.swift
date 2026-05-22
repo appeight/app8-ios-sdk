@@ -75,7 +75,7 @@ extension App8Service: ComponentRenderer, ComponentService {
 
     /// Render a screen component, resolving external datasources first.
     @MainActor
-    func renderScreen(_ component: DSL.Model.Component.`Any`, screenId: String, params: [String: Any]? = nil) async -> UIViewController {
+    func renderScreen(_ component: DSL.Model.Component.`Any`, screenId: String, params: [String: Any]? = nil, fixedSafeAreaInsets: UIEdgeInsets? = nil) async -> UIViewController {
         guard
             case .key(.screen) = component.type,
             let entity: DSLComponent.View.Entity = component.asConcreteEntity()
@@ -144,7 +144,7 @@ extension App8Service: ComponentRenderer, ComponentService {
             }
         }
 
-        return renderScreenSync(component, screenId: screenId, params: resolvedParams.isEmpty ? nil : resolvedParams)
+        return renderScreenSync(component, screenId: screenId, params: resolvedParams.isEmpty ? nil : resolvedParams, fixedSafeAreaInsets: fixedSafeAreaInsets)
     }
 
     @MainActor
@@ -153,7 +153,7 @@ extension App8Service: ComponentRenderer, ComponentService {
     }
 
     @MainActor
-    private func renderScreenSync(_ component: DSL.Model.Component.`Any`, screenId: String? = nil, params: [String: Any]? = nil) -> UIViewController {
+    private func renderScreenSync(_ component: DSL.Model.Component.`Any`, screenId: String? = nil, params: [String: Any]? = nil, fixedSafeAreaInsets: UIEdgeInsets? = nil) -> UIViewController {
         guard
             case .key(.screen) = component.type,
             let entity: DSLComponent.View.Entity = component.asConcreteEntity()
@@ -203,8 +203,22 @@ extension App8Service: ComponentRenderer, ComponentService {
         let navigationBar = entity.content.navigationBar
         let hidesTabBar = entity.content.hidesTabBar ?? false
         let dismissKeyboardOnTap = entity.content.dismissKeyboardOnTap ?? true
-        let additionalSafeAreaInsets: UIEdgeInsets? = entity.content.additionalSafeAreaInsets.map {
+        let dslInsets: UIEdgeInsets? = entity.content.additionalSafeAreaInsets.map {
             UIEdgeInsets(top: $0.top ?? 0, left: $0.left ?? 0, bottom: $0.bottom ?? 0, right: $0.right ?? 0)
+        }
+        let additionalSafeAreaInsets: UIEdgeInsets?
+        if let fixed = fixedSafeAreaInsets {
+            // NaN/inf would crash Auto Layout.
+            func sanitize(_ v: CGFloat) -> CGFloat { v.isFinite ? max(0, v) : 0 }
+            let extra = dslInsets ?? .zero
+            additionalSafeAreaInsets = UIEdgeInsets(
+                top: sanitize(fixed.top) + extra.top,
+                left: sanitize(fixed.left) + extra.left,
+                bottom: sanitize(fixed.bottom) + extra.bottom,
+                right: sanitize(fixed.right) + extra.right
+            )
+        } else {
+            additionalSafeAreaInsets = dslInsets
         }
         let root = ScreenViewController(
             screenId: screenId,
