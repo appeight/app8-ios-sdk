@@ -33,6 +33,12 @@ public protocol App8DataSource: AnyObject, Sendable {
     /// Optionally returns a stream of style primitive updates (JSON array of style entities).
     /// Return nil if this data source does not support style streaming.
     func streamStyles() -> AsyncStream<Data>?
+
+    /// JSON-encoded `TranslationStore.Bundle`
+    /// (`{ defaultLocale, locales: { [locale]: {key: value} } }`), loaded once
+    /// at boot. Default impl returns an empty bundle so pre-i18n data sources
+    /// keep working unchanged.
+    func getTranslations() async throws -> Data
 }
 
 // MARK: - Default implementations for optional methods
@@ -62,6 +68,10 @@ extension App8DataSource {
     public func streamStyles() -> AsyncStream<Data>? {
         return nil
     }
+
+    public func getTranslations() async throws -> Data {
+        return Data(#"{"defaultLocale":"en","locales":{}}"#.utf8)
+    }
 }
 
 // MARK: - Data Sources (Internal protocols)
@@ -84,8 +94,9 @@ extension A8 {
         func streamScreen(screenId: String) -> AsyncStream<Data>?
         func streamDatasource(screenId: String, datasourceId: String, componentPath: String?) -> AsyncStream<Data>?
         func streamStyles() -> AsyncStream<Data>?
+        func getTranslations() async throws -> Data
     }
-    
+
     class DataSource: @unchecked Sendable, DataSourceProtocol {
 
         /// Strong reference for async operation safety.
@@ -138,6 +149,18 @@ extension A8 {
         func streamStyles() -> AsyncStream<Data>? {
             ds.streamStyles()
         }
+
+        func getTranslations() async throws -> Data {
+            try await ds.getTranslations()
+        }
+    }
+}
+
+/// Mirrors the public-protocol default so internal mocks that pre-date i18n
+/// keep compiling.
+extension A8.DataSourceProtocol {
+    func getTranslations() async throws -> Data {
+        return Data(#"{"defaultLocale":"en","locales":{}}"#.utf8)
     }
 }
 
