@@ -49,8 +49,11 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     /// Needed when the parent store is not otherwise retained (e.g., screen params store)
     private var retainedParentStore: VariableStoreProtocol?
 
-    /// Property resolver for evaluating {{expressions}}
-    private let propertyResolver = PropertyResolver()
+    /// Property resolver for evaluating {{expressions}} and `{"$i18n": ...}` lookups.
+    /// Translation store is supplied at init via `service.context.translationStore`.
+    private lazy var propertyResolver: PropertyResolver = PropertyResolver(
+        translationStore: service.context.translationStore
+    )
 
     /// Handler for variable actions
     private let variableActionHandler = VariableActionHandler()
@@ -219,6 +222,20 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         } catch {
             service.context.logger.error("Failed to resolve property '\(value)': \(error)")
             return value
+        }
+    }
+
+    /// Resolve a `LocalizedString` text property to a final user-facing string.
+    /// `.literal` values behave exactly like `resolvePropertyToString`.
+    /// `.key` values look up via the active locale (with language-only and
+    /// default-locale fallback), then run `{{var}}` interpolation on the
+    /// looked-up text so translations can still contain variable references.
+    func resolveLocalizedToString(_ value: LocalizedString) -> String {
+        do {
+            return try propertyResolver.resolveLocalizedToString(value, context: getVariableContext())
+        } catch {
+            service.context.logger.error("Failed to resolve localized text '\(value.rawValue)': \(error)")
+            return value.rawValue
         }
     }
 

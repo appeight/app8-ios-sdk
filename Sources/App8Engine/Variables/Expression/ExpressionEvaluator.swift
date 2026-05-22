@@ -16,6 +16,8 @@ public final class ExpressionEvaluator {
         "formatDate", "formatTime", "formatDuration", "formatMinutes",
         "ageInYears", "daysBetween", "timeAgo", "daysUntil",
         "formatCurrency", "formatNumber", "plural",
+        // i18n — mirrors the `{"$i18n": "key"}` DSL marker.
+        "i18n",
         // String manipulation
         "uppercase", "lowercase", "trim", "replace", "split",
         "substring", "startsWith", "endsWith",
@@ -24,6 +26,20 @@ public final class ExpressionEvaluator {
     ])
 
     public init() {}
+
+    /// Locale used by `formatDate`/`formatTime`/`formatCurrency`/`formatNumber`.
+    /// Defaults to `Locale.current`; `PropertyResolver` overrides it from
+    /// `TranslationStore.activeLocaleObject` before each resolve so that the
+    /// SDK's `setLocale(...)` override also drives number/date formatting.
+    public var locale: Locale = .current
+
+    /// Translation lookup used by the `i18n(key)` expression function. nil when
+    /// no `TranslationStore` is wired (rare — tests, host apps without i18n).
+    /// `PropertyResolver` populates this from its `TranslationStore` before
+    /// each evaluate so the engine's active-locale chain (including the iOS
+    /// `Bundle.main` fallback) is honoured inside template expressions like
+    /// `text: "{{i18n(title)}}"`.
+    public var translationLookup: ((String) -> String?)?
 
     /// AST recursion depth — `evaluate` is the recursion point. The class is
     /// `@MainActor`, so a single counter is safe (no concurrent re-entry).
@@ -604,7 +620,7 @@ public final class ExpressionEvaluator {
             guard let date = parseDate(dateVal) else { return "" }
             let style = arguments.count == 2 ? toString(try evaluate(arguments[1], context: context)) : "medium"
             let fmt = DateFormatter()
-            fmt.locale = Locale.current
+            fmt.locale = self.locale
             switch style {
             case "short":        fmt.dateFormat = "MMM d"
             case "medium":       fmt.dateFormat = "MMM d, yyyy"
@@ -623,7 +639,7 @@ public final class ExpressionEvaluator {
             guard let date = parseDate(dateVal) else { return "" }
             let timeFormat = arguments.count == 2 ? toString(try evaluate(arguments[1], context: context)) : "12h"
             let fmt = DateFormatter()
-            fmt.locale = Locale.current
+            fmt.locale = self.locale
             fmt.dateFormat = timeFormat == "24h" ? "HH:mm" : "h:mm a"
             return fmt.string(from: date)
 
@@ -708,7 +724,7 @@ public final class ExpressionEvaluator {
             guard let num = toNumber(value) else { return "" }
             let currFmt = NumberFormatter()
             currFmt.numberStyle = .currency
-            currFmt.locale = Locale.current
+            currFmt.locale = self.locale
             if arguments.count == 2 {
                 let code = toString(try evaluate(arguments[1], context: context))
                 currFmt.currencyCode = code
@@ -727,7 +743,7 @@ public final class ExpressionEvaluator {
             }
             let numFmt = NumberFormatter()
             numFmt.numberStyle = .decimal
-            numFmt.locale = Locale.current
+            numFmt.locale = self.locale
             return numFmt.string(from: NSNumber(value: num)) ?? toString(value)
 
         // MARK: Formatting — String
@@ -741,6 +757,20 @@ public final class ExpressionEvaluator {
             let pluralVal   = toString(try evaluate(arguments[2], context: context))
             let count = Int(toNumber(countVal) ?? 0)
             return count == 1 ? "\(count) \(singularVal)" : "\(count) \(pluralVal)"
+
+        case "i18n":
+            // i18n lookup against the active TranslationStore. Mirrors the
+            // top-level `{"$i18n": "key"}` DSL marker — same lookup chain,
+            // usable inside any `{{expression}}`. Lets templates like
+            // `text: "{{i18n(title)}}"` resolve a variable's value as a
+            // translation key. Honors active → language-only → bundle →
+            // defaultLocale. On miss returns the key itself so authors
+            // notice unlocalised values immediately.
+            guard arguments.count == 1 else {
+                throw ExpressionError.parseError("i18n() expects 1 argument: key")
+            }
+            let key = toString(try evaluate(arguments[0], context: context))
+            return translationLookup?(key) ?? key
 
         default:
             throw ExpressionError.parseError("Unknown function: \(name)")
