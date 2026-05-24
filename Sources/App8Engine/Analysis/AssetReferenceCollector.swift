@@ -158,8 +158,10 @@ struct AssetReferenceCollector {
 
         // Action chains may target other screens (BFS only).
         if let actions = content.actions {
-            for (_, action) in actions {
-                enqueueScreenRefs(from: action, visitedScreens: &visitedScreens, queue: &queue)
+            for (_, list) in actions {
+                for action in list {
+                    enqueueScreenRefs(from: action, visitedScreens: &visitedScreens, queue: &queue)
+                }
             }
         }
         if let eventTriggers = (content as? DSL.Model.EventTriggersHolder)?.onEvent {
