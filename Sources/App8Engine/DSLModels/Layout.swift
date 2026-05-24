@@ -115,7 +115,12 @@ extension DSL.Model.Layout {
         }
 
         enum Target: Decodable {
-            case superview, sibling(String), keyboard, safeArea, selfView
+            case superview, sibling(String), keyboard, selfView
+            /// Safe-area layout guide. `nil` anchors to the superview's safe area
+            /// (`"safeArea"`); a non-nil id anchors to the safe area of the sibling
+            /// component with that id (`"safeArea(headerBar)"`).
+            case safeArea(String?)
+
             init(from decoder: any Decoder) throws {
                 let container = try decoder.singleValueContainer()
                 let targetString = try container.decode(String.self)
@@ -125,12 +130,29 @@ extension DSL.Model.Layout {
                 case "keyboard":
                     self = .keyboard
                 case "safearea":
-                    self = .safeArea
+                    self = .safeArea(nil)
                 case "self":
                     self = .selfView
                 default:
-                    self = .sibling(targetString)
+                    if let siblingId = Self.safeAreaSiblingId(in: targetString) {
+                        self = .safeArea(siblingId)
+                    } else {
+                        self = .sibling(targetString)
+                    }
                 }
+            }
+
+            /// Parses the `safeArea(<id>)` form. The `safeArea` keyword is matched
+            /// case-insensitively; the inner id is returned verbatim because
+            /// sibling ids are case-sensitive. Returns `nil` for any other string.
+            private static func safeAreaSiblingId(in raw: String) -> String? {
+                let trimmed = raw.trimmingCharacters(in: .whitespaces)
+                guard trimmed.lowercased().hasPrefix("safearea("),
+                      trimmed.hasSuffix(")") else { return nil }
+                let start = trimmed.index(trimmed.startIndex, offsetBy: "safearea(".count)
+                let end = trimmed.index(before: trimmed.endIndex)
+                let id = trimmed[start..<end].trimmingCharacters(in: .whitespaces)
+                return id.isEmpty ? nil : id
             }
         }
     }
