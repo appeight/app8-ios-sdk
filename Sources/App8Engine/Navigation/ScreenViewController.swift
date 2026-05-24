@@ -95,6 +95,7 @@ final class ScreenViewController: BaseViewController {
             screenId: screenId,
             componentId: nil,
             componentType: DSL.Model.Component.CType.Key.screen.rawValue,
+            locale: context.translationStore.activeLocale,
             properties: properties,
             timestamp: now
         ))
@@ -120,6 +121,7 @@ final class ScreenViewController: BaseViewController {
             screenId: screenId,
             componentId: nil,
             componentType: DSL.Model.Component.CType.Key.screen.rawValue,
+            locale: context.translationStore.activeLocale,
             properties: properties,
             timestamp: now
         ))

@@ -285,10 +285,48 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     /// any author-declared analytics for the same trigger. Also auto-fires
     /// the built-in `app8_component_tapped` analytics event when applicable.
     func executeAction(for trigger: DSL.Model.ActionTrigger) {
+        dispatchTrigger(trigger) { [self] action in executeAction(action) }
+    }
+
+    /// Fire analytics + author-declared bindings for `trigger`, then run each
+    /// declared action via `execute`. Use this from any trigger dispatch site
+    /// — including those that need scoped variable stores (e.g. cell taps,
+    /// annotation taps, refresh, load-more, scroll threshold, text change) —
+    /// so the analytics pipeline is never bypassed.
+    func dispatchTrigger(
+        _ trigger: DSL.Model.ActionTrigger,
+        execute: (DSL.Model.Action) -> Void
+    ) {
         fireTriggerAnalytics(for: trigger)
         guard let actions = component.actions?[trigger], !actions.isEmpty else { return }
-        for action in actions {
-            executeAction(action)
+        for action in actions { execute(action) }
+    }
+
+    /// Fire row-anchored tap analytics on behalf of a TableView row. Rows
+    /// aren't full Component view models, so `fireTriggerAnalytics` (which
+    /// attributes to the *enclosing* component) wouldn't tag events with the
+    /// row's own id. Use this from the row-tap delegate site instead.
+    func fireRowTapAnalytics(rowId: String, binding: DSL.Model.AnalyticsBinding?) {
+        let config = service.context.analyticsConfig
+        if config.autoComponentTaps {
+            service.context.analyticsBus.dispatch(App8AnalyticsEvent(
+                name: "app8_component_tapped",
+                screenId: screenIdForEvents,
+                componentId: rowId,
+                componentType: "tableViewRow",
+                locale: currentLocale,
+                properties: ["componentType": "tableViewRow"]
+            ))
+        }
+        if let binding {
+            service.context.analyticsBus.dispatch(App8AnalyticsEvent(
+                name: binding.name,
+                screenId: screenIdForEvents,
+                componentId: rowId,
+                componentType: "tableViewRow",
+                locale: currentLocale,
+                properties: resolvePayload(binding.properties)
+            ))
         }
     }
 
@@ -344,6 +382,12 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         return componentPath
     }
 
+    /// Current translation locale, snapshotted at fire time. Read fresh each
+    /// call so locale-switches mid-session show up in subsequent events.
+    fileprivate var currentLocale: String {
+        service.context.translationStore.activeLocale
+    }
+
     /// Fire any author-declared analytics binding for this trigger, plus the
     /// engine's auto `app8_component_tapped` event when configured.
     private func fireTriggerAnalytics(for trigger: DSL.Model.ActionTrigger) {
@@ -358,6 +402,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 screenId: screenIdForEvents,
                 componentId: leafComponentId,
                 componentType: componentTypeKey,
+                locale: currentLocale,
                 properties: properties
             ))
         }
@@ -369,6 +414,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 screenId: screenIdForEvents,
                 componentId: leafComponentId,
                 componentType: componentTypeKey,
+                locale: currentLocale,
                 properties: resolvePayload(binding.properties)
             ))
         }
@@ -494,28 +540,13 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
             }
 
         case .navigation:
-            if service.context.analyticsConfig.autoNavigationEvents {
-                var properties: [String: Any] = [
-                    "fromScreenId": screenIdForEvents
-                ]
-                if let nextScreen = action.nextScreen {
-                    properties["toScreenId"] = nextScreen
-                }
-                if let presentation = action.presentation {
-                    properties["presentation"] = presentation.rawValue
-                }
-                if action.isBack == true { properties["isBack"] = true }
-                service.context.analyticsBus.dispatch(App8AnalyticsEvent(
-                    name: "app8_navigation_pushed",
-                    screenId: screenIdForEvents,
-                    componentId: leafComponentId,
-                    componentType: componentTypeKey,
-                    properties: properties
-                ))
-            }
+            // Post the navigation request first so the analytics event only
+            // fires for navigations that actually got dispatched.
+            var didPost = false
             if action.isBack == true {
                 let request = NavigationRequest(type: .pop)
                 NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
+                didPost = true
             } else if let nextScreen = action.nextScreen {
                 var resolvedParams: [String: Any] = [:]
                 if let params = action.params {
@@ -541,6 +572,27 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                     let request = NavigationRequest(type: .push(screenId: nextScreen, params: resolvedParams))
                     NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
                 }
+                didPost = true
+            }
+            if didPost, service.context.analyticsConfig.autoNavigationEvents {
+                var properties: [String: Any] = [
+                    "fromScreenId": screenIdForEvents
+                ]
+                if let nextScreen = action.nextScreen {
+                    properties["toScreenId"] = nextScreen
+                }
+                if let presentation = action.presentation {
+                    properties["presentation"] = presentation.rawValue
+                }
+                if action.isBack == true { properties["isBack"] = true }
+                service.context.analyticsBus.dispatch(App8AnalyticsEvent(
+                    name: "app8_navigation_pushed",
+                    screenId: screenIdForEvents,
+                    componentId: leafComponentId,
+                    componentType: componentTypeKey,
+                    locale: currentLocale,
+                    properties: properties
+                ))
             }
 
         case .completeFlow:
@@ -629,6 +681,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                         screenId: screenIdForEvents,
                         componentId: leafComponentId,
                         componentType: componentTypeKey,
+                        locale: currentLocale,
                         properties: ["url": resolved]
                     ))
                 }
@@ -663,6 +716,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 screenId: screenIdForEvents,
                 componentId: leafComponentId,
                 componentType: componentTypeKey,
+                locale: currentLocale,
                 payload: resolved
             ))
 

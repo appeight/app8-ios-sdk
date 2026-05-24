@@ -167,14 +167,14 @@ class CTextFieldView: App8BaseView<DSL.Model.Component.TextField.C>, CViewProtoc
         viewModel.textChanged.send(text)
 
         // Fire onTextChange with a $value overlay so the action sees the new text.
-        if let actions = viewModel.component.actions?[.onTextChange] {
-            let context = VariableContext(store: viewModel.variableStore).overlaying("$value", value: text)
-            for action in actions {
-                do {
-                    try VariableActionHandler().execute(action: action, store: viewModel.variableStore, context: context)
-                } catch {
-                    viewModel.service.context.logger.error("Failed to execute onTextChange action: \(error)")
-                }
+        // Routed through dispatchTrigger so author-declared analytics fire too.
+        let context = VariableContext(store: viewModel.variableStore).overlaying("$value", value: text)
+        let handler = VariableActionHandler()
+        viewModel.dispatchTrigger(.onTextChange) { action in
+            do {
+                try handler.execute(action: action, store: viewModel.variableStore, context: context)
+            } catch {
+                viewModel.service.context.logger.error("Failed to execute onTextChange action: \(error)")
             }
         }
 

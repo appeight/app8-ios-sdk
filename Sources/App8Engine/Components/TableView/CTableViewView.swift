@@ -163,10 +163,18 @@ extension CTableViewView: UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        guard let row = viewModel?.component.sections[safe: indexPath.section]?.rows[safe: indexPath.row],
-              let actions = row.actions?[.tap] else { return }
-        for action in actions {
-            viewModel?.executeAction(action)
+        guard let viewModel,
+              let row = viewModel.component.sections[safe: indexPath.section]?.rows[safe: indexPath.row]
+        else { return }
+
+        // Fire row-anchored analytics (auto `app8_component_tapped` with the
+        // row's own id + any author-declared binding) before running actions,
+        // so dashboards see the user intent even if a downstream action
+        // navigates away.
+        viewModel.fireRowTapAnalytics(rowId: row.id, binding: row.analytics?[.tap])
+
+        for action in row.actions?[.tap] ?? [] {
+            viewModel.executeAction(action)
         }
     }
 }

@@ -32,10 +32,14 @@ extension DSL.Model.Component {
             /// When true the cell background is transparent (no card). Useful for footer-style rows.
             let clearBackground: Bool?
             let actions: [DSL.Model.ActionTrigger: [DSL.Model.Action]]?
+            /// Author-declared analytics bindings keyed by trigger. Symmetric
+            /// with `Component.actions` / `Component.analytics`. Only `.tap` is
+            /// meaningful at the row level today.
+            let analytics: [DSL.Model.ActionTrigger: DSL.Model.AnalyticsBinding]?
             @SafeArrayDecodable var children: [DSL.Model.Component.`Any`] = []
 
             private enum CodingKeys: CodingKey {
-                case id, height, clearBackground, actions, children
+                case id, height, clearBackground, actions, analytics, children
             }
 
             // ActionTrigger is not CodingKey so [ActionTrigger: Action] can't be decoded
@@ -56,6 +60,17 @@ extension DSL.Model.Component {
                     actions = converted.isEmpty ? nil : converted
                 } else {
                     actions = nil
+                }
+                if let raw = try c.decodeIfPresent([String: DSL.Model.AnalyticsBinding].self, forKey: .analytics) {
+                    var converted: [DSL.Model.ActionTrigger: DSL.Model.AnalyticsBinding] = [:]
+                    for (key, value) in raw {
+                        if let trigger = DSL.Model.ActionTrigger(rawValue: key) {
+                            converted[trigger] = value
+                        }
+                    }
+                    analytics = converted.isEmpty ? nil : converted
+                } else {
+                    analytics = nil
                 }
                 if let decoded = try c.decodeIfPresent(SafeArrayDecodable<DSL.Model.Component.`Any`>.self, forKey: .children) {
                     _children = decoded

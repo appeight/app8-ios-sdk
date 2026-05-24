@@ -100,6 +100,10 @@ public struct App8AnalyticsEvent {
     public let screenId: String?
     public let componentId: String?
     public let componentType: String?
+    /// Translation locale active at fire time (e.g. `"en"`, `"de-DE"`).
+    /// Source: `TranslationStore.activeLocale`. Useful for funnel parity
+    /// across languages.
+    public let locale: String?
     public let properties: [String: Any]
     public let timestamp: Date
 }

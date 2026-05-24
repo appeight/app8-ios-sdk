@@ -114,6 +114,7 @@ public struct App8Event {
     public let screenId: String       // "demo-main-constraints"
     public let componentId: String?   // "connectButton" (JSON leaf id)
     public let componentType: String? // "view"
+    public let locale: String?        // "en" / "de-DE" (TranslationStore.activeLocale)
     public let payload: [String: Any] // already interpolated
     public let timestamp: Date
 }

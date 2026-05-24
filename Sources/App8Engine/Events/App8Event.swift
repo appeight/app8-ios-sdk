@@ -29,6 +29,12 @@ public struct App8Event: @unchecked Sendable {
     /// etc.). `nil` when the event isn't tied to a single component.
     public let componentType: String?
 
+    /// Active translation locale at fire time (e.g. `"en"`, `"en-US"`,
+    /// `"de-DE"`) — from `TranslationStore.activeLocale`. Useful for funnel
+    /// parity across languages. `nil` only when an event is constructed
+    /// outside the engine (tests, host fixtures).
+    public let locale: String?
+
     /// Resolved payload. Keys are author-declared; string values have already
     /// been interpolated against the component's variable scope.
     public let payload: [String: Any]
@@ -41,6 +47,7 @@ public struct App8Event: @unchecked Sendable {
         screenId: String,
         componentId: String?,
         componentType: String?,
+        locale: String? = nil,
         payload: [String: Any],
         timestamp: Date = Date()
     ) {
@@ -48,6 +55,7 @@ public struct App8Event: @unchecked Sendable {
         self.screenId = screenId
         self.componentId = componentId
         self.componentType = componentType
+        self.locale = locale
         self.payload = payload
         self.timestamp = timestamp
     }
@@ -70,6 +78,11 @@ public struct App8AnalyticsEvent: @unchecked Sendable {
     public let screenId: String?
     public let componentId: String?
     public let componentType: String?
+    /// Active translation locale at fire time (e.g. `"en"`, `"en-US"`,
+    /// `"de-DE"`) — from `TranslationStore.activeLocale`. Useful for funnel
+    /// parity across languages. `nil` only when an event is constructed
+    /// outside the engine (tests, host fixtures).
+    public let locale: String?
     public let properties: [String: Any]
     public let timestamp: Date
 
@@ -78,6 +91,7 @@ public struct App8AnalyticsEvent: @unchecked Sendable {
         screenId: String? = nil,
         componentId: String? = nil,
         componentType: String? = nil,
+        locale: String? = nil,
         properties: [String: Any] = [:],
         timestamp: Date = Date()
     ) {
@@ -85,6 +99,7 @@ public struct App8AnalyticsEvent: @unchecked Sendable {
         self.screenId = screenId
         self.componentId = componentId
         self.componentType = componentType
+        self.locale = locale
         self.properties = properties
         self.timestamp = timestamp
     }
