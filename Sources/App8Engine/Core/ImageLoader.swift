@@ -166,8 +166,17 @@ final class ImageLoader {
             return nil
         }
 
+        // Use `data(for:)` — NOT `bytes(from:)` — so URLSession actually
+        // consults `URLCache.shared`. The streaming `bytes(from:)` API
+        // bypasses URLCache entirely (documented Apple behavior), so any
+        // prefetch warming would be wasted with the byte-stream path.
+        // The over-size defence moves from mid-stream abort to a single
+        // length check after the response lands; with the expected-length
+        // pre-check, that's still two layers of defense.
+        let request = URLRequest(url: url, cachePolicy: .useProtocolCachePolicy)
+        let started = Date()
         do {
-            let (byteStream, response) = try await urlSession.bytes(from: url)
+            let (data, response) = try await urlSession.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
                   (200...299).contains(httpResponse.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? -1
@@ -175,24 +184,20 @@ final class ImageLoader {
                 return nil
             }
 
-            // Reject up front when the server declares an oversized body.
+            // Reject when the server declared an oversized body.
             if httpResponse.expectedContentLength > Int64(EngineLimits.maxImageBytes) {
                 logger?.error("ImageLoader: '\(urlString)' declares \(httpResponse.expectedContentLength) bytes — exceeds limit")
                 return nil
             }
-
-            // Abort past the cap even if the server under-declared Content-Length.
-            var data = Data()
-            if httpResponse.expectedContentLength > 0 {
-                data.reserveCapacity(Int(httpResponse.expectedContentLength))
+            // Reject when the actual body exceeded the cap regardless of declared length.
+            if data.count > EngineLimits.maxImageBytes {
+                logger?.error("ImageLoader: '\(urlString)' delivered \(data.count) bytes — exceeds limit")
+                return nil
             }
-            for try await byte in byteStream {
-                data.append(byte)
-                if data.count > EngineLimits.maxImageBytes {
-                    logger?.error("ImageLoader: '\(urlString)' exceeded \(EngineLimits.maxImageBytes) bytes — aborted")
-                    return nil
-                }
-            }
+            let ms = Int(Date().timeIntervalSince(started) * 1000)
+            // Heuristic: sub-50ms = served from URLCache; >200ms = network.
+            let cacheGuess = ms < 50 ? "cache" : "network"
+            logger?.debug("ImageLoader: \(cacheGuess) \(data.count)B in \(ms)ms — \(urlString)")
             return data
         } catch {
             logger?.error("ImageLoader: failed to load '\(urlString)': \(error.localizedDescription)")

@@ -15,6 +15,12 @@ import Foundation
 /// asset declaring that face if the app's decoded styles know about it.
 typealias FontAssetResolver = @Sendable (_ postScriptName: String) -> DSL.Model.Asset?
 
+/// Variable scope visible at a given point in the tree walk. Maps each
+/// in-scope variable's name to its concrete string `initialValue`. Only
+/// literal strings enter the scope — `computed`, expression-bearing, or
+/// non-string variables are too late-bound to be useful for prefetch.
+private typealias VarScope = [String: String]
+
 struct AssetReferenceCollector {
 
     private let fontAssetResolver: FontAssetResolver
@@ -79,7 +85,8 @@ struct AssetReferenceCollector {
             images: &images,
             fontFamilyNames: &fontFamilyNames,
             visitedScreens: &visited,
-            queue: &queue
+            queue: &queue,
+            scope: [:]
         )
     }
 
@@ -88,9 +95,13 @@ struct AssetReferenceCollector {
         images: inout Set<App8.AssetReference>,
         fontFamilyNames: inout Set<String>,
         visitedScreens: inout Set<String>,
-        queue: inout [String]
+        queue: inout [String],
+        scope: VarScope = [:]
     ) {
-        reflectionWalk(component.base, images: &images, fontFamilyNames: &fontFamilyNames)
+        // Extend the inherited scope with this component's own `variables` so
+        // any `{{var}}` placeholder in an asset url/id/name inside this content
+        // resolves to the concrete instance value.
+        let localScope = extendingScope(scope, with: component)
 
         // TabBarScreen tabs hold screen ids, not components; the BFS path enqueues them.
         if let tabEntity = component.base as? DSL.Model.Component.ConcreteEntity<DSL.Model.Component.TabBarScreen.C> {
@@ -104,13 +115,23 @@ struct AssetReferenceCollector {
         guard let entity = component.base as? (any DSL.Model.Component.Entity) else { return }
         let content = entity.content
 
+        // Start reflection at the entity's content — NOT `component.base`.
+        // `.base` is an `any Component.Protocol`, which the boundary stop in
+        // `reflectionWalk` would catch and halt immediately. We want the walk
+        // to descend through the current component's direct fields (style,
+        // states, properties, etc.) and halt only when reflection encounters
+        // a *nested* `Component.Any` — those are re-entered by the explicit
+        // child/template/navBar walks below with their own scope frame.
+        reflectionWalk(content, images: &images, fontFamilyNames: &fontFamilyNames, scope: localScope)
+
         for child in content.children {
             walkComponent(
                 child,
                 images: &images,
                 fontFamilyNames: &fontFamilyNames,
                 visitedScreens: &visitedScreens,
-                queue: &queue
+                queue: &queue,
+                scope: localScope
             )
         }
 
@@ -119,33 +140,33 @@ struct AssetReferenceCollector {
             let cc = collectionEntity.content
             if let template = cc.template {
                 walkComponent(template, images: &images, fontFamilyNames: &fontFamilyNames,
-                              visitedScreens: &visitedScreens, queue: &queue)
+                              visitedScreens: &visitedScreens, queue: &queue, scope: localScope)
             }
             for (_, ref) in cc.templates ?? [:] {
                 if case .inline(let tpl) = ref {
                     walkComponent(tpl, images: &images, fontFamilyNames: &fontFamilyNames,
-                                  visitedScreens: &visitedScreens, queue: &queue)
+                                  visitedScreens: &visitedScreens, queue: &queue, scope: localScope)
                 }
             }
             if let empty = cc.emptyState {
                 walkComponent(empty, images: &images, fontFamilyNames: &fontFamilyNames,
-                              visitedScreens: &visitedScreens, queue: &queue)
+                              visitedScreens: &visitedScreens, queue: &queue, scope: localScope)
             }
             if let loading = cc.loadingState {
                 walkComponent(loading, images: &images, fontFamilyNames: &fontFamilyNames,
-                              visitedScreens: &visitedScreens, queue: &queue)
+                              visitedScreens: &visitedScreens, queue: &queue, scope: localScope)
             }
             if let errorView = cc.errorState {
                 walkComponent(errorView, images: &images, fontFamilyNames: &fontFamilyNames,
-                              visitedScreens: &visitedScreens, queue: &queue)
+                              visitedScreens: &visitedScreens, queue: &queue, scope: localScope)
             }
             if let header = cc.defaultSectionHeader {
                 walkComponent(header, images: &images, fontFamilyNames: &fontFamilyNames,
-                              visitedScreens: &visitedScreens, queue: &queue)
+                              visitedScreens: &visitedScreens, queue: &queue, scope: localScope)
             }
             for (_, header) in cc.sectionHeaders ?? [:] {
                 walkComponent(header, images: &images, fontFamilyNames: &fontFamilyNames,
-                              visitedScreens: &visitedScreens, queue: &queue)
+                              visitedScreens: &visitedScreens, queue: &queue, scope: localScope)
             }
         }
 
@@ -153,7 +174,7 @@ struct AssetReferenceCollector {
         if let navBar = extractNavigationBar(from: content),
            let titleView = navBar.titleView {
             walkComponent(titleView, images: &images, fontFamilyNames: &fontFamilyNames,
-                          visitedScreens: &visitedScreens, queue: &queue)
+                          visitedScreens: &visitedScreens, queue: &queue, scope: localScope)
         }
 
         // Action chains may target other screens (BFS only).
@@ -185,24 +206,30 @@ struct AssetReferenceCollector {
         _ value: Any,
         images: inout Set<App8.AssetReference>,
         fontFamilyNames: inout Set<String>,
+        scope: VarScope,
         depth: Int = 0
     ) {
         if depth > 32 { return }
 
+        // Stop at component boundaries — `walkComponent` will re-enter with the
+        // child's own scope frame so shadowed variables resolve correctly.
+        if value is DSL.Model.Component.`Any` { return }
+        if value is any DSL.Model.Component.`Protocol` { return }
+
         // Direct hits — handle before mirroring to avoid double-visiting wrapped fields.
         if let asset = value as? DSL.Model.Asset {
-            insert(asset: asset, into: &images)
+            insert(asset: asset, scope: scope, into: &images)
             return
         }
         if let imageProps = value as? DSL.Model.Component.Image.Properties {
             if case .remoteAsset(let asset) = imageProps.model {
-                insert(asset: asset, into: &images)
+                insert(asset: asset, scope: scope, into: &images)
             }
             return
         }
         if let textModel = value as? DSL.Model.Style.TextModel {
             captureTextModelFonts(textModel, into: &fontFamilyNames)
-            mirrorChildren(of: textModel, images: &images, fontFamilyNames: &fontFamilyNames, depth: depth)
+            mirrorChildren(of: textModel, images: &images, fontFamilyNames: &fontFamilyNames, scope: scope, depth: depth)
             return
         }
         if let family = value as? DSL.Model.Style.Font.Family {
@@ -214,29 +241,73 @@ struct AssetReferenceCollector {
             return
         }
 
-        mirrorChildren(of: value, images: &images, fontFamilyNames: &fontFamilyNames, depth: depth)
+        mirrorChildren(of: value, images: &images, fontFamilyNames: &fontFamilyNames, scope: scope, depth: depth)
     }
 
     private func mirrorChildren(
         of value: Any,
         images: inout Set<App8.AssetReference>,
         fontFamilyNames: inout Set<String>,
+        scope: VarScope,
         depth: Int
     ) {
         let mirror = Mirror(reflecting: value)
         if mirror.children.isEmpty { return }
         for child in mirror.children {
-            reflectionWalk(child.value, images: &images, fontFamilyNames: &fontFamilyNames, depth: depth + 1)
+            reflectionWalk(child.value, images: &images, fontFamilyNames: &fontFamilyNames, scope: scope, depth: depth + 1)
         }
     }
 
-    private func insert(asset: DSL.Model.Asset, into images: inout Set<App8.AssetReference>) {
-        // Skip refs with unresolved `{{var}}` placeholders — not prefetchable.
-        let id = asset.id.flatMap { $0.contains("{{") ? nil : $0 }
-        let name = asset.name.flatMap { $0.contains("{{") ? nil : $0 }
-        let url = asset.url.flatMap { $0.contains("{{") ? nil : $0 }
+    private func insert(asset: DSL.Model.Asset, scope: VarScope, into images: inout Set<App8.AssetReference>) {
+        // Try to resolve `{{var}}` placeholders against the in-scope variables.
+        // Literals pass through unchanged; truly-unresolvable expressions are
+        // dropped — emitting them would just send a "{{varName}}" string to the
+        // network warmer.
+        let id   = asset.id.flatMap   { resolveIfPossible($0, scope: scope) }
+        let name = asset.name.flatMap { resolveIfPossible($0, scope: scope) }
+        let url  = asset.url.flatMap  { resolveIfPossible($0, scope: scope) }
         if id == nil && name == nil && url == nil { return }
         images.insert(App8.AssetReference(id: id, name: name, url: url))
+    }
+
+    /// Build a scope frame for `component`: inherit `parent` and overlay this
+    /// component's own variable-block literals on top, so a child's same-named
+    /// variable shadows the parent's value.
+    private func extendingScope(_ parent: VarScope, with component: DSL.Model.Component.`Any`) -> VarScope {
+        guard let entity = component.base as? (any DSL.Model.Component.Entity),
+              let varsHolder = entity.content as? (any DSL.Model.VariablesHolder),
+              let vars = varsHolder.variables else { return parent }
+        var scope = parent
+        for (name, def) in vars {
+            // Only literal string `initialValue`s enter the scope. Expression
+            // values (containing `{{...}}`) and non-string types are too
+            // late-bound to be useful for static asset discovery.
+            if let strVal = def.rawInitialValue as? String, !strVal.contains("{{") {
+                scope[name] = strVal
+            }
+        }
+        return scope
+    }
+
+    /// Returns the string with every `{{name}}` substituted from `scope`, or
+    /// `nil` if any placeholder remains unresolved after a bounded number of
+    /// substitution passes. Strings without `{{` pass through unchanged.
+    private func resolveIfPossible(_ s: String, scope: VarScope) -> String? {
+        if !s.contains("{{") { return s }
+        var result = s
+        // 16 passes is enough for any non-pathological dependency chain and
+        // prevents infinite loops if a substituted value reintroduces `{{`.
+        for _ in 0..<16 {
+            guard let open = result.range(of: "{{"),
+                  let close = result.range(of: "}}", range: open.upperBound..<result.endIndex) else {
+                break
+            }
+            let nameRange = open.upperBound..<close.lowerBound
+            let varName = result[nameRange].trimmingCharacters(in: .whitespaces)
+            guard let value = scope[varName] else { return nil }
+            result.replaceSubrange(open.lowerBound..<close.upperBound, with: value)
+        }
+        return result.contains("{{") ? nil : result
     }
 
     private func captureTextModelFonts(

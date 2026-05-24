@@ -107,6 +107,29 @@ public extension App8 {
         /// points. Per-screen load failures are silently skipped so a
         /// single broken screen doesn't abort discovery.
         func discoverAllReachableScreenIds() async throws -> [String]
+
+        // MARK: - Prefetch
+
+        /// Decodes the DSL for each screen (loads the JSON, runs template
+        /// preprocessing, decodes the typed tree) and warms `URLCache.shared`
+        /// with every remote image those screens reference. At render time the
+        /// engine's `ImageLoader` (built on `URLSessionConfiguration.default`)
+        /// reads from `URLCache.shared`, so a prefetched flow paints with no
+        /// network round-trip for cache-hit URLs.
+        ///
+        /// Errors per-screen are logged and skipped — one broken screen never
+        /// aborts the batch. Returns when every in-flight request has settled.
+        ///
+        /// Hosts using `App8Cloud.Instance` should usually call the cloud SDK's
+        /// own `prefetch(screens:)` / `prefetchAll(includingAssets:)` instead,
+        /// which additionally seeds the disk-backed asset cache and font
+        /// registry; this engine-level API targets bundled-DSL integrations.
+        func prefetchImages(forScreens screenIds: [String]) async
+
+        /// Convenience over `prefetchImages(forScreens:)` that walks every
+        /// screen reachable from the app manifest's flows via
+        /// `discoverAllReachableScreenIds()`.
+        func prefetchAllImages() async
     }
 
     @MainActor

@@ -383,6 +383,91 @@ extension A8 {
         }
     }
 
+    // MARK: - Prefetch (image-cache warming)
+
+    public func prefetchImages(forScreens screenIds: [String]) async {
+        guard !screenIds.isEmpty else { return }
+        let logger = context.logger
+        var urlsToWarm: Set<String> = []
+        for screenId in screenIds {
+            do {
+                let refs = try await collectAssetReferences(screenId: screenId)
+                let urls = refs.images.compactMap { $0.url }.filter { !$0.isEmpty }
+                logger.debug("prefetchImages: screen='\(screenId)' — \(refs.images.count) image ref(s), \(urls.count) with URLs")
+                for url in urls { urlsToWarm.insert(url) }
+            } catch {
+                logger.warning("prefetchImages: collectAssetReferences failed for '\(screenId)': \(error)")
+            }
+        }
+        if urlsToWarm.isEmpty {
+            logger.debug("prefetchImages: nothing to warm across \(screenIds.count) screen(s).")
+            return
+        }
+        let started = Date()
+        await Self.warmURLs(Array(urlsToWarm), logger: logger)
+        let ms = Int(Date().timeIntervalSince(started) * 1000)
+        logger.debug("prefetchImages: warmed \(urlsToWarm.count) URL(s) across \(screenIds.count) screen(s) in \(ms)ms.")
+    }
+
+    public func prefetchAllImages() async {
+        do {
+            try await ensureInfrastructureReady()
+            let ids = try await discoverAllReachableScreenIds()
+            await prefetchImages(forScreens: ids)
+        } catch {
+            context.logger.warning("prefetchAllImages: discovery failed — \(error)")
+        }
+    }
+
+    /// Bounded-concurrency parallel warm of `URLCache.shared` via
+    /// `URLSession.shared`. Mirrors the Cloud SDK's `prefetchRawURL` shape so
+    /// hosts that move from local-bundle to cloud-delivery see the same
+    /// caching behavior.
+    private static func warmURLs(_ urls: [String], logger: A8Log) async {
+        await withTaskGroup(of: Void.self) { group in
+            let bound = 4
+            var iter = urls.makeIterator()
+            func enqueueNext() {
+                guard let urlString = iter.next() else { return }
+                group.addTask {
+                    await Self.warmURL(urlString, logger: logger)
+                }
+            }
+            for _ in 0..<min(bound, urls.count) { enqueueNext() }
+            for await _ in group { enqueueNext() }
+        }
+    }
+
+    private static func warmURL(_ urlString: String, logger: A8Log) async {
+        guard let url = URL(string: urlString) else {
+            logger.warning("prefetchImages: invalid URL '\(urlString)' — skipped.")
+            return
+        }
+        guard url.scheme?.lowercased() == "https" else {
+            logger.warning("prefetchImages: non-HTTPS URL '\(urlString)' — skipped.")
+            return
+        }
+        let request = URLRequest(url: url, cachePolicy: .useProtocolCachePolicy)
+        let started = Date()
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            let ms = Int(Date().timeIntervalSince(started) * 1000)
+            // `URLCache.shared` only keeps responses with usable
+            // Cache-Control / Expires headers. If `postCached` is false the
+            // warm runs but the cache evicts immediately — surface that as
+            // a one-time warning per URL so the cause is visible without
+            // running at debug log level.
+            let postCached = URLCache.shared.cachedResponse(for: request) != nil
+            if postCached {
+                logger.debug("prefetchImages: cached \(data.count)B in \(ms)ms — \(urlString)")
+            } else {
+                logger.warning("prefetchImages: URLCache.shared rejected '\(urlString)' (no usable Cache-Control / Expires). Image will re-download at render time.")
+            }
+        } catch {
+            logger.warning("prefetchImages: URL warm failed '\(urlString)' — \(error)")
+        }
+    }
+
     public func discoverAllReachableScreenIds() async throws -> [String] {
         try await ensureInfrastructureReady()
         guard let app = self.app, let dataSource = self.dataSource else {
