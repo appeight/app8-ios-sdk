@@ -461,7 +461,7 @@ final class CMapViewModel: CBaseViewModel<MapContent> {
             updateVariableFromBinding(binding, value: annotationId)
         }
 
-        if let action = component.actions?[.onAnnotationTap] {
+        if let actions = component.actions?[.onAnnotationTap] {
             // Create scoped store with annotation data accessible as {{item.xxx}}.
             // rawFields contains every JSON field from the annotation (id, title, subtitle,
             // coordinate, color, plus any custom fields the DSL author added).
@@ -476,11 +476,13 @@ final class CMapViewModel: CBaseViewModel<MapContent> {
                 service.context.logger.error("Failed to define annotation action variables: \(error)")
             }
 
-            do {
-                let handler = VariableActionHandler()
-                try handler.execute(action: action, store: actionStore, context: VariableContext(store: actionStore))
-            } catch {
-                service.context.logger.error("Failed to execute onAnnotationTap action: \(error)")
+            let handler = VariableActionHandler()
+            for action in actions {
+                do {
+                    try handler.execute(action: action, store: actionStore, context: VariableContext(store: actionStore))
+                } catch {
+                    service.context.logger.error("Failed to execute onAnnotationTap action: \(error)")
+                }
             }
         }
     }
@@ -509,8 +511,8 @@ final class CMapViewModel: CBaseViewModel<MapContent> {
             updateVariableFromBinding(binding, value: regionDict)
         }
 
-        if let action = component.actions?[.onRegionChange] {
-            executeAction(action)
+        if let actions = component.actions?[.onRegionChange] {
+            for action in actions { executeAction(action) }
         }
     }
 
@@ -525,8 +527,8 @@ final class CMapViewModel: CBaseViewModel<MapContent> {
             updateVariableFromBinding(binding, value: locationDict)
         }
 
-        if let action = component.actions?[.onUserLocationUpdate] {
-            executeAction(action)
+        if let actions = component.actions?[.onUserLocationUpdate] {
+            for action in actions { executeAction(action) }
         }
     }
 

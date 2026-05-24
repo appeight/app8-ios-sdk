@@ -104,9 +104,13 @@ struct ScreenReferenceWalker {
         let content = entity.content
 
         if let actions = content.actions {
-            for (trigger, action) in actions {
-                let actionPath = "\(componentPath).actions.\(trigger.rawValue)"
-                refs.append(contentsOf: extractScreenRefs(from: action, screenId: screenId, path: actionPath))
+            for (trigger, list) in actions {
+                for (i, action) in list.enumerated() {
+                    let actionPath = list.count > 1
+                        ? "\(componentPath).actions.\(trigger.rawValue)[\(i)]"
+                        : "\(componentPath).actions.\(trigger.rawValue)"
+                    refs.append(contentsOf: extractScreenRefs(from: action, screenId: screenId, path: actionPath))
+                }
             }
         }
 

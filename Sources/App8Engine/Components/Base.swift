@@ -9,7 +9,8 @@ extension DSL.Model.Component {
         let properties: Properties
         var style: StyleContent?
         let layout: M.Layout?
-        let actions: [M.ActionTrigger: M.Action]?
+        let actions: [M.ActionTrigger: [M.Action]]?
+        let analytics: [M.ActionTrigger: M.AnalyticsBinding]?
 
         /// Default state name - can be static ("normal") or expression ("{{condition ? 'a' : 'b'}}")
         let defaultStateName: String?
@@ -55,6 +56,7 @@ extension DSL.Model.Component {
             case style
             case layout
             case actions
+            case analytics
             case defaultStateName
             case states
             case triggers
@@ -104,16 +106,27 @@ extension DSL.Model.Component {
             }
             
             layout           = try c.decodeIfPresent(M.Layout.self, forKey: .layout)
-            if let rawActions = try c.decodeIfPresent([String: M.Action].self, forKey: .actions) {
-                var converted: [M.ActionTrigger: M.Action] = [:]
+            if let rawActions = try c.decodeIfPresent([String: M.ActionList].self, forKey: .actions) {
+                var converted: [M.ActionTrigger: [M.Action]] = [:]
                 for (key, value) in rawActions {
                     if let trigger = M.ActionTrigger(rawValue: key) {
-                        converted[trigger] = value
+                        converted[trigger] = value.actions
                     }
                 }
                 actions = converted.isEmpty ? nil : converted
             } else {
                 actions = nil
+            }
+            if let rawAnalytics = try c.decodeIfPresent([String: M.AnalyticsBinding].self, forKey: .analytics) {
+                var converted: [M.ActionTrigger: M.AnalyticsBinding] = [:]
+                for (key, value) in rawAnalytics {
+                    if let trigger = M.ActionTrigger(rawValue: key) {
+                        converted[trigger] = value
+                    }
+                }
+                analytics = converted.isEmpty ? nil : converted
+            } else {
+                analytics = nil
             }
             defaultStateName = try c.decodeIfPresent(String.self, forKey: .defaultStateName)
             states           = try c.decodeIfPresent([String: M.State<Properties, StyleContent>].self, forKey: .states)

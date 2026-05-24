@@ -23,6 +23,10 @@ final class ScreenViewController: BaseViewController {
     /// Active streaming session (non-nil for screens with streaming: true).
     private var streamingSession: StreamingSession?
 
+    /// Wall-clock of the most-recent `viewDidAppear`. Paired with
+    /// `viewDidDisappear` to compute `dwellMs` for `app8_screen_dismissed`.
+    private var appearedAt: Date?
+
     override var hasNavigationBar: Bool {
         guard let config = navigationBarConfig else { return false }
         return config.hidden != true
@@ -76,9 +80,49 @@ final class ScreenViewController: BaseViewController {
         attachLeftTitleViewIfNeeded()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard context.analyticsConfig.autoScreenEvents else {
+            appearedAt = nil
+            return
+        }
+        let now = Date()
+        appearedAt = now
+        var properties: [String: Any] = [:]
+        if let title = navigationBarConfig?.title { properties["title"] = title }
+        context.analyticsBus.dispatch(App8AnalyticsEvent(
+            name: "app8_screen_appeared",
+            screenId: screenId,
+            componentId: nil,
+            componentType: DSL.Model.Component.CType.Key.screen.rawValue,
+            properties: properties,
+            timestamp: now
+        ))
+    }
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         leftNavTitleView?.removeFromSuperview()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        guard context.analyticsConfig.autoScreenEvents, let appeared = appearedAt else {
+            appearedAt = nil
+            return
+        }
+        let now = Date()
+        appearedAt = nil
+        let dwellMs = Int(now.timeIntervalSince(appeared) * 1000)
+        let properties: [String: Any] = ["dwellMs": dwellMs]
+        context.analyticsBus.dispatch(App8AnalyticsEvent(
+            name: "app8_screen_dismissed",
+            screenId: screenId,
+            componentId: nil,
+            componentType: DSL.Model.Component.CType.Key.screen.rawValue,
+            properties: properties,
+            timestamp: now
+        ))
     }
 
     private func setupRootContainer() {

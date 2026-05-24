@@ -31,7 +31,7 @@ extension DSL.Model.Component {
             let height: CGFloat?
             /// When true the cell background is transparent (no card). Useful for footer-style rows.
             let clearBackground: Bool?
-            let actions: [DSL.Model.ActionTrigger: DSL.Model.Action]?
+            let actions: [DSL.Model.ActionTrigger: [DSL.Model.Action]]?
             @SafeArrayDecodable var children: [DSL.Model.Component.`Any`] = []
 
             private enum CodingKeys: CodingKey {
@@ -39,18 +39,18 @@ extension DSL.Model.Component {
             }
 
             // ActionTrigger is not CodingKey so [ActionTrigger: Action] can't be decoded
-            // by synthesis. Mirror the pattern from Base.swift: decode as [String: Action],
+            // by synthesis. Mirror the pattern from Base.swift: decode as [String: ActionList],
             // then convert keys to ActionTrigger.
             init(from decoder: any Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
                 id             = try c.decode(String.self, forKey: .id)
                 height         = try c.decodeIfPresent(CGFloat.self, forKey: .height)
                 clearBackground = try c.decodeIfPresent(Bool.self, forKey: .clearBackground)
-                if let raw = try c.decodeIfPresent([String: DSL.Model.Action].self, forKey: .actions) {
-                    var converted: [DSL.Model.ActionTrigger: DSL.Model.Action] = [:]
+                if let raw = try c.decodeIfPresent([String: DSL.Model.ActionList].self, forKey: .actions) {
+                    var converted: [DSL.Model.ActionTrigger: [DSL.Model.Action]] = [:]
                     for (key, value) in raw {
                         if let trigger = DSL.Model.ActionTrigger(rawValue: key) {
-                            converted[trigger] = value
+                            converted[trigger] = value.actions
                         }
                     }
                     actions = converted.isEmpty ? nil : converted
@@ -100,7 +100,8 @@ extension DSL.Model.Component {
             var style: DSL.Model.Style.View?
             let layout: DSL.Model.Layout?
             let variables: [String: VariableDefinition]?
-            let actions: [DSL.Model.ActionTrigger: DSL.Model.Action]?
+            let actions: [DSL.Model.ActionTrigger: [DSL.Model.Action]]?
+            let analytics: [DSL.Model.ActionTrigger: DSL.Model.AnalyticsBinding]?
             let defaultStateName: String?
             var states: [String: DSL.Model.State<Properties, DSL.Model.Style.View>]?
             let triggers: [DSL.Model.Trigger: String]?

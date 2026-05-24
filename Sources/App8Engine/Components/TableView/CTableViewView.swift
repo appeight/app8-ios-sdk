@@ -164,8 +164,10 @@ extension CTableViewView: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         guard let row = viewModel?.component.sections[safe: indexPath.section]?.rows[safe: indexPath.row],
-              let action = row.actions?[.tap] else { return }
-        viewModel?.executeAction(action)
+              let actions = row.actions?[.tap] else { return }
+        for action in actions {
+            viewModel?.executeAction(action)
+        }
     }
 }
 

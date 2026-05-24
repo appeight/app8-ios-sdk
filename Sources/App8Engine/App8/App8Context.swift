@@ -12,13 +12,25 @@ final class App8Context {
     let keyboardService: KeyboardHeightServiceProtocol
     let translationStore: TranslationStore
 
+    /// In-process bus for host-facing action events (`.emit` actions).
+    let eventBus: App8EventBus
+
+    /// In-process bus for analytics events (author-declared + auto-fired).
+    let analyticsBus: App8AnalyticsBus
+
+    /// Per-instance analytics configuration. Mutating this affects
+    /// subsequently-fired auto events; in-flight events are unaffected.
+    var analyticsConfig: App8AnalyticsConfig = App8AnalyticsConfig()
+
     init(
         logger: A8Log = A8Log(),
         appearance: App8Appearance = App8Appearance(),
         layoutMode: App8LayoutMode = App8LayoutMode(),
         focusManager: FocusManager = FocusManager(),
         keyboardService: KeyboardHeightServiceProtocol = KeyboardHeightService(),
-        translationStore: TranslationStore = TranslationStore()
+        translationStore: TranslationStore = TranslationStore(),
+        eventBus: App8EventBus = App8EventBus(),
+        analyticsBus: App8AnalyticsBus = App8AnalyticsBus()
     ) {
         self.logger = logger
         self.appearance = appearance
@@ -26,6 +38,8 @@ final class App8Context {
         self.focusManager = focusManager
         self.keyboardService = keyboardService
         self.translationStore = translationStore
+        self.eventBus = eventBus
+        self.analyticsBus = analyticsBus
         focusManager.logger = logger
     }
 }
