@@ -10,6 +10,15 @@ extension DSL.Model.Style {
         let letterSpacing: LetterSpacing?
         let numberOfLines: Int?
 
+        /// Shrinks the font to fit the label's width instead of truncating.
+        /// Most effective with a constrained `numberOfLines` (e.g. 1).
+        let adjustsFontSizeToFitWidth: Bool?
+
+        /// Smallest multiple of the font size autoshrink may use (0–1).
+        /// Only consulted when `adjustsFontSizeToFitWidth` is true; without it
+        /// UILabel won't shrink at all. Defaults to 0.5 when omitted.
+        let minimumScaleFactor: CGFloat?
+
         /// Flat shortcut for a registered font's PostScript name. Wins over
         /// `font.family.displayName` when set. Use this for simple "just give
         /// me this exact custom font" cases; use `font` when the DSL needs to

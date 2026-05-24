@@ -29,6 +29,18 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     // MARK: - Inline span overrides (per-character-range style)
     private var currentSpans: [DSL.Model.Component.Label.Properties.Span]?
 
+    // MARK: - Manual autoshrink (binary-search shrink-to-fit)
+    // UILabel.adjustsFontSizeToFitWidth is unreliable for multi-line + attributed
+    // text with custom paragraph styles, so we take it over.
+    private struct AutoshrinkConfig {
+        let maxLines: Int  // 0 = unbounded
+        let minimumScaleFactor: CGFloat
+    }
+    private var autoshrinkConfig: AutoshrinkConfig?
+    private var autoshrinkSource: NSAttributedString?
+    private var autoshrinkLastWidth: CGFloat = -1
+    private var autoshrinkAppliedScale: CGFloat = 1.0
+
     // MARK: - Touch handling
     private var tapGesture: UITapGestureRecognizer?
 
@@ -65,6 +77,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             label.invalidateIntrinsicContentSize()
             invalidateIntrinsicContentSize()
         }
+        performAutoshrinkIfNeeded()
     }
 
     func configure(viewModel: CLabelViewModel, superview: UIView? = nil, animated: Bool = true) {
@@ -202,15 +215,32 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     /// line-height, or per-range span overrides are set.
     private func setLabelText(_ text: String) {
         let hasSpans = (currentSpans?.isEmpty == false)
-        if textAttributes.isEmpty && !hasSpans {
+        let needsAttributed = !textAttributes.isEmpty || hasSpans || autoshrinkConfig != nil
+        if !needsAttributed {
             label.attributedText = nil
             label.text = text
+            autoshrinkSource = nil
         } else {
-            let attributed = NSMutableAttributedString(string: text, attributes: textAttributes)
+            // Bake the base font into the attributed string so that:
+            // (1) autoshrink can scale every range uniformly, and
+            // (2) ranges without an explicit .font still render correctly when
+            //     UILabel reads from attributedText rather than `font`.
+            var baseAttrs = textAttributes
+            if baseAttrs[.font] == nil, let font = label.font {
+                baseAttrs[.font] = font
+            }
+            let attributed = NSMutableAttributedString(string: text, attributes: baseAttrs)
             if let spans = currentSpans, !spans.isEmpty {
                 applySpanOverrides(spans, to: attributed)
             }
             label.attributedText = attributed
+            if autoshrinkConfig != nil {
+                autoshrinkSource = attributed.copy() as? NSAttributedString
+                autoshrinkLastWidth = -1
+                autoshrinkAppliedScale = 1.0
+            } else {
+                autoshrinkSource = nil
+            }
         }
         // Seed preferredMaxLayoutWidth so multi-line intrinsic reports correct
         // height before the first layout pass establishes bounds. `layoutSubviews`
@@ -219,6 +249,11 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             label.preferredMaxLayoutWidth = UIScreen.main.bounds.width
         }
         invalidateIntrinsicContentSize()
+        // If we already know our width (e.g. mid-streaming update), apply the
+        // shrink right away so we don't show a one-frame oversize flash.
+        if autoshrinkConfig != nil, label.bounds.width > 0 {
+            performAutoshrinkIfNeeded()
+        }
     }
 
     /// Apply each span's overrides on top of the base attributes. Out-of-range
@@ -271,7 +306,20 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         }
 
         label.font = textModel.resolveUIFont()
-        label.numberOfLines = textModel.numberOfLines ?? 0
+        let maxLines = textModel.numberOfLines ?? 0
+        label.numberOfLines = maxLines
+        // We take over UILabel's autoshrink because it doesn't work reliably for
+        // multi-line attributed text with custom paragraph styles.
+        label.adjustsFontSizeToFitWidth = false
+        if textModel.adjustsFontSizeToFitWidth == true {
+            let minScale = max(0.05, min(1.0, textModel.minimumScaleFactor ?? 0.5))
+            autoshrinkConfig = AutoshrinkConfig(maxLines: maxLines, minimumScaleFactor: minScale)
+        } else {
+            autoshrinkConfig = nil
+            autoshrinkSource = nil
+            autoshrinkLastWidth = -1
+            autoshrinkAppliedScale = 1.0
+        }
         textAttributes = buildTextAttributes(for: textModel)
 
         if let currentText = label.attributedText?.string ?? label.text {
@@ -311,6 +359,105 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         }
 
         return attrs
+    }
+
+    // MARK: - Manual Autoshrink
+
+    /// Re-runs the binary-search shrink-to-fit pass when the available width
+    /// has changed. Cheap when the width is unchanged — guarded with
+    /// `autoshrinkLastWidth`.
+    private func performAutoshrinkIfNeeded() {
+        guard let config = autoshrinkConfig, let source = autoshrinkSource else { return }
+        let width = label.bounds.width
+        guard width > 0.5 else { return }
+        if abs(width - autoshrinkLastWidth) < 0.5 { return }
+        autoshrinkLastWidth = width
+
+        // Fast path: unscaled text already fits.
+        if attributedFits(source, width: width, maxLines: config.maxLines) {
+            if autoshrinkAppliedScale != 1.0 {
+                autoshrinkAppliedScale = 1.0
+                label.attributedText = source
+            }
+            return
+        }
+
+        // Binary search the largest scale that fits within the line cap.
+        // 14 iterations across [minScale, 1.0] resolves to better than 1e-4 —
+        // well below any visually meaningful threshold.
+        var lo = config.minimumScaleFactor
+        var hi: CGFloat = 1.0
+        var best = config.minimumScaleFactor
+        var bestFits = false
+        for _ in 0..<14 {
+            let mid = (lo + hi) / 2
+            let candidate = scaled(source, by: mid)
+            if attributedFits(candidate, width: width, maxLines: config.maxLines) {
+                best = mid
+                bestFits = true
+                lo = mid
+            } else {
+                hi = mid
+            }
+        }
+        // If nothing in the search range fits (even at minScale), pin to
+        // minScale and let UILabel truncate the overflow.
+        let appliedScale = bestFits ? best : config.minimumScaleFactor
+        autoshrinkAppliedScale = appliedScale
+        label.attributedText = scaled(source, by: appliedScale)
+    }
+
+    /// Produce a uniformly scaled copy of `source` — every `.font` run gets a
+    /// proportionally smaller point size, and `.paragraphStyle` line metrics
+    /// that are expressed as absolute lengths (fixed line height, line spacing)
+    /// are scaled too. `lineHeightMultiple` is a ratio so it stays as-is.
+    private func scaled(_ source: NSAttributedString, by scale: CGFloat) -> NSAttributedString {
+        if scale >= 0.9995 { return source }
+        let m = NSMutableAttributedString(attributedString: source)
+        let fullRange = NSRange(location: 0, length: m.length)
+        m.enumerateAttribute(.font, in: fullRange, options: []) { value, range, _ in
+            if let font = value as? UIFont {
+                m.addAttribute(.font, value: font.withSize(font.pointSize * scale), range: range)
+            }
+        }
+        m.enumerateAttribute(.paragraphStyle, in: fullRange, options: []) { value, range, _ in
+            guard let paragraph = value as? NSParagraphStyle,
+                  let mutable = paragraph.mutableCopy() as? NSMutableParagraphStyle else { return }
+            if mutable.minimumLineHeight > 0 { mutable.minimumLineHeight *= scale }
+            if mutable.maximumLineHeight > 0 { mutable.maximumLineHeight *= scale }
+            if mutable.lineSpacing > 0 { mutable.lineSpacing *= scale }
+            m.addAttribute(.paragraphStyle, value: mutable, range: range)
+        }
+        return m
+    }
+
+    /// Returns true when laying out `attributed` at the given width fits within
+    /// `maxLines` (where 0 means "no cap"). Uses NSLayoutManager directly so
+    /// line counting accounts for paragraph-style line metrics and Unicode
+    /// word-wrap rules — `boundingRect(...).height / lineHeight` is too crude.
+    private func attributedFits(_ attributed: NSAttributedString, width: CGFloat, maxLines: Int) -> Bool {
+        let cap = maxLines > 0 ? maxLines : Int.max
+        let storage = NSTextStorage(attributedString: attributed)
+        let manager = NSLayoutManager()
+        storage.addLayoutManager(manager)
+        let container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        container.maximumNumberOfLines = 0
+        container.lineBreakMode = .byWordWrapping
+        manager.addTextContainer(container)
+        manager.ensureLayout(for: container)
+
+        var lineCount = 0
+        var glyphIndex = 0
+        let totalGlyphs = manager.numberOfGlyphs
+        while glyphIndex < totalGlyphs {
+            var lineRange = NSRange()
+            _ = manager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &lineRange)
+            glyphIndex = NSMaxRange(lineRange)
+            lineCount += 1
+            if lineCount > cap { return false }
+        }
+        return lineCount <= cap
     }
 
 }
