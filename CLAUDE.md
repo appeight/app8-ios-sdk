@@ -40,6 +40,12 @@ App8Engine is a DSL rendering engine that:
 - Each component gets a ViewModel that manages state
 - StateManager handles component state transitions
 
+### Events & Analytics
+- Two independent buses on `App8Context`: `eventBus` (`.emit` action events, host-facing) and `analyticsBus` (auto `app8_*` + author-declared `analytics` bindings). Public types live in `Sources/App8Engine/Events/`.
+- **Every component trigger dispatch site MUST route through `CBaseViewModel.dispatchTrigger(_:execute:)`.** Calling `executeVariableAction(action)` or `executeAction(action)` directly bypasses analytics — author-declared `analytics: { trigger: ... }` silently no-ops and auto `app8_component_tapped` doesn't fire. The helper accepts a pluggable executor closure so dispatch sites that need scoped variable stores (Collection cell taps, Map annotation taps, ScrollView threshold, TextField text-change, etc.) work the same way.
+- TableView rows aren't full Component view models — they use the host VM's `fireRowTapAnalytics(rowId:binding:)` to tag analytics with the row's own id, then call `executeAction(_:)` for each action. Pattern: see `CTableViewView.didSelectRowAt`.
+- All engine-dispatched events should populate `locale: service.context.translationStore.activeLocale` so dashboards can slice by translation locale.
+
 ## Concurrency
 
 - Use `@MainActor` for all UI-related types

@@ -80,6 +80,32 @@ present(rootViewController, animated: true)
 To render a single screen outside the app flow, or to inspect/validate DSL, use
 `App8.debugInstance(dataSource:)`.
 
+### 3. Receive events and analytics
+
+DSL screens fire two kinds of typed events into the host. Subscribe at app launch
+and route by `event.name`.
+
+```swift
+// Host action events from `.emit` actions in the DSL — wire them to real
+// host behaviour (start a checkout, open Stripe, mark a step complete).
+let eventsSub = instance.subscribe { event in
+    switch event.name {
+    case "connect.tapped":   startStripeFlow()
+    case "creator.selected": showCreator(named: event.payload["name"] as? String ?? "")
+    default: break
+    }
+}
+
+// Analytics events — both author-declared and auto-fired `app8_*` lifecycle
+// events. Typical wiring: one handler that proxies to Mixpanel / Amplitude / Segment.
+instance.setAnalyticsHandler(MyAnalyticsAdapter())
+```
+
+Every event carries `screenId`, `componentId`, `componentType`, and `locale`
+(the active translation locale) so dashboards can slice by language and screen
+without extra payload plumbing. See [`docs/dsl/events.md`](docs/dsl/events.md)
+and [`docs/dsl/analytics.md`](docs/dsl/analytics.md) for the full surface.
+
 ## The App8 DSL
 
 The DSL describes an app as JSON — an app manifest, navigation flows, and screens
