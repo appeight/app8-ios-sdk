@@ -601,8 +601,12 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
 
     private func resolveLayoutGuide(_ target: DSL.Model.Layout.Constraint.Target, in container: UIView) -> UILayoutGuide? {
         switch target {
-        case .safeArea: return container.safeAreaLayoutGuide
-        default: return nil
+        case .safeArea(nil):
+            return container.safeAreaLayoutGuide
+        case .safeArea(.some(let siblingId)):
+            return resolveSibling(siblingId, in: container)?.safeAreaLayoutGuide
+        default:
+            return nil
         }
     }
 
@@ -671,17 +675,7 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
         case .selfView:
             return self
         case .sibling(let name):
-            // Prefer ViewRegistry for sibling resolution (decoupled from accessibilityIdentifier)
-            if let registry = viewRegistry {
-                // Build full sibling path: e.g., "card-1" + "name-label" -> "card-1.name-label"
-                let siblingPath = parentComponentPath.map { "\($0).\(name)" } ?? name
-                if let view = registry.sibling(id: siblingPath, excludingView: self),
-                   view.isDescendant(of: container) {
-                    return view
-                }
-            }
-            // Fallback to accessibilityIdentifier for backward compatibility
-            return container.subviews.first(where: { $0 !== self && $0.accessibilityIdentifier == name })
+            return resolveSibling(name, in: container)
         case .keyboard:
             // Return keyboard tracking view - its top anchor tracks keyboard top.
             // Requires `keyboardService` to be set by the subclass during configure.
@@ -690,6 +684,22 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
             // Handled via resolveLayoutGuide; should not reach here
             return nil
         }
+    }
+
+    /// Resolves a sibling component by its DSL id within `container`.
+    /// Prefers the `ViewRegistry` (decoupled from `accessibilityIdentifier`),
+    /// falling back to a direct subview scan for backward compatibility.
+    /// Shared by plain sibling targets and `safeArea(<id>)` guide resolution.
+    private func resolveSibling(_ name: String, in container: UIView) -> UIView? {
+        if let registry = viewRegistry {
+            // Build full sibling path: e.g., "card-1" + "name-label" -> "card-1.name-label"
+            let siblingPath = parentComponentPath.map { "\($0).\(name)" } ?? name
+            if let view = registry.sibling(id: siblingPath, excludingView: self),
+               view.isDescendant(of: container) {
+                return view
+            }
+        }
+        return container.subviews.first(where: { $0 !== self && $0.accessibilityIdentifier == name })
     }
 
     private func makeRelation(from: DSL.Model.Layout.Constraint.Attribute,

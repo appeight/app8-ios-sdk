@@ -485,6 +485,8 @@ Typography styling for text content.
 | `lineHeight` | LineHeight | | Line height |
 | `letterSpacing` | LetterSpacing | | Letter spacing |
 | `numberOfLines` | number | 0 | Max lines (0 = unlimited) |
+| `adjustsFontSizeToFitWidth` | boolean | false | Shrink font to fit width instead of truncating |
+| `minimumScaleFactor` | number | 0.5 | Smallest font scale autoshrink may use (0–1); only used when `adjustsFontSizeToFitWidth` is true |
 
 ### FontWeight Values
 
@@ -546,6 +548,22 @@ Typography styling for text content.
     "lineHeight": { "type": "multiplier", "value": 1.4 },
     "letterSpacing": { "type": "fixed", "value": 0.5 },
     "numberOfLines": 2
+  }
+}
+```
+
+### Autoshrink Example
+
+Shrink a single-line title to fit narrow containers instead of truncating it:
+
+<!-- @dsl-skip: text style fragment -->
+```json
+{
+  "text": {
+    "fontSize": 22,
+    "numberOfLines": 1,
+    "adjustsFontSizeToFitWidth": true,
+    "minimumScaleFactor": 0.6
   }
 }
 ```
