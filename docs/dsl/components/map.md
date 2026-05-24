@@ -48,6 +48,8 @@ Each entry in `annotations` (or elements of the `annotationsExpression` array) m
 |---------|-------------|
 | `onAnnotationTap` | Fires when the user taps a pin. `{{item.id}}`, `{{item.title}}`, and other annotation fields are available in the action's value expressions. |
 
+> Map triggers also accept an `analytics` binding for tracking — see [`../analytics.md`](../analytics.md).
+
 ## Example — Static Map Card
 
 Fixed region with zoom and scroll disabled, one annotation:
