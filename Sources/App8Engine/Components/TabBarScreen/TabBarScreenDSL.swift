@@ -36,7 +36,8 @@ extension DSL.Model.Component {
                 set {}
             }
             var layout: DSL.Model.Layout? { nil }
-            var actions: [DSL.Model.ActionTrigger: DSL.Model.Action]? { nil }
+            var actions: [DSL.Model.ActionTrigger: [DSL.Model.Action]]? { nil }
+            var analytics: [DSL.Model.ActionTrigger: DSL.Model.AnalyticsBinding]? { nil }
             var children: [DSL.Model.Component.`Any`] {
                 get { [] }
                 set {}

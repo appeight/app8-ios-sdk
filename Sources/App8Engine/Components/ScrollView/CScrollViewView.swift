@@ -500,8 +500,7 @@ extension CScrollViewView: UIScrollViewDelegate {
     /// Injects `$crossed` (true when past threshold) and `$offset` overlays into the action context.
     private func checkScrollThreshold(offset: CGFloat) {
         guard let threshold = viewModel?.component.properties.scrollThreshold,
-              let viewModel = viewModel,
-              let action = viewModel.component.actions?[.onScrollThreshold] else { return }
+              let viewModel = viewModel else { return }
 
         let crossed = offset >= threshold
         guard crossed != lastScrollThresholdCrossed else { return }
@@ -513,10 +512,13 @@ extension CScrollViewView: UIScrollViewDelegate {
             let context = VariableContext(store: viewModel.variableStore)
                 .overlaying("$crossed", value: crossed)
                 .overlaying("$offset", value: Double(offset))
-            do {
-                try VariableActionHandler().execute(action: action, store: viewModel.variableStore, context: context)
-            } catch {
-                viewModel.service.context.logger.error("Failed to execute onScrollThreshold action: \(error)")
+            let handler = VariableActionHandler()
+            viewModel.dispatchTrigger(.onScrollThreshold) { action in
+                do {
+                    try handler.execute(action: action, store: viewModel.variableStore, context: context)
+                } catch {
+                    viewModel.service.context.logger.error("Failed to execute onScrollThreshold action: \(error)")
+                }
             }
         }
     }

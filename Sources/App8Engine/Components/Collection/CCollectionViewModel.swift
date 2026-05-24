@@ -404,10 +404,13 @@ final class CCollectionViewModel: CBaseViewModel<CollectionContent> {
 
         let itemId = valueAtKeyPath(item.data.value, keyPath: "id")
 
-        if let action = component.actions?[.onItemTap] {
-            let cellStore = createCellVariableStore(for: item)
+        // Route through dispatchTrigger so author-declared analytics fire
+        // before the actions run. Each action handler still uses the cell-
+        // scoped store so `{{item.foo}}` resolves against the tapped row.
+        let cellStore = createCellVariableStore(for: item)
+        let handler = VariableActionHandler()
+        dispatchTrigger(.onItemTap) { action in
             do {
-                let handler = VariableActionHandler()
                 try handler.execute(action: action, store: cellStore, context: VariableContext(store: cellStore))
             } catch {
                 service.context.logger.error("Failed to execute onItemTap action: \(error)")
@@ -467,18 +470,13 @@ final class CCollectionViewModel: CBaseViewModel<CollectionContent> {
     // MARK: - Actions
 
     func handleRefresh() {
-        if let action = component.actions?[.onRefresh] {
-            executeVariableAction(action)
-        }
+        dispatchTrigger(.onRefresh) { [self] in executeVariableAction($0) }
     }
 
     func handleLoadMore() {
         guard let pagination = component.properties.pagination,
               pagination.enabled == true else { return }
-
-        if let action = component.actions?[.onLoadMore] {
-            executeVariableAction(action)
-        }
+        dispatchTrigger(.onLoadMore) { [self] in executeVariableAction($0) }
     }
 
     // MARK: - Helpers
