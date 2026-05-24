@@ -15,16 +15,25 @@ public final class TranslationStore {
     /// `Localizable.xcstrings` with no glue. Set to nil to opt out.
     public var bundleResolver: ((_ key: String, _ locale: String) -> String?)? = TranslationStore.defaultBundleResolver
 
-    /// Tries exact `<locale>.lproj`, then language-only `<lang>.lproj`. Uses a
-    /// sentinel because `Bundle.localizedString` returns the key on a miss —
+    /// Tables the default resolver tries in order. `App8Strings` lets hosts ship
+    /// classic `.strings` files alongside `Localizable.xcstrings` without Xcode's
+    /// duplicate-table-name build error.
+    nonisolated public static let defaultBundleTableNames: [String] = ["Localizable", "App8Strings"]
+
+    /// Tries each (`<locale>.lproj` × table) then (`<lang>.lproj` × table). Uses
+    /// a sentinel because `Bundle.localizedString` returns the key on a miss —
     /// indistinguishable from a key-shaped translation otherwise.
     private static let defaultBundleResolver: @Sendable (String, String) -> String? = { key, locale in
         let sentinel = "\u{0}__app8_translation_missing__\u{0}"
+        let tables = defaultBundleTableNames
         let tryBundle: (String) -> String? = { tag in
             guard let path = Foundation.Bundle.main.path(forResource: tag, ofType: "lproj"),
                   let bundle = Foundation.Bundle(path: path) else { return nil }
-            let v = bundle.localizedString(forKey: key, value: sentinel, table: nil)
-            return v == sentinel ? nil : v
+            for table in tables {
+                let v = bundle.localizedString(forKey: key, value: sentinel, table: table)
+                if v != sentinel { return v }
+            }
+            return nil
         }
         if let exact = tryBundle(locale) { return exact }
         let lang = languageOnly(locale)
