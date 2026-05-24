@@ -68,6 +68,14 @@ final class A8: App8.DebugInstance {
         set { context.layoutMode.showLabels = newValue }
     }
 
+    func setLocale(_ locale: String?) {
+        context.translationStore.setActive(locale)
+    }
+
+    var currentLocale: String {
+        context.translationStore.activeLocale
+    }
+
     /// Publishes the currently visible screen context within the navigation hierarchy
     public var screenContext: AnyPublisher<App8.ScreenContext, Never> {
         guard let coordinator = flowCoordinator else {
@@ -211,6 +219,22 @@ final class A8: App8.DebugInstance {
                     }
                 }
                 self.styles = styleItemsDict
+            }
+
+            // Must run before any screen renders so i18n keys don't flash as
+            // raw keys. Non-fatal: a failure leaves the store empty and keys
+            // render as debug placeholders.
+            do {
+                let translationsData = try await ds.getTranslations()
+                let bundle = try JSONDecoder().decode(TranslationStore.Bundle.self, from: translationsData)
+                self.context.translationStore.load(
+                    defaultLocale: bundle.defaultLocale,
+                    locales: bundle.locales
+                )
+                let localeList = bundle.locales.keys.sorted().joined(separator: ",")
+                context.logger.debug("App8: loaded translations — defaultLocale=\(bundle.defaultLocale), locales=\(localeList)")
+            } catch {
+                context.logger.warning("App8: getTranslations failed — \(error). i18n keys will render as debug placeholders.")
             }
 
             if self.templateResolver == nil {
@@ -429,6 +453,17 @@ extension A8 {
 
     /// Render a screen independently, outside the normal app flow.
     func renderScreen(screenId: String, options: ScreenRenderOptions) async throws -> UIViewController {
+        try await renderScreenInternal(screenId: screenId, options: options, fixedSafeAreaInsets: nil)
+    }
+
+    func renderScreen(screenId: String, options: ScreenRenderOptions,
+                      fixedSafeAreaInsets: UIEdgeInsets) async throws -> UIViewController {
+        try await renderScreenInternal(screenId: screenId, options: options,
+                                       fixedSafeAreaInsets: fixedSafeAreaInsets)
+    }
+
+    private func renderScreenInternal(screenId: String, options: ScreenRenderOptions,
+                                      fixedSafeAreaInsets: UIEdgeInsets?) async throws -> UIViewController {
         try await ensureInfrastructureReady()
 
         guard let appService else {
@@ -520,7 +555,8 @@ extension A8 {
         return await appService.renderScreen(
             component,
             screenId: screenId,
-            params: finalParams.isEmpty ? nil : finalParams
+            params: finalParams.isEmpty ? nil : finalParams,
+            fixedSafeAreaInsets: fixedSafeAreaInsets
         )
     }
 

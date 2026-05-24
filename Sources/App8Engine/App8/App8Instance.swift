@@ -45,6 +45,17 @@ public extension App8 {
         /// Whether layout-mode shows component-id labels in corners. Default `true`.
         var layoutModeShowsLabels: Bool { get set }
 
+        // MARK: - Localisation
+
+        /// Override the locale used for `{"$i18n": ...}` lookups and locale-aware
+        /// formatters (currency, number, date). Pass `nil` to revert to the
+        /// device's first preferred language. Visible on the next render only —
+        /// already-rendered text is not re-resolved.
+        func setLocale(_ locale: String?)
+
+        /// Override → device default → app `defaultLocale`.
+        var currentLocale: String { get }
+
         // MARK: - Asset discovery
 
         /// Walks the decoded DSL tree for `screenId` and returns every
@@ -86,5 +97,19 @@ public extension App8 {
         // Screen analysis
         func analyzeScreen(screenId: String) async throws -> ScreenAnalysis
         func getAllScreenManifest() async throws -> [ScreenManifestEntry]
+
+        /// Renders a screen with host-supplied safe-area insets, for tooling that
+        /// renders screens onto a transformed / zoomed canvas (e.g. the App8 design
+        /// canvas), where UIKit's propagated safe area is unreliable.
+        ///
+        /// The supplied insets are ADDED to the screen's live `safeAreaInsets`
+        /// (alongside any `additionalSafeAreaInsets` declared by the DSL). This
+        /// assumes the host renders into a container whose real safe area is ~zero
+        /// — against a normal window with non-zero system insets the values would
+        /// double-count. Non-finite or negative components are sanitized to 0.
+        ///
+        /// Not part of the production `Instance` API.
+        func renderScreen(screenId: String, options: ScreenRenderOptions,
+                          fixedSafeAreaInsets: UIEdgeInsets) async throws -> UIViewController
     }
 }

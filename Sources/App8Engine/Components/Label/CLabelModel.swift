@@ -5,7 +5,9 @@ extension DSL.Model.Component {
         typealias Entity = ConcreteEntity<C>
 
         struct Properties: Decodable {
-            let text: String
+            /// Either a plain literal or `{"$i18n": "key"}` for a localised lookup.
+            /// See `LocalizedString` for the decoding rules.
+            let text: LocalizedString
             /// Dynamic background color — accepts the bare expression form or
             /// the wrapped `{ value, animation }` form for per-property animation.
             let backgroundColor: DSL.Model.AnimatedValue<String>?
@@ -24,7 +26,7 @@ extension DSL.Model.Component {
 
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
-                text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+                text = try c.decodeIfPresent(LocalizedString.self, forKey: .text) ?? .literal("")
                 backgroundColor = try c.decodeIfPresent(DSL.Model.AnimatedValue<String>.self, forKey: .backgroundColor)
                 isHidden = try c.decodeIfPresent(String.self, forKey: .isHidden)
                 numberOfLines = try c.decodeIfPresent(Int.self, forKey: .numberOfLines)
