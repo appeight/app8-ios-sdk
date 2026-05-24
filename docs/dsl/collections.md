@@ -504,6 +504,8 @@ The value written is the vertical (or horizontal) content offset in points, adju
 
 ## Actions
 
+> Each trigger below also accepts an `analytics` binding alongside `actions:` for tracking — see [`analytics.md`](analytics.md) (Collection `onItemTap` example).
+
 ### Item Tap
 
 ```json

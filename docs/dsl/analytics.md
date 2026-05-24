@@ -82,6 +82,45 @@ Fires `App8AnalyticsEvent(name: "stripeConnectClicked", properties: [:], ...)`.
 
 `properties` values support `{{var}}` interpolation in strings, same as `emit` payloads.
 
+### Collection `onItemTap`
+
+Track which item the user tapped without hand-rolling instrumentation. Inside a Collection's `analytics` map, `onItemTap` resolves the cell's data scope just like the action handler does — `{{item.id}}`, `{{item.title}}`, and every raw field from the row's data are available.
+
+```json
+{
+    "type": "collection",
+    "content": {
+        "actions": {
+            "onItemTap": { "type": "navigation", "nextScreen": "creator-detail" }
+        },
+        "analytics": {
+            "onItemTap": {
+                "name": "creatorListItemTapped",
+                "properties": { "creatorId": "{{item.id}}", "rank": "{{$index}}" }
+            }
+        }
+    }
+}
+```
+
+The auto `app8_component_tapped` event does **not** fire for individual cells inside a Collection (the Collection itself is the tappable component) — use `onItemTap` analytics if you want per-item tracking.
+
+### TableView row analytics
+
+Static rows in a `tableView` can each carry their own `analytics` binding. The auto `app8_component_tapped` event fires per row with `componentId = row.id` and `componentType = "tableViewRow"`, even when no author-declared binding is present.
+
+```json
+{
+    "id": "settings-row-delete",
+    "actions": {
+        "tap": [{ "type": "showAlert", "alertTitle": "Delete account?" }]
+    },
+    "analytics": {
+        "tap": "settingsDeleteRowTapped"
+    }
+}
+```
+
 ### Action events vs analytics: when to use which
 
 | You want… | Channel |

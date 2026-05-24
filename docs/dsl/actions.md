@@ -45,6 +45,8 @@ A trigger may also list **multiple actions** to run in JSON order:
 | `onRegionChange` | Map | Visible map region changed |
 | `onUserLocationUpdate` | Map | User location updated |
 
+> Every trigger in this table also accepts an `analytics:` map alongside `actions:` — the engine fires the analytics binding regardless of whether `actions` is present. See [`analytics.md`](analytics.md).
+
 ---
 
 ## Navigation Actions
