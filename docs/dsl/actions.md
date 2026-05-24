@@ -2,6 +2,8 @@
 
 Actions are triggered by user interactions or lifecycle events.
 
+> **Forwarding events to the host?** See [events.md](events.md) for the `.emit` action and the typed `App8.Instance.subscribe(...)` API. See [analytics.md](analytics.md) for the analytics bus.
+
 ## Action Triggers
 
 ### Component Actions
@@ -10,6 +12,19 @@ Actions are triggered by user interactions or lifecycle events.
 {
   "actions": {
     "tap": { "type": "navigation", "nextScreen": "details" }
+  }
+}
+```
+
+A trigger may also list **multiple actions** to run in JSON order:
+
+```json
+{
+  "actions": {
+    "tap": [
+      { "type": "emit",       "name": "checkout.started", "payload": { "cart": "{{cartId}}" } },
+      { "type": "navigation", "nextScreen": "confirm" }
+    ]
   }
 }
 ```

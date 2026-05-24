@@ -199,6 +199,7 @@ extension App8Service: ComponentRenderer, ComponentService {
             return renderErrorScreen(errorText: "Precondition failed for screen \(component.id)")
         }
         componentRegistry.register(id: component.id, viewModel: viewModel)
+        viewModel.setComponentTypeKey(DSL.Model.Component.CType.Key.screen.rawValue)
 
         let navigationBar = entity.content.navigationBar
         let hidesTabBar = entity.content.hidesTabBar ?? false
@@ -308,6 +309,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CView()
             view.accessibilityIdentifier = component.id
@@ -329,6 +331,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CImageView()
             view.accessibilityIdentifier = component.id
@@ -350,6 +353,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CIconView()
             view.accessibilityIdentifier = component.id
@@ -371,6 +375,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CShapeView()
             view.accessibilityIdentifier = component.id
@@ -392,6 +397,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CLabelView()
             view.accessibilityIdentifier = component.id
@@ -413,6 +419,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CButtonView()
             view.accessibilityIdentifier = component.id
@@ -434,6 +441,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CScrollViewView()
             view.accessibilityIdentifier = component.id
@@ -455,6 +463,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CCollectionView()
             view.accessibilityIdentifier = component.id
@@ -476,6 +485,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CMapView()
             view.accessibilityIdentifier = component.id
@@ -497,6 +507,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CTextFieldView()
             view.accessibilityIdentifier = component.id
@@ -518,6 +529,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CTextViewView()
             view.accessibilityIdentifier = component.id
@@ -539,6 +551,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CStackViewView()
             view.accessibilityIdentifier = component.id
@@ -560,6 +573,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CTableViewView()
             view.accessibilityIdentifier = component.id
@@ -581,6 +595,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CActivityIndicatorView()
             view.accessibilityIdentifier = component.id
@@ -602,6 +617,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CToggleView()
             view.accessibilityIdentifier = component.id
@@ -623,6 +639,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CSliderView()
             view.accessibilityIdentifier = component.id
@@ -644,6 +661,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CPageControlView()
             view.accessibilityIdentifier = component.id
@@ -665,6 +683,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CPickerView()
             view.accessibilityIdentifier = component.id
@@ -686,6 +705,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CDatePickerView()
             view.accessibilityIdentifier = component.id
@@ -707,6 +727,7 @@ extension App8Service: ComponentRenderer, ComponentService {
                 }
                 viewModel = newVM
                 componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
             }
             let view = CShimmerView()
             view.accessibilityIdentifier = component.id

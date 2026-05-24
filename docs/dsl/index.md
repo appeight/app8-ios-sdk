@@ -141,6 +141,7 @@ A minimal app with one screen and a button:
 | `showAlert` | Present a native alert | [actions.md](actions.md#show-alert) |
 | `haptic` | Trigger haptic feedback | [actions.md](actions.md#haptic) |
 | `openURL` | Open a URL | [actions.md](actions.md#open-url) |
+| `emit` | Fire typed event to the host event bus | [events.md](events.md) |
 
 ## Expression Syntax
 
@@ -164,6 +165,8 @@ See [variables.md](variables.md) for full expression documentation.
 - [layout.md](layout.md) - Layout and constraint system
 - [variables.md](variables.md) - Variables and expression syntax
 - [actions.md](actions.md) - Actions and event triggers
+- [events.md](events.md) - Host-facing event bus (`.emit` action + subscribe API)
+- [analytics.md](analytics.md) - Analytics bus (auto `app8_*` + author-declared `analytics` binding)
 - [navigation.md](navigation.md) - Navigation and flow system
 - [collections.md](collections.md) - Lists, grids, and carousels
 - [collections-best-practices.md](collections-best-practices.md) - Layout choice, insets, headers, templates, and common mistakes

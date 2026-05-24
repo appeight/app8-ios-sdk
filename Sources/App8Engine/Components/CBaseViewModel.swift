@@ -281,10 +281,143 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         try? variableActionHandler.execute(action: action, store: variableStore, context: getVariableContext())
     }
 
-    /// Execute an action from component actions (by trigger name)
+    /// Execute every action declared for `trigger` (in JSON order) and fire
+    /// any author-declared analytics for the same trigger. Also auto-fires
+    /// the built-in `app8_component_tapped` analytics event when applicable.
     func executeAction(for trigger: DSL.Model.ActionTrigger) {
-        guard let action = component.actions?[trigger] else { return }
-        executeAction(action)
+        dispatchTrigger(trigger) { [self] action in executeAction(action) }
+    }
+
+    /// Fire analytics + author-declared bindings for `trigger`, then run each
+    /// declared action via `execute`. Use this from any trigger dispatch site
+    /// — including those that need scoped variable stores (e.g. cell taps,
+    /// annotation taps, refresh, load-more, scroll threshold, text change) —
+    /// so the analytics pipeline is never bypassed.
+    func dispatchTrigger(
+        _ trigger: DSL.Model.ActionTrigger,
+        execute: (DSL.Model.Action) -> Void
+    ) {
+        fireTriggerAnalytics(for: trigger)
+        guard let actions = component.actions?[trigger], !actions.isEmpty else { return }
+        for action in actions { execute(action) }
+    }
+
+    /// Fire row-anchored tap analytics on behalf of a TableView row. Rows
+    /// aren't full Component view models, so `fireTriggerAnalytics` (which
+    /// attributes to the *enclosing* component) wouldn't tag events with the
+    /// row's own id. Use this from the row-tap delegate site instead.
+    func fireRowTapAnalytics(rowId: String, binding: DSL.Model.AnalyticsBinding?) {
+        let config = service.context.analyticsConfig
+        if config.autoComponentTaps {
+            service.context.analyticsBus.dispatch(App8AnalyticsEvent(
+                name: "app8_component_tapped",
+                screenId: screenIdForEvents,
+                componentId: rowId,
+                componentType: "tableViewRow",
+                locale: currentLocale,
+                properties: ["componentType": "tableViewRow"]
+            ))
+        }
+        if let binding {
+            service.context.analyticsBus.dispatch(App8AnalyticsEvent(
+                name: binding.name,
+                screenId: screenIdForEvents,
+                componentId: rowId,
+                componentType: "tableViewRow",
+                locale: currentLocale,
+                properties: resolvePayload(binding.properties)
+            ))
+        }
+    }
+
+    // MARK: - Analytics + Events helpers
+
+    /// Component path's leaf segment — matches the `"id"` the author wrote
+    /// on this component in the DSL JSON.
+    private var leafComponentId: String? {
+        guard let lastDot = componentPath.lastIndex(of: ".") else {
+            return componentPath.isEmpty ? nil : componentPath
+        }
+        return String(componentPath[componentPath.index(after: lastDot)...])
+    }
+
+    /// DSL type token (`button`, `view`, `label`, `image`, etc.) for the
+    /// component this view model wraps. The concrete view sets this at
+    /// configure-time via `setComponentTypeKey(_:)`; the base type can't
+    /// derive it from the generic `Component` parameter reliably enough
+    /// for analytics.
+    fileprivate(set) var componentTypeKey: String?
+
+    /// Called by component view layer once during configure so analytics
+    /// events can be tagged with the DSL type token.
+    func setComponentTypeKey(_ key: String) {
+        componentTypeKey = key
+    }
+
+    /// Resolve a `[String: AnyCodableValue]` against the variable scope:
+    /// string values get `{{var}}` interpolation, other scalars pass through.
+    /// Nested arrays/dicts are passed through unchanged (v1 limitation).
+    fileprivate func resolvePayload(_ raw: [String: AnyCodableValue]?) -> [String: Any] {
+        guard let raw else { return [:] }
+        var resolved: [String: Any] = [:]
+        for (key, codable) in raw {
+            if let s = codable.value as? String {
+                resolved[key] = resolveProperty(s)
+            } else {
+                resolved[key] = codable.value
+            }
+        }
+        return resolved
+    }
+
+    /// Resolve the active screen id this component is rendering inside. Walks
+    /// up via the component-registry parent chain conceptually — but the
+    /// engine uses a flat path where the first segment IS the screen id.
+    /// Returns the first dotted segment of `componentPath`, or the whole
+    /// path when there are no dots.
+    fileprivate var screenIdForEvents: String {
+        if let dot = componentPath.firstIndex(of: ".") {
+            return String(componentPath[..<dot])
+        }
+        return componentPath
+    }
+
+    /// Current translation locale, snapshotted at fire time. Read fresh each
+    /// call so locale-switches mid-session show up in subsequent events.
+    fileprivate var currentLocale: String {
+        service.context.translationStore.activeLocale
+    }
+
+    /// Fire any author-declared analytics binding for this trigger, plus the
+    /// engine's auto `app8_component_tapped` event when configured.
+    private func fireTriggerAnalytics(for trigger: DSL.Model.ActionTrigger) {
+        let config = service.context.analyticsConfig
+
+        // Auto-fire app8_component_tapped on .tap when enabled.
+        if trigger == .tap, config.autoComponentTaps {
+            var properties: [String: Any] = [:]
+            if let type = componentTypeKey { properties["componentType"] = type }
+            service.context.analyticsBus.dispatch(App8AnalyticsEvent(
+                name: "app8_component_tapped",
+                screenId: screenIdForEvents,
+                componentId: leafComponentId,
+                componentType: componentTypeKey,
+                locale: currentLocale,
+                properties: properties
+            ))
+        }
+
+        // Author-declared `analytics` binding for this trigger.
+        if let binding = component.analytics?[trigger] {
+            service.context.analyticsBus.dispatch(App8AnalyticsEvent(
+                name: binding.name,
+                screenId: screenIdForEvents,
+                componentId: leafComponentId,
+                componentType: componentTypeKey,
+                locale: currentLocale,
+                properties: resolvePayload(binding.properties)
+            ))
+        }
     }
 
     // MARK: - State API
@@ -407,9 +540,13 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
             }
 
         case .navigation:
+            // Post the navigation request first so the analytics event only
+            // fires for navigations that actually got dispatched.
+            var didPost = false
             if action.isBack == true {
                 let request = NavigationRequest(type: .pop)
                 NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
+                didPost = true
             } else if let nextScreen = action.nextScreen {
                 var resolvedParams: [String: Any] = [:]
                 if let params = action.params {
@@ -435,6 +572,27 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                     let request = NavigationRequest(type: .push(screenId: nextScreen, params: resolvedParams))
                     NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
                 }
+                didPost = true
+            }
+            if didPost, service.context.analyticsConfig.autoNavigationEvents {
+                var properties: [String: Any] = [
+                    "fromScreenId": screenIdForEvents
+                ]
+                if let nextScreen = action.nextScreen {
+                    properties["toScreenId"] = nextScreen
+                }
+                if let presentation = action.presentation {
+                    properties["presentation"] = presentation.rawValue
+                }
+                if action.isBack == true { properties["isBack"] = true }
+                service.context.analyticsBus.dispatch(App8AnalyticsEvent(
+                    name: "app8_navigation_pushed",
+                    screenId: screenIdForEvents,
+                    componentId: leafComponentId,
+                    componentType: componentTypeKey,
+                    locale: currentLocale,
+                    properties: properties
+                ))
             }
 
         case .completeFlow:
@@ -517,6 +675,16 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         case .openURL:
             if let urlString = action.url {
                 let resolved = resolvePropertyToString(urlString)
+                if service.context.analyticsConfig.autoUrlEvents {
+                    service.context.analyticsBus.dispatch(App8AnalyticsEvent(
+                        name: "app8_url_opened",
+                        screenId: screenIdForEvents,
+                        componentId: leafComponentId,
+                        componentType: componentTypeKey,
+                        locale: currentLocale,
+                        properties: ["url": resolved]
+                    ))
+                }
                 if let url = URL(string: resolved) {
                     let presentation = action.urlPresentation ?? .external
                     // SFSafariViewController only supports http/https. Non-web URLs (tel:, mailto:, etc.)
@@ -536,6 +704,21 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                     }
                 }
             }
+
+        case .emit:
+            guard let eventName = action.name, !eventName.isEmpty else {
+                service.context.logger.warning("Action .emit missing `name` — dropped. componentPath='\(componentPath)'")
+                return
+            }
+            let resolved = resolvePayload(action.payload)
+            service.context.eventBus.dispatch(App8Event(
+                name: eventName,
+                screenId: screenIdForEvents,
+                componentId: leafComponentId,
+                componentType: componentTypeKey,
+                locale: currentLocale,
+                payload: resolved
+            ))
 
         case .executeFunction, .complete:
             break

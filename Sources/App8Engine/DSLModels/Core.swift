@@ -37,7 +37,15 @@ extension DSL.Model {
     }
 
     protocol ActionsHolder: Node {
-        var actions: [ActionTrigger: Action]? { get }
+        /// Actions keyed by trigger. Each trigger maps to a list because JSON
+        /// authors may chain multiple effects (e.g. `[emit, navigation]`).
+        /// Decoded from JSON that accepts either a single Action object or an
+        /// array — see `ActionList`.
+        var actions: [ActionTrigger: [Action]]? { get }
+
+        /// Author-declared analytics bindings keyed by trigger. Independent
+        /// from `actions` — same trigger can have both.
+        var analytics: [ActionTrigger: AnalyticsBinding]? { get }
     }
 
     /// Protocol for nodes that can define variables

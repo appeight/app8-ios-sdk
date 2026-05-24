@@ -24,6 +24,25 @@ public extension App8 {
         /// Publishes the currently visible screen context within the navigation hierarchy
         var screenContext: AnyPublisher<App8.ScreenContext, Never> { get }
 
+        // MARK: - Event + Analytics buses
+
+        /// Bus that delivers host-facing `.emit` action events from DSL
+        /// screens. Use directly or via the convenience methods on
+        /// `App8.Instance` (`subscribe(...)`, `events`, `eventStream`,
+        /// `setEventHandler(_:)`).
+        var eventBus: App8EventBus { get }
+
+        /// Bus for analytics events — both author-declared and auto-fired
+        /// (`app8_screen_appeared`, `app8_component_tapped`, etc.). Use
+        /// directly or via the convenience methods (`observeAnalytics(...)`,
+        /// `setAnalyticsHandler(_:)`).
+        var analyticsBus: App8AnalyticsBus { get }
+
+        /// Per-instance toggles for which auto-fired analytics events the
+        /// engine emits. Defaults are sensible for product analytics; tweak
+        /// `autoComponentTaps`, `autoScreenEvents`, etc. to suppress.
+        var analyticsConfig: App8AnalyticsConfig { get set }
+
         // Independent screen rendering
         func renderScreen(screenId: String, options: ScreenRenderOptions) async throws -> UIViewController
         func screenshotScreen(screenId: String, options: ScreenRenderOptions) async throws -> UIImage

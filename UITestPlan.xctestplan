@@ -1,0 +1,24 @@
+{
+  "configurations" : [
+    {
+      "id" : "1A2B3C4D-5E6F-7A8B-9C0D-1E2F3A4B5C6D",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:",
+        "identifier" : "App8EngineTests",
+        "name" : "App8EngineTests"
+      }
+    }
+  ],
+  "version" : 1
+}

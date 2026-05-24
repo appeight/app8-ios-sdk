@@ -461,23 +461,20 @@ final class CMapViewModel: CBaseViewModel<MapContent> {
             updateVariableFromBinding(binding, value: annotationId)
         }
 
-        if let action = component.actions?[.onAnnotationTap] {
-            // Create scoped store with annotation data accessible as {{item.xxx}}.
-            // rawFields contains every JSON field from the annotation (id, title, subtitle,
-            // coordinate, color, plus any custom fields the DSL author added).
-            let actionStore = ScopedVariableStore(parent: variableStore)
-
+        // Build scoped store once even when there are no actions — analytics
+        // bindings still need to fire via dispatchTrigger.
+        let actionStore = ScopedVariableStore(parent: variableStore)
+        do {
+            try actionStore.defineVariable(
+                name: "item",
+                definition: VariableDefinition(type: .object, initialValue: annotation.rawFields.values)
+            )
+        } catch {
+            service.context.logger.error("Failed to define annotation action variables: \(error)")
+        }
+        let handler = VariableActionHandler()
+        dispatchTrigger(.onAnnotationTap) { action in
             do {
-                try actionStore.defineVariable(
-                    name: "item",
-                    definition: VariableDefinition(type: .object, initialValue: annotation.rawFields.values)
-                )
-            } catch {
-                service.context.logger.error("Failed to define annotation action variables: \(error)")
-            }
-
-            do {
-                let handler = VariableActionHandler()
                 try handler.execute(action: action, store: actionStore, context: VariableContext(store: actionStore))
             } catch {
                 service.context.logger.error("Failed to execute onAnnotationTap action: \(error)")
@@ -509,9 +506,7 @@ final class CMapViewModel: CBaseViewModel<MapContent> {
             updateVariableFromBinding(binding, value: regionDict)
         }
 
-        if let action = component.actions?[.onRegionChange] {
-            executeAction(action)
-        }
+        dispatchTrigger(.onRegionChange) { [self] in executeAction($0) }
     }
 
     func handleUserLocationUpdate(_ location: CLLocationCoordinate2D) {
@@ -525,9 +520,7 @@ final class CMapViewModel: CBaseViewModel<MapContent> {
             updateVariableFromBinding(binding, value: locationDict)
         }
 
-        if let action = component.actions?[.onUserLocationUpdate] {
-            executeAction(action)
-        }
+        dispatchTrigger(.onUserLocationUpdate) { [self] in executeAction($0) }
     }
 
     // MARK: - Helpers

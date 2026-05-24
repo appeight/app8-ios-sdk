@@ -211,5 +211,5 @@ func datePickerComponentDecodesInActionContext() throws {
     let entity: DSL.Model.Component.ConcreteEntity<DSL.Model.Component.DatePicker.C>? = component.asConcreteEntity()
     #expect(entity != nil)
     #expect(entity?.content.properties.bindVariable == "date")
-    #expect(entity?.content.actions?[.tap]?.type == .haptic)
+    #expect(entity?.content.actions?[.tap]?.first?.type == .haptic)
 }
