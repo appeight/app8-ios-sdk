@@ -212,7 +212,8 @@ struct MapContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulContent,
     let properties: Properties
     var style: Style?
     let layout: DSL.Model.Layout?
-    let actions: [DSL.Model.ActionTrigger: DSL.Model.Action]?
+    let actions: [DSL.Model.ActionTrigger: [DSL.Model.Action]]?
+    let analytics: [DSL.Model.ActionTrigger: DSL.Model.AnalyticsBinding]?
     let defaultStateName: String?
     var states: [String: StateType]?
     let triggers: [DSL.Model.Trigger: String]?
@@ -229,7 +230,7 @@ struct MapContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulContent,
     // MARK: - Decodable
 
     enum CodingKeys: String, CodingKey {
-        case properties, style, layout, actions, defaultStateName, states, triggers, variables, navigationBar, onEvent, children
+        case properties, style, layout, actions, analytics, defaultStateName, states, triggers, variables, navigationBar, onEvent, children
     }
 
     init(from decoder: Decoder) throws {
@@ -240,16 +241,27 @@ struct MapContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulContent,
         layout = try c.decodeIfPresent(DSL.Model.Layout.self, forKey: .layout)
         navigationBar = try c.decodeIfPresent(DSL.Model.NavigationBar.self, forKey: .navigationBar)
 
-        if let rawActions = try c.decodeIfPresent([String: DSL.Model.Action].self, forKey: .actions) {
-            var converted: [DSL.Model.ActionTrigger: DSL.Model.Action] = [:]
+        if let rawActions = try c.decodeIfPresent([String: DSL.Model.ActionList].self, forKey: .actions) {
+            var converted: [DSL.Model.ActionTrigger: [DSL.Model.Action]] = [:]
             for (key, value) in rawActions {
                 if let trigger = DSL.Model.ActionTrigger(rawValue: key) {
-                    converted[trigger] = value
+                    converted[trigger] = value.actions
                 }
             }
             actions = converted.isEmpty ? nil : converted
         } else {
             actions = nil
+        }
+        if let rawAnalytics = try c.decodeIfPresent([String: DSL.Model.AnalyticsBinding].self, forKey: .analytics) {
+            var converted: [DSL.Model.ActionTrigger: DSL.Model.AnalyticsBinding] = [:]
+            for (key, value) in rawAnalytics {
+                if let trigger = DSL.Model.ActionTrigger(rawValue: key) {
+                    converted[trigger] = value
+                }
+            }
+            analytics = converted.isEmpty ? nil : converted
+        } else {
+            analytics = nil
         }
 
         defaultStateName = try c.decodeIfPresent(String.self, forKey: .defaultStateName)

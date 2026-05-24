@@ -48,6 +48,13 @@ final class A8: App8.DebugInstance {
     }
     private let appSubject = CurrentValueSubject<DSL.Model.App?, Never>(nil)
 
+    var eventBus: App8EventBus { context.eventBus }
+    var analyticsBus: App8AnalyticsBus { context.analyticsBus }
+    var analyticsConfig: App8AnalyticsConfig {
+        get { context.analyticsConfig }
+        set { context.analyticsConfig = newValue }
+    }
+
     var logLevel: A8Log.Level {
         get { context.logger.level }
         set { context.logger.level = newValue }

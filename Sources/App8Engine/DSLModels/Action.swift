@@ -70,6 +70,14 @@ extension DSL.Model {
         var url: String?                            // URL to open (supports expressions)
         var urlPresentation: URLPresentation?       // How to present: external (default), sheet, fullScreen
 
+        // Emit (host event bus)
+        /// Event name for `.emit` actions. Convention: dotted lowercase
+        /// (e.g. `connect.tapped`). Host code filters on this.
+        var name: String?
+        /// Payload values support `{{var}}` interpolation in string values;
+        /// non-string scalars pass through unchanged.
+        var payload: [String: AnyCodableValue]?
+
         enum URLPresentation: String, Decodable, Sendable {
             case external   // Default: hand off to system (UIApplication.shared.open) — Safari app, Phone, Mail, etc.
             case sheet      // In-app SFSafariViewController presented as a sheet
@@ -118,6 +126,11 @@ extension DSL.Model {
 
             // URL
             case openURL                  // Open a URL in Safari/system handler
+
+            // Host event bus — engine forwards `name` + `payload` to subscribers
+            // registered via `App8.Instance.subscribe(...)`. The engine itself
+            // does nothing else; the host is expected to handle it.
+            case emit
         }
 
         /// Presentation style for navigation
