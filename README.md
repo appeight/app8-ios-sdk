@@ -91,7 +91,7 @@ and route by `event.name`.
 let eventsSub = instance.subscribe { event in
     switch event.name {
     case "connect.tapped":   startStripeFlow()
-    case "creator.selected": showCreator(named: event.payload["name"] as? String ?? "")
+    case "user.selected":    showProfile(named: event.payload["name"] as? String ?? "")
     default: break
     }
 }
