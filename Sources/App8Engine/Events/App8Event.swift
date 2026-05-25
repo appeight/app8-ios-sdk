@@ -12,7 +12,7 @@ import Foundation
 /// `payload` has been resolved against the component's variable scope.
 public struct App8Event: @unchecked Sendable {
     /// Author-declared event name. Convention: dotted lowercase
-    /// (e.g. `connect.tapped`, `creator.selected`). Free-form — App8 does
+    /// (e.g. `connect.tapped`, `user.selected`). Free-form — App8 does
     /// not reserve any namespace except `app8_*` analytics events (which
     /// flow on a separate bus, see `App8AnalyticsEvent`).
     public let name: String

@@ -26,17 +26,17 @@ func shorthandDecodesNameOnly() throws {
 func fullFormDecodesNameAndProperties() throws {
     let json = """
     {
-        "name": "creatorCardClicked",
+        "name": "userCardClicked",
         "properties": {
-            "creatorName": "{{name}}",
+            "displayName": "{{name}}",
             "followers": 42
         }
     }
     """
     let binding = try decode(json)
-    #expect(binding.name == "creatorCardClicked")
+    #expect(binding.name == "userCardClicked")
     let props = try #require(binding.properties)
-    #expect(props["creatorName"]?.value as? String == "{{name}}")
+    #expect(props["displayName"]?.value as? String == "{{name}}")
     #expect(props["followers"]?.value as? Int == 42)
 }
 

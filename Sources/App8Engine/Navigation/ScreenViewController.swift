@@ -149,7 +149,7 @@ final class ScreenViewController: BaseViewController {
         service: App8Service
     ) {
         guard streamingSession == nil else { return }
-        let updater = ScreenUpdater(container: rootContainerView, initialView: currentView, service: service, context: context)
+        let updater = ScreenUpdater(container: rootContainerView, initialView: currentView, service: service, context: context, requestedScreenId: screenId)
         streamingSession = StreamingSession(
             screenId: screenId,
             component: component,
