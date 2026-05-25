@@ -12,13 +12,21 @@ final class ScreenUpdater {
     private let container: UIView
     private let service: App8Service
     private let context: App8Context
+    /// Alias the host requested when first rendering this screen (i.e. the
+    /// value passed to `App8.Instance.renderScreen(screenId:)` or
+    /// `App8Cloud.Instance.screen(id:)`). Used as the path root on every
+    /// streaming re-render so `event.screenId` stays stable across server
+    /// pushes — even when the DSL document's internal `"id"` changes.
+    /// `nil` only when streaming was started without a known request alias.
+    private let requestedScreenId: String?
     private weak var currentView: UIView?
     private weak var rootCView: CView?
 
-    init(container: UIView, initialView: UIView, service: App8Service, context: App8Context) {
+    init(container: UIView, initialView: UIView, service: App8Service, context: App8Context, requestedScreenId: String? = nil) {
         self.container = container
         self.service = service
         self.context = context
+        self.requestedScreenId = requestedScreenId
         self.currentView = initialView
         self.rootCView = initialView as? CView
     }
@@ -64,18 +72,23 @@ final class ScreenUpdater {
             }
         }
 
+        // Preserve the host's requested alias as the path root across streaming
+        // re-renders — same rule as `App8Service.renderScreenSync`. The DSL
+        // document's internal `"id"` is irrelevant to the host.
+        let screenRootId = requestedScreenId ?? newComponent.id
+
         // Create new CViewModel for the new component
         guard let viewModel = CViewModel(
             component: entity,
             service: service,
-            componentPath: newComponent.id,
+            componentPath: screenRootId,
             parentVariableStore: newStore
         ) else {
             context.logger.error("ScreenUpdater: failed to create CViewModel for '\(newComponent.id)'")
             return nil
         }
 
-        service.componentRegistry.register(id: newComponent.id, viewModel: viewModel)
+        service.componentRegistry.register(id: screenRootId, viewModel: viewModel)
 
         // Resolve new screen background color
         let newBgColor: UIColor?

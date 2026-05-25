@@ -32,7 +32,7 @@ Inside any component's `actions` map, declare a trigger that fires the new `emit
 **Fields.**
 
 - `type`: `"emit"`.
-- `name` *(required)*: dotted lowercase. Convention: `<domain>.<verb>` — `connect.tapped`, `creator.selected`, `payment.started`. Free-form — App8 reserves only the `app8_*` namespace on the analytics bus, never on this bus.
+- `name` *(required)*: dotted lowercase. Convention: `<domain>.<verb>` — `connect.tapped`, `user.selected`, `payment.started`. Free-form — App8 reserves only the `app8_*` namespace on the analytics bus, never on this bus.
 - `payload` *(optional)*: arbitrary JSON object. Values support `{{var}}` interpolation in string positions against the component's variable scope. Other scalars pass through unchanged.
 
 ## Chained actions
@@ -61,8 +61,8 @@ let sub = app8Instance.subscribe { event in
     switch event.name {
     case "connect.tapped":
         startStripeFlow()
-    case "creator.selected":
-        showCreator(named: event.payload["name"] as? String ?? "")
+    case "user.selected":
+        showProfile(named: event.payload["name"] as? String ?? "")
     default:
         break
     }
@@ -73,8 +73,8 @@ let sub = app8Instance.subscribe { event in
 Filter at subscribe-time when you only care about one event or one screen:
 
 ```swift
-app8Instance.subscribe(to: "creator.selected") { event in /* … */ }
-app8Instance.subscribe(onScreen: "demo-main-creators") { event in /* … */ }
+app8Instance.subscribe(to: "user.selected") { event in /* … */ }
+app8Instance.subscribe(onScreen: "demo-main-users") { event in /* … */ }
 ```
 
 ### Combine
@@ -111,7 +111,7 @@ app8Instance.setEventHandler(MyHandler())   // held weakly
 ```swift
 public struct App8Event {
     public let name: String           // "connect.tapped"
-    public let screenId: String       // "demo-main-constraints"
+    public let screenId: String       // the alias YOU requested, see below
     public let componentId: String?   // "connectButton" (JSON leaf id)
     public let componentType: String? // "view"
     public let locale: String?        // "en" / "de-DE" (TranslationStore.activeLocale)
@@ -121,6 +121,23 @@ public struct App8Event {
 ```
 
 `payload` strings are resolved at emit-time against the component's variable scope — by the time the host sees them, `{{name}}` has been replaced with the actual value.
+
+### `screenId` is the alias you requested, not the DSL document's `"id"`
+
+`event.screenId` is **the screen id the host asked for** — the value passed to `App8.Instance.renderScreen(screenId:)` or `App8Cloud.Instance.screen(id:)`. The DSL document's internal `"id"` field (the top-level `"id"` inside the screen JSON) is irrelevant to the host and is **not** what flows through the event bus.
+
+This matters when your DSL document's internal `"id"` differs from the alias under which it's served (typical for cloud-rendered screens: a dashboard alias like `onboarding-intro-v2` may resolve to a DSL whose document `"id"` is `intro-screen-r1`). In that case:
+
+```swift
+let alias = "onboarding-intro-v2"  // alias from Remote Config / your code
+let vc = try await cloudInstance.screen(id: alias, version: nil, parameters: [:])
+
+cloudInstance.subscribe(onScreen: alias) { event in
+    // ✅ Fires — `event.screenId == alias`
+}
+```
+
+The same rule applies to `App8AnalyticsEvent.screenId` ([analytics.md](analytics.md)) and to auto-fired engine events (`app8_screen_appeared`, `app8_component_tapped`, `app8_navigation_pushed`, …).
 
 ## Cloud SDK
 

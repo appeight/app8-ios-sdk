@@ -370,11 +370,18 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         return resolved
     }
 
-    /// Resolve the active screen id this component is rendering inside. Walks
-    /// up via the component-registry parent chain conceptually — but the
-    /// engine uses a flat path where the first segment IS the screen id.
-    /// Returns the first dotted segment of `componentPath`, or the whole
-    /// path when there are no dots.
+    /// Screen id this component is rendering inside, as the host knows it.
+    ///
+    /// The engine uses a flat dotted `componentPath` whose first segment IS
+    /// the screen's identifier. That identifier is the **alias the host
+    /// requested** — the value passed to `App8.Instance.renderScreen(screenId:)`
+    /// or `App8Cloud.Instance.screen(id:)` — NOT the DSL document's internal
+    /// `"id"` (which is irrelevant to the host and is typically a private
+    /// dashboard label). This is the value stamped onto every `App8Event` and
+    /// `App8AnalyticsEvent` so that `subscribe(onScreen: alias)` matches.
+    ///
+    /// Set by `App8Service.renderScreenSync` at render-root construction;
+    /// see `screenRootId` there for the fallback rules.
     fileprivate var screenIdForEvents: String {
         if let dot = componentPath.firstIndex(of: ".") {
             return String(componentPath[..<dot])

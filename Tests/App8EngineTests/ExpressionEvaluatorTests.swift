@@ -622,6 +622,11 @@ final class FormattingFunctionTests: XCTestCase {
         super.setUp()
         parser = ExpressionParser()
         evaluator = ExpressionEvaluator()
+        // Pin the formatter locale so date/number/weekday tests are stable
+        // across simulators. Production code uses `Locale.current` (overridden
+        // by `PropertyResolver` to the active translation locale) — that's
+        // correct for users; tests need a deterministic locale.
+        evaluator.locale = Locale(identifier: "en_US")
         store = VariableStore()
         context = VariableContext(store: store)
     }

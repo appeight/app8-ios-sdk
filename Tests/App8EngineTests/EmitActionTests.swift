@@ -31,9 +31,9 @@ func emitDecodesWithPayload() throws {
     let json = """
     {
         "type": "emit",
-        "name": "creator.selected",
+        "name": "user.selected",
         "payload": {
-            "creatorName": "{{name}}",
+            "displayName": "{{name}}",
             "followers": 1024,
             "verified": true
         }
@@ -41,9 +41,9 @@ func emitDecodesWithPayload() throws {
     """
     let action = try decodeAction(json)
     #expect(action.type == .emit)
-    #expect(action.name == "creator.selected")
+    #expect(action.name == "user.selected")
     let payload = try #require(action.payload)
-    #expect(payload["creatorName"]?.value as? String == "{{name}}")
+    #expect(payload["displayName"]?.value as? String == "{{name}}")
     #expect(payload["followers"]?.value as? Int == 1024)
     #expect(payload["verified"]?.value as? Bool == true)
 }

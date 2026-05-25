@@ -71,9 +71,9 @@ Fires `App8AnalyticsEvent(name: "stripeConnectClicked", properties: [:], ...)`.
 ```json
 "analytics": {
     "tap": {
-        "name": "creatorCardClicked",
+        "name": "userCardClicked",
         "properties": {
-            "creatorName": "{{name}}",
+            "displayName": "{{name}}",
             "followers": "{{followers}}"
         }
     }
@@ -91,12 +91,12 @@ Track which item the user tapped without hand-rolling instrumentation. Inside a 
     "type": "collection",
     "content": {
         "actions": {
-            "onItemTap": { "type": "navigation", "nextScreen": "creator-detail" }
+            "onItemTap": { "type": "navigation", "nextScreen": "user-detail" }
         },
         "analytics": {
             "onItemTap": {
-                "name": "creatorListItemTapped",
-                "properties": { "creatorId": "{{item.id}}", "rank": "{{$index}}" }
+                "name": "userListItemTapped",
+                "properties": { "userId": "{{item.id}}", "rank": "{{$index}}" }
             }
         }
     }
@@ -129,14 +129,14 @@ Static rows in a `tableView` can each carry their own `analytics` binding. The a
 | "Track that this happened, but don't change the app's behavior." | `analytics` binding |
 | Both | Declare both on the same component — they're independent. |
 
-**Naming convention.** Action events use **dotted lowercase** (`connect.tapped`, `creator.selected`) — see [`events.md`](events.md). Analytics events use **camelCase** (`stripeConnectClicked`, `creatorCardClicked`) — matches your existing analytics SDK conventions. The two channels are independent on purpose, so the names can diverge.
+**Naming convention.** Action events use **dotted lowercase** (`connect.tapped`, `user.selected`) — see [`events.md`](events.md). Analytics events use **camelCase** (`stripeConnectClicked`, `userCardClicked`) — matches your existing analytics SDK conventions. The two channels are independent on purpose, so the names can diverge.
 
 ## The event payload
 
 ```swift
 public struct App8AnalyticsEvent {
     public let name: String
-    public let screenId: String?
+    public let screenId: String?       // the alias YOU requested, see below
     public let componentId: String?
     public let componentType: String?
     /// Translation locale active at fire time (e.g. `"en"`, `"de-DE"`).
@@ -147,6 +147,8 @@ public struct App8AnalyticsEvent {
     public let timestamp: Date
 }
 ```
+
+`event.screenId` is **the screen id the host asked for** — the value passed to `App8.Instance.renderScreen(screenId:)` or `App8Cloud.Instance.screen(id:)` — NOT the DSL document's internal `"id"` field. See [events.md](events.md#screenid-is-the-alias-you-requested-not-the-dsl-documents-id) for the full discussion; the rule is identical on both buses.
 
 ## Subscription surfaces
 

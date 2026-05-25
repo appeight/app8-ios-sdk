@@ -194,11 +194,22 @@ extension App8Service: ComponentRenderer, ComponentService {
             }
         }
 
-        guard let viewModel = CViewModel(component: entity, service: self, componentPath: component.id, parentVariableStore: screenVariableStore)
+        // Use the caller-supplied `screenId` (the alias the host passed to
+        // `App8.Instance.renderScreen(screenId:)` or `App8Cloud.Instance.screen(id:)`)
+        // as the path root, NOT the DSL document's internal `"id"`. The host
+        // only knows the alias they requested — that's the value they pass to
+        // `subscribe(onScreen:)` and expect on `event.screenId`. Falls back to
+        // the DSL internal id only for callers that don't supply one (e.g.
+        // `renderScreen(_:params:)` from preview tooling).
+        let screenRootId = screenId ?? component.id
+        if let screenId, screenId != component.id {
+            context.logger.debug("App8Service: screen alias '\(screenId)' differs from DSL document id '\(component.id)' — events will be stamped with the alias.")
+        }
+        guard let viewModel = CViewModel(component: entity, service: self, componentPath: screenRootId, parentVariableStore: screenVariableStore)
         else {
             return renderErrorScreen(errorText: "Precondition failed for screen \(component.id)")
         }
-        componentRegistry.register(id: component.id, viewModel: viewModel)
+        componentRegistry.register(id: screenRootId, viewModel: viewModel)
         viewModel.setComponentTypeKey(DSL.Model.Component.CType.Key.screen.rawValue)
 
         let navigationBar = entity.content.navigationBar
