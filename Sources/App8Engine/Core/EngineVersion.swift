@@ -13,6 +13,6 @@ import Foundation
 /// In a fresh source-tree checkout between releases, this carries the
 /// `"0.0.0-dev"` sentinel — events fired in development carry that string
 /// rather than a stale-but-plausible version number.
-enum EngineVersion {
-    static let current = "0.2.6"
+public enum EngineVersion {
+    public static let current = "0.2.7"
 }
