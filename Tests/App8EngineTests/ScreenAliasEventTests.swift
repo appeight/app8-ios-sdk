@@ -169,11 +169,12 @@ func analyticsEventsCarryRequestedAlias() async throws {
     try #require(buttonVM != nil)
     buttonVM!.executeAction(for: .tap)
 
-    // We expect the auto `app8_component_tapped` plus the author-declared
-    // `stripeConnectClicked`. Both must carry the alias.
+    // We expect the auto `app8.component.tapped` plus the author-declared
+    // `stripeConnectClicked` (auto-prefixed to `app8.stripeConnectClicked`).
+    // Both must carry the alias.
     let names = analyticsEvents.map(\.name)
-    #expect(names.contains("app8_component_tapped"))
-    #expect(names.contains("stripeConnectClicked"))
+    #expect(names.contains(App8AnalyticsEvent.Auto.componentTapped))
+    #expect(names.contains("app8.stripeConnectClicked"))
 
     for event in analyticsEvents {
         #expect(event.screenId == hostAlias, "\(event.name).screenId was '\(event.screenId ?? "nil")', expected '\(hostAlias)'")

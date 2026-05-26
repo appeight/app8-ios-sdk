@@ -56,7 +56,7 @@ public extension App8.Instance {
     // MARK: Analytics events
 
     /// Observe every analytics event — both author-declared and auto-fired
-    /// (`app8_*`). For the canonical "proxy to my analytics SDK" case,
+    /// (`app8.*`). For the canonical "proxy to my analytics SDK" case,
     /// prefer `setAnalyticsHandler(_:)` instead.
     @MainActor
     @discardableResult

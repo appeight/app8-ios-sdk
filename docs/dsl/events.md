@@ -3,7 +3,7 @@
 App8 has two complementary channels for getting information out of a DSL screen and into the host app:
 
 1. **Action events** — sparse, intentional, typed. The DSL author writes `emit` actions; the host registers handlers and routes by `event.name`. Use when you want the host to *do* something in response to a user interaction.
-2. **Analytics events** — dense, observational, named for product tracking. Author-declared via the `analytics` JSON binding, plus auto-fired `app8_*` events the engine emits without authoring. Use for funnels, dashboards, and analytics SDKs. See [`analytics.md`](analytics.md).
+2. **Analytics events** — dense, observational, named for product tracking. Author-declared via the `analytics` JSON binding, plus auto-fired `app8.*` events the engine and cloud SDK emit without authoring. Use for funnels, dashboards, and analytics SDKs. See [`analytics.md`](analytics.md).
 
 This page covers channel 1. Skip to [`analytics.md`](analytics.md) for channel 2.
 
@@ -32,7 +32,7 @@ Inside any component's `actions` map, declare a trigger that fires the new `emit
 **Fields.**
 
 - `type`: `"emit"`.
-- `name` *(required)*: dotted lowercase. Convention: `<domain>.<verb>` — `connect.tapped`, `user.selected`, `payment.started`. Free-form — App8 reserves only the `app8_*` namespace on the analytics bus, never on this bus.
+- `name` *(required)*: dotted lowercase. Convention: `<domain>.<verb>` — `connect.tapped`, `user.selected`, `payment.started`. Free-form — App8 reserves only the `app8.*` namespace on the analytics bus, never on this bus.
 - `payload` *(optional)*: arbitrary JSON object. Values support `{{var}}` interpolation in string positions against the component's variable scope. Other scalars pass through unchanged.
 
 ## Chained actions
@@ -115,12 +115,14 @@ public struct App8Event {
     public let componentId: String?   // "connectButton" (JSON leaf id)
     public let componentType: String? // "view"
     public let locale: String?        // "en" / "de-DE" (TranslationStore.activeLocale)
-    public let payload: [String: Any] // already interpolated
+    public let engineVersion: String  // stamped by the bus — EngineVersion.current
+    public let cloudVersion: String?  // stamped by the bus when cloud SDK is in use
+    public let payload: [String: Any] // already interpolated, exactly as authored
     public let timestamp: Date
 }
 ```
 
-`payload` strings are resolved at emit-time against the component's variable scope — by the time the host sees them, `{{name}}` has been replaced with the actual value.
+`payload` strings are resolved at emit-time against the component's variable scope — by the time the host sees them, `{{name}}` has been replaced with the actual value. **Unlike the analytics bus, the action bus does NOT inject SDK-canonical keys into `payload`** — it's an imperative whose shape is exactly what the DSL author wrote. Read SDK context via the typed fields (`event.engineVersion`, `event.screenId`, `event.locale`).
 
 ### `screenId` is the alias you requested, not the DSL document's `"id"`
 
@@ -137,7 +139,7 @@ cloudInstance.subscribe(onScreen: alias) { event in
 }
 ```
 
-The same rule applies to `App8AnalyticsEvent.screenId` ([analytics.md](analytics.md)) and to auto-fired engine events (`app8_screen_appeared`, `app8_component_tapped`, `app8_navigation_pushed`, …).
+The same rule applies to `App8AnalyticsEvent.screenId` ([analytics.md](analytics.md)) and to auto-fired engine events (`app8.screen.appeared`, `app8.component.tapped`, `app8.navigation.pushed`, …).
 
 ## Cloud SDK
 

@@ -24,7 +24,7 @@ final class ScreenViewController: BaseViewController {
     private var streamingSession: StreamingSession?
 
     /// Wall-clock of the most-recent `viewDidAppear`. Paired with
-    /// `viewDidDisappear` to compute `dwellMs` for `app8_screen_dismissed`.
+    /// `viewDidDisappear` to compute `dwell_ms` for `app8.screen.dismissed`.
     private var appearedAt: Date?
 
     override var hasNavigationBar: Bool {
@@ -91,7 +91,7 @@ final class ScreenViewController: BaseViewController {
         var properties: [String: Any] = [:]
         if let title = navigationBarConfig?.title { properties["title"] = title }
         context.analyticsBus.dispatch(App8AnalyticsEvent(
-            name: "app8_screen_appeared",
+            name: App8AnalyticsEvent.Auto.screenAppeared,
             screenId: screenId,
             componentId: nil,
             componentType: DSL.Model.Component.CType.Key.screen.rawValue,
@@ -115,9 +115,9 @@ final class ScreenViewController: BaseViewController {
         let now = Date()
         appearedAt = nil
         let dwellMs = Int(now.timeIntervalSince(appeared) * 1000)
-        let properties: [String: Any] = ["dwellMs": dwellMs]
+        let properties: [String: Any] = ["dwell_ms": dwellMs]
         context.analyticsBus.dispatch(App8AnalyticsEvent(
-            name: "app8_screen_dismissed",
+            name: App8AnalyticsEvent.Auto.screenDismissed,
             screenId: screenId,
             componentId: nil,
             componentType: DSL.Model.Component.CType.Key.screen.rawValue,
