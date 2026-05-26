@@ -33,7 +33,7 @@ public extension App8 {
         var eventBus: App8EventBus { get }
 
         /// Bus for analytics events — both author-declared and auto-fired
-        /// (`app8_screen_appeared`, `app8_component_tapped`, etc.). Use
+        /// (`app8.screen.appeared`, `app8.component.tapped`, etc.). Use
         /// directly or via the convenience methods (`observeAnalytics(...)`,
         /// `setAnalyticsHandler(_:)`).
         var analyticsBus: App8AnalyticsBus { get }

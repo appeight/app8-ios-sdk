@@ -167,7 +167,7 @@ extension CTableViewView: UITableViewDelegate {
               let row = viewModel.component.sections[safe: indexPath.section]?.rows[safe: indexPath.row]
         else { return }
 
-        // Fire row-anchored analytics (auto `app8_component_tapped` with the
+        // Fire row-anchored analytics (auto `app8.component.tapped` with the
         // row's own id + any author-declared binding) before running actions,
         // so dashboards see the user intent even if a downstream action
         // navigates away.

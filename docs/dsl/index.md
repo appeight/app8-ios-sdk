@@ -166,7 +166,8 @@ See [variables.md](variables.md) for full expression documentation.
 - [variables.md](variables.md) - Variables and expression syntax
 - [actions.md](actions.md) - Actions and event triggers
 - [events.md](events.md) - Host-facing event bus (`.emit` action + subscribe API)
-- [analytics.md](analytics.md) - Analytics bus (auto `app8_*` + author-declared `analytics` binding)
+- [analytics.md](analytics.md) - Analytics bus (auto `app8.*` + author-declared `analytics` binding, SDK auto-prefixed)
+- [analytics-events.spec.md](analytics-events.spec.md) - Canonical registry of every auto-fired event (cross-platform contract)
 - [navigation.md](navigation.md) - Navigation and flow system
 - [collections.md](collections.md) - Lists, grids, and carousels
 - [collections-best-practices.md](collections-best-practices.md) - Layout choice, insets, headers, templates, and common mistakes

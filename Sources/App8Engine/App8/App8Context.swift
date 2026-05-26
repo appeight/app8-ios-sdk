@@ -22,6 +22,15 @@ final class App8Context {
     /// subsequently-fired auto events; in-flight events are unaffected.
     var analyticsConfig: App8AnalyticsConfig = App8AnalyticsConfig()
 
+    /// Names that have already triggered a once-per-instance warning at the
+    /// analytics emit site. Covers both author-event-name collisions (an
+    /// author binding whose name matches a reserved auto-event) and
+    /// author-property-key collisions (a binding whose `properties` writes a
+    /// key in `App8AnalyticsEvent.canonicalKeys`). Read/written from
+    /// `CBaseViewModel`'s `fireTriggerAnalytics` / `fireRowTapAnalytics` —
+    /// the bus stays a dumb pipe and never touches this set.
+    var warnedNames: Set<String> = []
+
     init(
         logger: A8Log = A8Log(),
         appearance: App8Appearance = App8Appearance(),
@@ -48,7 +57,7 @@ extension CodingUserInfoKey {
     /// Inject the context's logger into a `JSONDecoder` via `userInfo` so decode-time
     /// helpers (FailableDecodable, SafeArrayCodable, ColorHex) can log without holding
     /// a context reference. Absent → no-op (safe for tests that decode raw fixtures).
-    static let app8Logger = CodingUserInfoKey(rawValue: "com.app8.engine.logger")!
+    static let app8Logger = CodingUserInfoKey(rawValue: "dev.app8.engine.logger")!
 
     /// Inject an animation pointer resolver. When a screen references a named
     /// animation by `{ "id": "..." }`, the engine sets a closure here so
@@ -56,5 +65,5 @@ extension CodingUserInfoKey {
     /// resolved inline form during decode. Absent → pointer is preserved as
     /// `.pointer(id)` (instantaneous at runtime + warning).
     /// Stored value type: `(String) -> DSL.Model.Animation.Inline?`.
-    static let app8AnimationResolver = CodingUserInfoKey(rawValue: "com.app8.engine.animationResolver")!
+    static let app8AnimationResolver = CodingUserInfoKey(rawValue: "dev.app8.engine.animationResolver")!
 }

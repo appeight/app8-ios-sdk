@@ -79,6 +79,7 @@ func analyticsConfigDefaultsAreAllEnabled() {
     #expect(config.autoComponentTaps == true)
     #expect(config.autoNavigationEvents == true)
     #expect(config.autoUrlEvents == true)
+    #expect(config.autoCloudEvents == true)
 }
 
 @MainActor

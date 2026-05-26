@@ -283,7 +283,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
 
     /// Execute every action declared for `trigger` (in JSON order) and fire
     /// any author-declared analytics for the same trigger. Also auto-fires
-    /// the built-in `app8_component_tapped` analytics event when applicable.
+    /// the built-in `app8.component.tapped` analytics event when applicable.
     func executeAction(for trigger: DSL.Model.ActionTrigger) {
         dispatchTrigger(trigger) { [self] action in executeAction(action) }
     }
@@ -310,22 +310,24 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         let config = service.context.analyticsConfig
         if config.autoComponentTaps {
             service.context.analyticsBus.dispatch(App8AnalyticsEvent(
-                name: "app8_component_tapped",
+                name: App8AnalyticsEvent.Auto.componentTapped,
                 screenId: screenIdForEvents,
                 componentId: rowId,
                 componentType: "tableViewRow",
                 locale: currentLocale,
-                properties: ["componentType": "tableViewRow"]
+                properties: [:]
             ))
         }
         if let binding {
+            let resolved = resolvePayload(binding.properties)
+            checkAuthorPropertyCollisions(resolved, bindingName: binding.name)
             service.context.analyticsBus.dispatch(App8AnalyticsEvent(
-                name: binding.name,
+                name: normalizeAuthorAnalyticsName(binding.name),
                 screenId: screenIdForEvents,
                 componentId: rowId,
                 componentType: "tableViewRow",
                 locale: currentLocale,
-                properties: resolvePayload(binding.properties)
+                properties: resolved
             ))
         }
     }
@@ -396,34 +398,104 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     }
 
     /// Fire any author-declared analytics binding for this trigger, plus the
-    /// engine's auto `app8_component_tapped` event when configured.
+    /// engine's auto `app8.component.tapped` event when configured.
     private func fireTriggerAnalytics(for trigger: DSL.Model.ActionTrigger) {
         let config = service.context.analyticsConfig
 
-        // Auto-fire app8_component_tapped on .tap when enabled.
+        // Auto-fire app8.component.tapped on .tap when enabled.
         if trigger == .tap, config.autoComponentTaps {
-            var properties: [String: Any] = [:]
-            if let type = componentTypeKey { properties["componentType"] = type }
             service.context.analyticsBus.dispatch(App8AnalyticsEvent(
-                name: "app8_component_tapped",
+                name: App8AnalyticsEvent.Auto.componentTapped,
                 screenId: screenIdForEvents,
                 componentId: leafComponentId,
                 componentType: componentTypeKey,
                 locale: currentLocale,
-                properties: properties
+                properties: [:]
             ))
         }
 
         // Author-declared `analytics` binding for this trigger.
         if let binding = component.analytics?[trigger] {
+            let resolved = resolvePayload(binding.properties)
+            checkAuthorPropertyCollisions(resolved, bindingName: binding.name)
             service.context.analyticsBus.dispatch(App8AnalyticsEvent(
-                name: binding.name,
+                name: normalizeAuthorAnalyticsName(binding.name),
                 screenId: screenIdForEvents,
                 componentId: leafComponentId,
                 componentType: componentTypeKey,
                 locale: currentLocale,
-                properties: resolvePayload(binding.properties)
+                properties: resolved
             ))
+        }
+    }
+
+    /// Coerce an author-declared analytics binding name into the canonical
+    /// `app8.<name>` form. Three cases:
+    ///
+    /// - **Already prefixed** (`"app8.foo"`): strip the leading `app8.`,
+    ///   re-prepend, warn once. Idempotent — `"app8.foo"` always lands as
+    ///   `"app8.foo"` regardless of how many times it bounces through here.
+    /// - **Collides with reserved auto-event** (after prefix, e.g.
+    ///   `"screen.appeared"`): dispatch under the canonical name and warn once.
+    /// - **Otherwise** (`"stripeConnectClicked"`): prepend `app8.` →
+    ///   `"app8.stripeConnectClicked"`.
+    ///
+    /// Empty post-strip names fall back to the raw input — defensive guard
+    /// for the pathological `"app8."` case so we never produce an empty name.
+    private func normalizeAuthorAnalyticsName(_ raw: String) -> String {
+        let stripped: String
+        let warnStripped: Bool
+        if raw.hasPrefix("app8.") {
+            stripped = String(raw.dropFirst("app8.".count))
+            warnStripped = true
+        } else {
+            stripped = raw
+            warnStripped = false
+        }
+        // Defensive: an author-supplied `"app8."` strips to empty — keep raw.
+        guard !stripped.isEmpty else {
+            warnOnce(
+                key: "author-name:\(raw)",
+                "analytics binding name '\(raw)' is empty after stripping reserved 'app8.' prefix; dispatching as '\(raw)' unchanged"
+            )
+            return raw
+        }
+        let canonical = "app8.\(stripped)"
+        if warnStripped {
+            warnOnce(
+                key: "author-name:app8-prefix:\(raw)",
+                "analytics binding name '\(raw)' has reserved 'app8.' prefix; SDK strips and re-prepends — dispatching as '\(canonical)'"
+            )
+        }
+        if App8AnalyticsEvent.reservedNames.contains(canonical) {
+            warnOnce(
+                key: "author-name:reserved:\(canonical)",
+                "analytics binding name '\(raw)' (normalised to '\(canonical)') collides with reserved auto-event name; dispatching anyway"
+            )
+        }
+        return canonical
+    }
+
+    /// Warn once per instance if the author-resolved properties dict writes a
+    /// key that the analytics bus will overwrite with SDK-canonical context
+    /// (see `App8AnalyticsEvent.canonicalKeys`). SDK wins; this surfaces the
+    /// silent overwrite so authors can rename their key.
+    private func checkAuthorPropertyCollisions(_ resolved: [String: Any], bindingName: String) {
+        guard !resolved.isEmpty else { return }
+        for key in resolved.keys where App8AnalyticsEvent.canonicalKeys.contains(key) {
+            warnOnce(
+                key: "author-prop:\(bindingName):\(key)",
+                "analytics binding '\(bindingName)' wrote property '\(key)' which is a reserved SDK-canonical key; SDK value will overwrite the author value"
+            )
+        }
+    }
+
+    /// Per-instance dedup wrapper around `logger.warning`. Each unique `key`
+    /// fires exactly one warning across the lifetime of an `App8.Instance` —
+    /// the same colliding binding firing 100 times produces one log line.
+    private func warnOnce(key: String, _ message: @autoclosure () -> String) {
+        if service.context.warnedNames.insert(key).inserted {
+            service.context.logger.warning(message())
         }
     }
 
@@ -582,18 +654,23 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 didPost = true
             }
             if didPost, service.context.analyticsConfig.autoNavigationEvents {
+                // `from_screen_alias` / `to_screen_alias` (not `_id`): these
+                // are the host-facing aliases that DSL/host code passes in,
+                // not the DSL document's internal id. The engine has no
+                // reverse alias→DSL-id map at navigation time and shouldn't
+                // pretend to.
                 var properties: [String: Any] = [
-                    "fromScreenId": screenIdForEvents
+                    "from_screen_alias": screenIdForEvents
                 ]
                 if let nextScreen = action.nextScreen {
-                    properties["toScreenId"] = nextScreen
+                    properties["to_screen_alias"] = nextScreen
                 }
                 if let presentation = action.presentation {
                     properties["presentation"] = presentation.rawValue
                 }
-                if action.isBack == true { properties["isBack"] = true }
+                if action.isBack == true { properties["is_back"] = true }
                 service.context.analyticsBus.dispatch(App8AnalyticsEvent(
-                    name: "app8_navigation_pushed",
+                    name: App8AnalyticsEvent.Auto.navigationPushed,
                     screenId: screenIdForEvents,
                     componentId: leafComponentId,
                     componentType: componentTypeKey,
@@ -684,7 +761,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 let resolved = resolvePropertyToString(urlString)
                 if service.context.analyticsConfig.autoUrlEvents {
                     service.context.analyticsBus.dispatch(App8AnalyticsEvent(
-                        name: "app8_url_opened",
+                        name: App8AnalyticsEvent.Auto.urlOpened,
                         screenId: screenIdForEvents,
                         componentId: leafComponentId,
                         componentType: componentTypeKey,

@@ -96,14 +96,22 @@ let eventsSub = instance.subscribe { event in
     }
 }
 
-// Analytics events — both author-declared and auto-fired `app8_*` lifecycle
+// Analytics events — both author-declared and auto-fired `app8.*` lifecycle
 // events. Typical wiring: one handler that proxies to Mixpanel / Amplitude / Segment.
+// `event.properties` is the canonical, fully-merged payload — forward it as-is.
+final class MyAnalyticsAdapter: App8AnalyticsHandler {
+    func app8DidTrack(_ event: App8AnalyticsEvent) {
+        Mixpanel.track(event.name, properties: event.properties)
+    }
+}
 instance.setAnalyticsHandler(MyAnalyticsAdapter())
 ```
 
-Every event carries `screenId`, `componentId`, `componentType`, and `locale`
-(the active translation locale) so dashboards can slice by language and screen
-without extra payload plumbing. See [`docs/dsl/events.md`](docs/dsl/events.md)
+Every event carries `screenId`, `componentId`, `componentType`, `locale`,
+`engineVersion`, and `cloudVersion` (when the cloud SDK is in use). The
+analytics bus merges those into `event.properties` using stable snake_case
+keys (`screen_id`, `engine_version`, etc.) — host integration is a one-liner,
+no per-customer key-name drift. See [`docs/dsl/events.md`](docs/dsl/events.md)
 and [`docs/dsl/analytics.md`](docs/dsl/analytics.md) for the full surface.
 
 ## The App8 DSL
