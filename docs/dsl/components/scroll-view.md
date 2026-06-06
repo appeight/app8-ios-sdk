@@ -10,6 +10,8 @@ Scrollable container.
 | `properties.showsIndicator` | boolean | true | Show scroll indicator |
 | `properties.outputVariable` | string | | Variable to write scroll offset to (0 at rest, positive when scrolled) |
 | `properties.contentInsetAdjustment` | ContentInsetAdjustment | `automatic` | How iOS adjusts content insets for safe areas |
+| `properties.contentInset` | EdgeInsets | | Explicit padding around the scroll content |
+| `properties.autoScroll` | AutoScroll | | Continuous auto-scroll / marquee — see [Auto-scroll](#auto-scroll) |
 | `children` | Component[] | | Content components |
 | `style` | ScrollViewStyle | | Styling |
 | `layout` | Layout | | Position and size |
@@ -36,6 +38,30 @@ When set, the variable receives the current scroll offset as a number:
 - Positive when scrolled — e.g., `120` means 120pt scrolled from the top
 
 Use this to drive animations (parallax, sticky headers, fading nav bars, etc.) via expressions.
+
+## Auto-scroll
+
+`autoScroll` drives the content offset every frame for marquee/ticker effects (scrolling banners, "now playing" strips, logo reels). Pair it with `direction: "horizontal"` for a classic marquee.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `speed` | number | | Points per second along the scroll axis. Positive scrolls toward the trailing edge (right/down); negative reverses |
+| `infinite` | boolean | `true` | Duplicate the content so the loop wraps seamlessly. `false` = one-shot, stops at the trailing edge |
+| `loopGap` | number | `0` | Gap (points) inserted between the original content and its duplicate — match your item spacing so the wrap looks even |
+
+```json
+{
+  "type": "scrollView",
+  "content": {
+    "properties": {
+      "direction": "horizontal",
+      "showsIndicator": false,
+      "autoScroll": { "speed": 30, "infinite": true, "loopGap": 30 }
+    },
+    "children": []
+  }
+}
+```
 
 ## Style: ScrollViewStyle
 

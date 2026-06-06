@@ -153,12 +153,16 @@ Expressions use `{{...}}` syntax.
 
 | Operator | Description | Example |
 |----------|-------------|---------|
-| `==` | Equal | `{{status == 'active'}}` |
-| `!=` | Not equal | `{{type != 'hidden'}}` |
+| `==` | Equal (loose — `5 == '5'` is true) | `{{status == 'active'}}` |
+| `!=` | Not equal (loose) | `{{type != 'hidden'}}` |
+| `===` | Strictly equal (same type **and** value) | `{{count === 0}}` |
+| `!==` | Strictly not equal | `{{value !== null}}` |
 | `<` | Less than | `{{count < 10}}` |
 | `>` | Greater than | `{{count > 0}}` |
 | `<=` | Less or equal | `{{age <= 18}}` |
 | `>=` | Greater or equal | `{{score >= 50}}` |
+
+> **Loose vs. strict**: `==` coerces types before comparing (`5 == "5"` → true), which is convenient for values that arrive as strings. `===` requires the same underlying type (`5 === "5"` → false). Reach for `===`/`!==` when a type distinction is meaningful.
 
 ```json
 "isEnabled": "{{count > 0}}"
@@ -200,16 +204,33 @@ Expressions use `{{...}}` syntax.
 
 ### String Functions
 
-| Function | Description | Example |
-|----------|-------------|---------|
-| `length` | String length | `{{name.length}}` |
-| `toUpperCase()` | Uppercase | `{{name.toUpperCase()}}` |
-| `toLowerCase()` | Lowercase | `{{name.toLowerCase()}}` |
+| Function | Description | Example | Result |
+|----------|-------------|---------|--------|
+| `length` | String length (property form) | `{{name.length}}` | `5` |
+| `uppercase(s)` | Uppercase | `{{uppercase(name)}}` | `"ADA"` |
+| `lowercase(s)` | Lowercase | `{{lowercase(name)}}` | `"ada"` |
+| `trim(s)` | Strip leading/trailing whitespace | `{{trim(input)}}` | `"hi"` |
+| `replace(s, from, to)` | Replace all occurrences | `{{replace(phone, '-', '')}}` | `"5551234"` |
+| `split(s, sep)` | Split into an array (empty `sep` → characters) | `{{split(csv, ',')}}` | `["a","b"]` |
+| `substring(s, start)` | Substring from `start` to end | `{{substring(code, 2)}}` | |
+| `substring(s, start, len)` | Substring of length `len` | `{{substring(code, 0, 4)}}` | |
+| `startsWith(s, prefix)` | Prefix test | `{{startsWith(url, 'https')}}` | `true` |
+| `endsWith(s, suffix)` | Suffix test | `{{endsWith(file, '.png')}}` | `true` |
+| `includes(s, search)` | Substring test (empty `search` → true) | `{{includes(name, query)}}` | `true` |
+| `match(s, pattern)` | Regex test (returns boolean) | `{{match(email, '^[^@]+@[^@]+$')}}` | `true` |
 
 ```json
 "isEmpty": "{{email.length == 0}}"
-"display": "{{name.toUpperCase()}}"
+"display": "{{uppercase(name)}}"
+"clean": "{{trim(replace(phone, '-', ''))}}"
+"isImage": "{{endsWith(lowercase(fileName), '.png')}}"
 ```
+
+> **Function form only**: case conversion is `uppercase(name)` / `lowercase(name)` — the JavaScript-style method forms `name.toUpperCase()` / `name.toLowerCase()` are **not** supported. (`.length` is the one property-style accessor.)
+
+> **Live search**: `includes(name, query)` returns `true` when `query` is empty, so a filter expression like `{{filter(items, includes(lowercase(item.name), lowercase(query)))}}` shows everything until the user starts typing.
+
+> **`match()` & regex safety**: `match` returns a boolean (not the matched text). Patterns are bounded in length and screened for catastrophic-backtracking shapes (e.g. `(a+)+`) — a rejected or non-matching pattern simply returns `false`.
 
 ### Array Functions
 
@@ -223,11 +244,24 @@ Expressions use `{{...}}` syntax.
 | `find(array, predicate)` | First match or nil | `{{find(items, item.id == selectedId)}}` |
 | `first(array)` | First element or nil | `{{first(items)}}` |
 | `first(array, predicate)` | First matching element or nil | `{{first(items, item.done == false)}}` |
+| `last(array)` | Last element or nil | `{{last(items)}}` |
+| `last(array, predicate)` | Last matching element or nil | `{{last(items, item.done == false)}}` |
+| `sort(array)` | Sorted ascending (numbers numerically, strings lexically) | `{{sort(scores)}}` |
+| `sort(array, ascending)` | Sorted; pass `false` for descending | `{{sort(scores, false)}}` |
+| `reverse(array)` | Reversed copy | `{{reverse(items)}}` |
+| `slice(array, start)` | Sub-array from `start` to end | `{{slice(items, 1)}}` |
+| `slice(array, start, end)` | Sub-array `[start, end)` | `{{slice(items, 0, 3)}}` |
+| `concat(a, b, …)` | Concatenate two or more arrays | `{{concat(pinned, others)}}` |
+| `join(array, separator)` | Join elements into a string | `{{join(tags, ', ')}}` |
 
 ```json
 "count": "{{items.length}}"
 "hasItem": "{{selectedIds.includes(item.id)}}"
+"topThree": "{{slice(sort(scores, false), 0, 3)}}"
+"tagLine": "{{join(item.tags, ' · ')}}"
 ```
+
+> **Non-mutating**: `sort`, `reverse`, `slice`, and `concat` return new arrays — they never modify the source variable. Use them freely inside computed variables and `data` bindings.
 
 ### Higher-Order Array Functions
 
@@ -375,6 +409,21 @@ Use these to convert raw data values into human-readable display strings.
 "text": "{{plural(cartItems.length, 'item', 'items')}}"
 "text": "{{plural(remaining, 'card left', 'cards left')}}"
 ```
+
+#### Translation
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `i18n(key)` | Look up a translation for the active locale | `{{i18n('cart.title')}}` |
+
+`i18n(key)` resolves `key` against the loaded translation bundle for the current locale, returning the key itself on a miss. Use it when translated text is computed or combined with variables. For static translatable text, prefer the `{"$i18n": "key"}` marker. Both are covered in [localization.md](localization.md).
+
+```json
+"text": "{{i18n(item.statusKey)}}"
+"text": "{{count}} {{i18n(count == 1 ? 'unit.item' : 'unit.items')}}"
+```
+
+> Date, number, and currency formatters (`formatDate`, `formatCurrency`, `formatNumber`) also follow the active locale automatically — see [localization.md](localization.md).
 
 ---
 
@@ -544,7 +593,9 @@ Parameters are available as regular variables:
 
 **Binding** creates a two-way reactive link between a UI input component and a named variable. When the user types, the variable updates. When the variable changes via an action, the field updates.
 
-### `bindVariable` (textField, textView)
+### `bindVariable` (input components)
+
+`bindVariable` works the same way across every input component — [textField](components/text-field.md), [textView](components/text-view.md), [toggle](components/toggle.md), [slider](components/slider.md), [picker](components/picker.md), [datePicker](components/date-picker.md), and [pageControl](components/page-control.md). Each binds its natural type (string, boolean, number, or ISO-date string). See [forms.md](forms.md) for putting them together.
 
 Set `bindVariable` to the **variable name** — no `{{}}` braces.
 

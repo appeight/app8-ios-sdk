@@ -32,8 +32,7 @@ Interactive tappable component.
   "type": "button",
   "content": {
     "properties": {
-      "text": "Sign In",
-      "isEnabled": "{{email.length > 0 && password.length > 0}}"
+      "text": "Sign In"
     },
     "style": {
       "material": [
