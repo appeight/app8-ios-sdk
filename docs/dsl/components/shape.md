@@ -6,7 +6,7 @@ Renders geometric shapes: arc progress rings, horizontal progress bars, filled/s
 
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
-| `kind` | string | Yes | Shape kind: `arc`, `bar`, `circle`, `line` |
+| `kind` | string | Yes | Shape kind: `arc`, `bar`, `circle`, `line`, `polyline` |
 | `progress` | string | No | Variable expression `"{{var}}"` — maps 0.0–1.0 (clamped). **Must be a variable expression, not a literal string.** |
 | `startAngle` | number | No | Arc start angle in degrees. `-90` = 12 o'clock (top). Default: `-90` |
 | `lineWidth` | number | No | Stroke width in points. Default: `8` |
@@ -17,6 +17,9 @@ Renders geometric shapes: arc progress rings, horizontal progress bars, filled/s
 | `fillColor` | string | No | Hex fill color for `circle` kind (solid fill inside the path) |
 | `animationDuration` | number | No | Seconds to animate progress changes. Default: `0.4` |
 | `animationCurve` | string | No | Timing curve: `easeOut` (default), `easeIn`, `easeInOut`, `linear` |
+| `points` | Point[] | No | Vertices for `polyline` kind — see [Polyline](#polyline) |
+| `smooth` | boolean | No | `polyline`: smooth the path with Catmull-Rom interpolation |
+| `closed` | boolean | No | `polyline`: close the path back to the first point |
 | `hidden` | boolean/expression | No | Hide component |
 
 ## Kind Reference
@@ -27,6 +30,38 @@ Renders geometric shapes: arc progress rings, horizontal progress bars, filled/s
 | `bar` | Horizontal progress bar | `progress`, `lineWidth`, `lineCap`, `strokeColor`, `trackColor` |
 | `circle` | Solid fill or partial stroke circle | `fillColor` for solid; `strokeColor` + `progress` for partial stroke |
 | `line` | Straight horizontal divider | `lineWidth`, `lineCap`, `strokeColor` |
+| `polyline` | Connected path through points (sparklines, charts) | `points`, `smooth`, `closed`, `lineWidth`, `strokeColor`, `fillColor` |
+
+## Polyline
+
+A `polyline` draws a stroked path through `points`. Each point's `x`/`y` is `0..1` normalized to the shape's bounds, or `>1` for an absolute point value. Set `smooth` for a curved line and `closed` to close the path (with `fillColor`, makes a filled area).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `x` | string | X: `0..1` normalized, or `>1` absolute. Literal or `"{{expr}}"` |
+| `y` | string | Y: `0..1` normalized, or `>1` absolute. Literal or `"{{expr}}"` |
+
+```json
+{
+  "type": "shape",
+  "content": {
+    "properties": {
+      "kind": "polyline",
+      "smooth": true,
+      "strokeColor": "#34C759",
+      "lineWidth": 2,
+      "points": [
+        { "x": "0", "y": "0.8" },
+        { "x": "0.25", "y": "0.4" },
+        { "x": "0.5", "y": "0.6" },
+        { "x": "0.75", "y": "0.2" },
+        { "x": "1", "y": "0.5" }
+      ]
+    },
+    "layout": { "leading": 20, "trailing": 20, "height": 60 }
+  }
+}
+```
 
 ## ⚠️ Progress Must Use Variables
 

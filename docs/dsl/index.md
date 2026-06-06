@@ -87,22 +87,52 @@ A minimal app with one screen and a button:
 
 ## Component Types
 
+**Layout & containers**
+
 | Type | Description | See |
 |------|-------------|-----|
 | `screen` | Top-level screen container | [components/screen.md](components/screen.md) |
 | `view` | General-purpose container | [components/view.md](components/view.md) |
+| `stackView` | Linear layout container | [components/stack-view.md](components/stack-view.md) |
+| `scrollView` | Scrollable container | [components/scroll-view.md](components/scroll-view.md) |
+| `tabBarScreen` | Tab-based navigation | [components/tab-bar-screen.md](components/tab-bar-screen.md) |
+
+**Content & display**
+
+| Type | Description | See |
+|------|-------------|-----|
 | `label` | Text display | [components/label.md](components/label.md) |
 | `button` | Interactive button | [components/button.md](components/button.md) |
 | `image` | Image display | [components/image.md](components/image.md) |
-| `icon` | SF Symbol display | [components/icon.md](components/icon.md) |
+| `icon` | SF Symbol, asset, or remote icon | [components/icon.md](components/icon.md) |
+| `map` | Interactive map with annotations and routing | [components/map.md](components/map.md) |
+| `shape` | Arc rings, bars, circles, dividers | [components/shape.md](components/shape.md) |
+
+**Lists**
+
+| Type | Description | See |
+|------|-------------|-----|
+| `collection` | Data-driven lists, grids, carousels | [collections.md](collections.md) |
+| `tableView` | Static grouped/settings lists | [components/table-view.md](components/table-view.md) |
+
+**Inputs** — see [forms.md](forms.md) for putting these together
+
+| Type | Description | See |
+|------|-------------|-----|
 | `textField` | Single-line text input | [components/text-field.md](components/text-field.md) |
 | `textView` | Multi-line text input | [components/text-view.md](components/text-view.md) |
-| `scrollView` | Scrollable container | [components/scroll-view.md](components/scroll-view.md) |
-| `tabBarScreen` | Tab-based navigation | [components/tab-bar-screen.md](components/tab-bar-screen.md) |
-| `collection` | Lists, grids, carousels | [collections.md](collections.md) |
-| `stackView` | Linear layout container | [components/stack-view.md](components/stack-view.md) |
-| `map`       | Interactive map with annotations and routing | [components/map.md](components/map.md) |
-| `shape`     | Arc rings, bars, circles, dividers | [components/shape.md](components/shape.md) |
+| `toggle` | On/off switch | [components/toggle.md](components/toggle.md) |
+| `slider` | Numeric slider | [components/slider.md](components/slider.md) |
+| `picker` | Single-choice menu / segmented control | [components/picker.md](components/picker.md) |
+| `datePicker` | Date / time selector | [components/date-picker.md](components/date-picker.md) |
+
+**Feedback & loading**
+
+| Type | Description | See |
+|------|-------------|-----|
+| `activityIndicator` | Spinner for indeterminate waits | [components/activity-indicator.md](components/activity-indicator.md) |
+| `shimmer` | Skeleton loading placeholder | [components/shimmer.md](components/shimmer.md) |
+| `pageControl` | Page-indicator dots | [components/page-control.md](components/page-control.md) |
 
 ## Style Types
 
@@ -115,7 +145,7 @@ A minimal app with one screen and a button:
 | `shadow` | Drop shadow | [styles.md](styles.md#shadow) |
 | `corner` | Corner radius | [styles.md](styles.md#corner) |
 | `visualEffect` | Blur effects | [styles.md](styles.md#visualeffect) |
-| `text` | Typography styling | [styles.md](styles.md#text) |
+| `text` | Typography styling | [styles.md](styles.md#text-textmodel) |
 | `transform` | View transformations | [styles.md](styles.md#transform) |
 
 ## Action Types
@@ -160,17 +190,28 @@ See [variables.md](variables.md) for full expression documentation.
 
 ## Documentation Index
 
+**Core reference**
+
 - [components.md](components.md) - All component types and properties
-- [styles.md](styles.md) - Style system (colors, materials, text, etc.)
+- [styles.md](styles.md) - Style system (colors, materials, text, content modes, etc.)
 - [layout.md](layout.md) - Layout and constraint system
 - [variables.md](variables.md) - Variables and expression syntax
 - [actions.md](actions.md) - Actions and event triggers
-- [events.md](events.md) - Host-facing event bus (`.emit` action + subscribe API)
-- [analytics.md](analytics.md) - Analytics bus (auto `app8.*` + author-declared `analytics` binding, SDK auto-prefixed)
-- [analytics-events.spec.md](analytics-events.spec.md) - Canonical registry of every auto-fired event (cross-platform contract)
 - [navigation.md](navigation.md) - Navigation and flow system
+
+**Building interfaces**
+
+- [forms.md](forms.md) - Inputs, two-way binding, validation, and loading states
 - [collections.md](collections.md) - Lists, grids, and carousels
 - [collections-best-practices.md](collections-best-practices.md) - Layout choice, insets, headers, templates, and common mistakes
 - [states.md](states.md) - Component states and animations
 - [animations.md](animations.md) - Animation primitive (timing, springs, registry, per-property)
 - [templates.md](templates.md) - Reusable component templates
+- [localization.md](localization.md) - Translations, the `$i18n` marker, locale fallback
+
+**Host & analytics**
+
+- [host-integration.md](host-integration.md) - Data sources, datasources, assets, streaming, and event wiring
+- [events.md](events.md) - Host-facing event bus (`.emit` action + subscribe API)
+- [analytics.md](analytics.md) - Analytics bus (auto `app8.*` + author-declared `analytics` binding, SDK auto-prefixed)
+- [analytics-events.spec.md](analytics-events.spec.md) - Canonical registry of every auto-fired event (cross-platform contract)

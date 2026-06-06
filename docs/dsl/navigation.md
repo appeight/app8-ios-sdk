@@ -212,6 +212,18 @@ Smaller modal, optimized for iPad. Centered with backdrop.
 }
 ```
 
+### Cross Dissolve
+
+Full screen modal that fades in instead of sliding up. Good for splash-style transitions and image lightboxes.
+
+```json
+{
+  "type": "navigation",
+  "nextScreen": "photoViewer",
+  "presentation": "crossDissolve"
+}
+```
+
 ---
 
 ## Navigation Bar
