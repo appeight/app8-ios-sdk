@@ -32,6 +32,8 @@ General-purpose container for grouping and layout.
 | `scaleAspectFill` | Fill maintaining aspect ratio |
 | `center` | Center without scaling |
 
+See [styles.md → ContentMode Values](../styles.md#contentmode-values) for the full list (edge and corner alignments).
+
 ## Example
 
 ```json
