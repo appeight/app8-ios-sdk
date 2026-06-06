@@ -20,9 +20,13 @@ Interactive map view backed by `MKMapView`. Supports static and dynamic annotati
 | `properties.routeFrom` | object or expression | none | Start coordinate for directions |
 | `properties.routeTo` | object or expression | none | End coordinate for directions |
 | `properties.routeTransportType` | string | `"automobile"` | `"automobile"`, `"walking"`, `"transit"` |
+| `properties.polyline` | Coordinate[] or expression | none | Draw a line directly — array of `{ "latitude", "longitude" }` or `"{{coordsVar}}"` |
+| `properties.polylineFollowsRoads` | boolean | `false` | Treat `polyline` points as via-points and snap the line to real roads (via MKDirections) |
+| `properties.viewportInsets` | EdgeInsets | none | Padding reserved at each map edge when auto-fitting to a polyline/annotations |
 | `properties.regionBinding` | string | none | Expression variable to write current map region into, e.g. `"{{mapRegion}}"` |
 | `properties.selectedAnnotationBinding` | string | none | Expression variable to write selected annotation ID into |
 | `properties.userLocationBinding` | string | none | Expression variable to write user coordinate into |
+| `properties.routeStatusBinding` | string | none | Expression variable that receives `"ok"` or `"error"` after a directions request |
 | `hidden` | boolean/expression | none | Hide component |
 
 ## Annotation Object

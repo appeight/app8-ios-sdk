@@ -607,6 +607,28 @@ View transformations.
 | `contentMode` | ContentMode |
 | `transform` | Transform |
 
+### ContentMode Values
+
+How a view positions or scales its content within its bounds. Available on `view`, `image`, `icon`, and most other component styles.
+
+| Value | Behavior |
+|-------|----------|
+| `scaleToFill` | Stretch to fill, ignoring aspect ratio |
+| `scaleAspectFit` | Scale to fit, preserving aspect ratio (may letterbox) |
+| `scaleAspectFill` | Scale to fill, preserving aspect ratio (may crop) |
+| `redraw` | Redraw on bounds change |
+| `center` | Center, no scaling |
+| `top` | Pin to top |
+| `bottom` | Pin to bottom |
+| `left` | Pin to left |
+| `right` | Pin to right |
+| `topLeft` | Pin to top-left |
+| `topRight` | Pin to top-right |
+| `bottomLeft` | Pin to bottom-left |
+| `bottomRight` | Pin to bottom-right |
+
+> For images, `scaleAspectFill` (fill + crop) and `scaleAspectFit` (fit + letterbox) are the two you'll reach for most.
+
 ### LabelStyle
 
 | Property | Type |
@@ -677,6 +699,74 @@ View transformations.
 | `padding` | EdgeInsets |
 | `material` | Material |
 | `alpha` | number |
+
+> Every component style below also accepts the shared `contentMode`, `alpha`, and `transform` fields (omitted from the per-component tables for brevity).
+
+### ToggleStyle
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `onTintColor` | Color | Track color when on |
+| `thumbTintColor` | Color | Thumb color |
+| `material` | Material | Background |
+| `alpha` | number | Opacity |
+
+See [components/toggle.md](components/toggle.md).
+
+### SliderStyle
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `minimumTrackTintColor` | Color | Filled track |
+| `maximumTrackTintColor` | Color | Unfilled track |
+| `thumbTintColor` | Color | Thumb color |
+| `material` | Material | Background |
+| `alpha` | number | Opacity |
+
+See [components/slider.md](components/slider.md).
+
+### PickerStyle
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `text` | TextModel | Menu-mode label text |
+| `selectedSegmentTintColor` | Color | Selected segment (segmented mode) |
+| `material` | Material | Background |
+| `alpha` | number | Opacity |
+
+See [components/picker.md](components/picker.md).
+
+### DatePickerStyle
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `tintColor` | Color | Accent color for controls |
+| `material` | Material | Background |
+| `alpha` | number | Opacity |
+
+See [components/date-picker.md](components/date-picker.md).
+
+### PageControlStyle
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `pageIndicatorTintColor` | Color | Inactive dot color |
+| `currentPageIndicatorTintColor` | Color | Active dot color |
+| `material` | Material | Background |
+| `alpha` | number | Opacity |
+
+See [components/page-control.md](components/page-control.md).
+
+### ActivityIndicatorStyle
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `indicatorStyle` | `medium` \| `large` | Spinner size |
+| `color` | Color (hex) | Spinner tint |
+| `material` | Material | Background |
+| `alpha` | number | Opacity |
+
+See [components/activity-indicator.md](components/activity-indicator.md).
 
 ---
 

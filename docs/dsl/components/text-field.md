@@ -7,15 +7,29 @@ Single-line text input.
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `properties.placeholder` | string | | Placeholder text |
+| `properties.text` | string/expression | | Initial/current text (use `bindVariable` for two-way sync) |
 | `properties.bindVariable` | string | | Variable for two-way binding |
 | `properties.keyboardType` | KeyboardType | `default` | Keyboard type |
 | `properties.textContentType` | TextContentType | | Autofill hint |
 | `properties.returnKeyType` | ReturnKeyType | `default` | Return key label |
 | `properties.isSecure` | boolean | false | Password field |
+| `properties.isEnabled` | boolean | true | Whether the field is editable |
 | `properties.autocapitalization` | Autocap | `sentences` | Auto-capitalization |
 | `properties.autocorrection` | boolean | true | Auto-correction |
 | `properties.maxLength` | number | | Max character count |
+| `properties.inputMask` | string | | Regex pattern the input must match to be accepted |
+| `properties.allowedCharacters` | string | | Regex pattern; characters outside it are rejected |
+| `properties.clearButtonMode` | ClearButtonMode | `never` | When the clear (✕) button shows |
 | `hidden` | boolean/expression | | Hide component |
+
+## ClearButtonMode Values
+
+| Value | Clear button shows |
+|-------|--------------------|
+| `never` | Never (default) |
+| `whileEditing` | Only while editing |
+| `unlessEditing` | Only when not editing |
+| `always` | Always (when there is text) |
 
 ## KeyboardType Values
 

@@ -77,6 +77,7 @@ A trigger may also list **multiple actions** to run in JSON order:
 | `fullScreen` | Full screen modal |
 | `formSheet` | Smaller modal (iPad-optimized) |
 | `pageSheet` | Page sheet modal |
+| `crossDissolve` | Full screen modal with a fade transition |
 
 ### Examples
 
@@ -394,7 +395,7 @@ Open a URL. `url` supports expressions.
 
 ### Execute Backend Function
 
-Call a function defined in the app's backend.
+Invoke a named function by reference.
 
 ```json
 {
@@ -411,6 +412,8 @@ Call a function defined in the app's backend.
 |----------|------|-------------|
 | `function` | string | Function name |
 | `params` | object | Parameters to pass |
+
+> **Engine support**: `executeFunction` is a **no-op in the core engine** — it is reserved for higher-level delivery SDKs (e.g. the cloud SDK) that wire function names to real handlers. If you only use App8Engine directly, this action does nothing. **To trigger host-side logic, use [`emit`](events.md)** — it dispatches a typed event to the host event bus, which is the supported integration point. See [host-integration.md](host-integration.md).
 
 ---
 
