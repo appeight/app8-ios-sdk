@@ -26,9 +26,8 @@ public final class A8Log: @unchecked Sendable {
 
     public init() {}
 
-    // NSLog (not print) so engine logs surface in the same place as host NSLog
-    // output — visible in the Xcode console AND Console.app. `print` only reaches
-    // the Xcode debug console, which made these logs invisible to some hosts.
+    // NSLog (not print) so engine logs reach Console.app too — `print` only hits
+    // the Xcode debug console, which made these invisible to some hosts.
     func debug(_ message: @autoclosure () -> String) {
         guard level == .debug else { return }
         NSLog("[App8Engine] %@", message())

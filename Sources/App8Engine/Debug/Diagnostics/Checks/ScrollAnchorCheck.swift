@@ -1,16 +1,10 @@
 import Foundation
 
-/// Flags `scrollView` components whose content doesn't establish a size along
-/// the scroll axis — the canonical "looks right, won't respond" scroll bug.
-///
-/// A vertical scroll view needs some direct child to pin its BOTTOM to the
-/// content (`{ "type": "bottom", "target": "superview" }`); a horizontal one
-/// needs a TRAILING pin. Without it, the engine's scroll content view collapses
-/// to zero on the scroll axis. The children still *draw* (so the screen looks
-/// correct), but they fall OUTSIDE the content view's bounds — so UIKit
-/// `hitTest` never lands on them and taps/scrolls silently do nothing.
-///
-/// Operates on raw screen JSON, independent of the typed models.
+/// Flags `scrollView` components whose content doesn't pin its bottom (vertical)
+/// or trailing (horizontal) edge to `superview` — the scroll content view then
+/// collapses on the scroll axis, so children draw but fall outside its bounds
+/// and silently won't scroll or receive taps. The warning's message string
+/// carries the full rationale. Operates on raw screen JSON.
 enum ScrollAnchorCheck {
 
     typealias EC = App8.DiagnosticReport.ErrorCode
