@@ -65,13 +65,13 @@ extension App8 {
         @MainActor func runDiagnostics(options: DiagnosticOptions) async -> DiagnosticReport
 
         // Validate by ID (uses DataSource internally)
-        func validate(screenId: String, options: ValidationOptions) async throws -> ValidationResult
+        @MainActor func validate(screenId: String, options: ValidationOptions) async throws -> ValidationResult
         func validate(componentId: String, options: ValidationOptions) async throws -> ValidationResult
         func validateStyles(options: ValidationOptions) async throws -> ValidationResult
 
         // Validate by Data
         func validate(appData: Data, options: ValidationOptions) async throws -> ValidationResult
-        func validate(screenData: Data, options: ValidationOptions) async throws -> ValidationResult
+        @MainActor func validate(screenData: Data, options: ValidationOptions) async throws -> ValidationResult
         func validate(componentData: Data, options: ValidationOptions) async throws -> ValidationResult
         func validate(stylesData: [Data], options: ValidationOptions) async throws -> ValidationResult
 
@@ -219,8 +219,18 @@ extension App8 {
 
         // MARK: - Validate by ID
 
+        @MainActor
         func validate(screenId: String, options: ValidationOptions) async throws -> ValidationResult {
-            throw App8.Error.notImplemented("validate(screenId:options:)")
+            guard let dataSource = appInstance.dataSource else {
+                throw App8.Error.dataSourceDeallocated
+            }
+            let screenData = try await dataSource.getScreen(screenId: screenId)
+            let templateResolver = try? await fetchAndResolveTemplates()
+            return validateScreen(
+                screenData: screenData,
+                screenId: screenId,
+                templateResolver: templateResolver
+            )
         }
 
         func validate(componentId: String, options: ValidationOptions) async throws -> ValidationResult {
@@ -237,8 +247,66 @@ extension App8 {
             throw App8.Error.notImplemented("validate(appData:options:)")
         }
 
+        @MainActor
         func validate(screenData: Data, options: ValidationOptions) async throws -> ValidationResult {
-            throw App8.Error.notImplemented("validate(screenData:options:)")
+            // Best-effort template resolution; raw screen still validates without it.
+            let templateResolver = try? await fetchAndResolveTemplates()
+            return validateScreen(
+                screenData: screenData,
+                screenId: nil,
+                templateResolver: templateResolver
+            )
+        }
+
+        /// Shared screen validation: a typed decode (structural errors with the
+        /// JSON coding path) plus the variable-write lint (`ActionWriteCheck`).
+        /// Pure/synchronous so both `validate(screenId:)` and
+        /// `validate(screenData:)` reuse it after resolving inputs.
+        private func validateScreen(
+            screenData: Data,
+            screenId: String?,
+            templateResolver: TemplateResolver?
+        ) -> ValidationResult {
+            var errors: [App8.ValidationError] = []
+            var warnings: [App8.ValidationWarning] = []
+
+            var processed = screenData
+            if let templateResolver {
+                processed = TemplatePreprocessor(resolver: templateResolver).preprocess(screenData) ?? screenData
+            }
+
+            // Typed decode — the same Codable path render uses; surfaces malformed
+            // JSON, wrong field types, and unknown enum values with a coding path.
+            do {
+                _ = try decoder.decode(DSL.Model.Component.`Any`.self, from: processed)
+            } catch {
+                let detail = [FailableDecodable<DSL.Model.Component.`Any`>].formatDecodingError(error)
+                let label = screenId.map { "screen \"\($0)\"" } ?? "screen"
+                errors.append(App8.ValidationError(
+                    code: App8.DiagnosticReport.ErrorCode.screenDecodeFailed,
+                    message: "Failed to decode \(label): \(detail). Check the JSON structure.",
+                    path: screenId.map { "screens/\($0)" },
+                    context: ["error": "\(error)"]
+                ))
+            }
+
+            // Variable-write lint (runs even when decode failed — different class
+            // of problem; the writes are visible in the raw JSON regardless).
+            let writes = ActionWriteCheck.findings(
+                screenData: screenData,
+                screenId: screenId,
+                templateResolver: templateResolver
+            )
+            errors += writes.errors
+            warnings += writes.warnings
+
+            // Scroll-content anchoring lint — catches scroll views whose content
+            // collapses on the scroll axis (renders but won't scroll/tap).
+            let scroll = ScrollAnchorCheck.findings(screenData: screenData, screenId: screenId)
+            errors += scroll.errors
+            warnings += scroll.warnings
+
+            return ValidationResult(isValid: errors.isEmpty, errors: errors, warnings: warnings)
         }
 
         func validate(componentData: Data, options: ValidationOptions) async throws -> ValidationResult {

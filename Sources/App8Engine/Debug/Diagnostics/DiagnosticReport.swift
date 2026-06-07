@@ -182,6 +182,7 @@ extension App8.DiagnosticReport {
             case screens
             case navigation
             case variables
+            case actions   // variable-write actions (updateVariable et al.)
             case runtime   // runtime-captured issues (e.g. constraint conflicts)
         }
 
@@ -281,6 +282,13 @@ extension App8.DiagnosticReport {
         // Collections
         static let collectionMissingTemplates = "COL001"
         static let collectionMissingTemplateKey = "COL002"
+
+        // Actions / variable writes
+        static let actionWriteParentScope = "ACT001"
+        static let actionWriteUndeclared = "ACT002"
+
+        // Scroll layout
+        static let scrollContentUnanchored = "SCL001"
 
         // Layout (runtime)
         static let layoutConstraintConflict = "LAY001"

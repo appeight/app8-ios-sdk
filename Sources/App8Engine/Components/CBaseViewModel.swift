@@ -276,9 +276,18 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
 
     // MARK: - Action Execution
 
-    /// Execute a variable action
+    /// Execute a variable action. Errors are logged (not silently swallowed) —
+    /// a write to an undefined/unreachable variable, a type mismatch, or a
+    /// `$parent.`-prefixed target (unsupported on the write path) otherwise fails
+    /// invisibly, which makes "the tap does nothing" bugs very hard to diagnose.
     func executeVariableAction(_ action: DSL.Model.Action) {
-        try? variableActionHandler.execute(action: action, store: variableStore, context: getVariableContext())
+        do {
+            try variableActionHandler.execute(action: action, store: variableStore, context: getVariableContext())
+        } catch {
+            service.context.logger.error(
+                "Variable action '\(action.type)' on '\(action.variableName ?? "?")' failed for '\(componentPath)': \(error)"
+            )
+        }
     }
 
     /// Execute every action declared for `trigger` (in JSON order) and fire

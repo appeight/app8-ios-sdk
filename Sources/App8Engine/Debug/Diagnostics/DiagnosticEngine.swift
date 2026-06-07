@@ -117,6 +117,14 @@ struct DiagnosticEngine {
                 validateDatasources: options.validateDatasources
             )
             sections.append(varSection)
+
+            // 7b. Variable-write actions (updateVariable target resolution).
+            let actionSection = await ActionWriteCheck.run(
+                screenIds: discoveredScreenIds,
+                dataSource: dataSource,
+                templateResolver: templateResolver
+            )
+            sections.append(actionSection)
         }
 
         // 8. Runtime violations (if constraint monitoring was active)
