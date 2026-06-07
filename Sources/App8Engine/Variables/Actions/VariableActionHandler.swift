@@ -57,6 +57,7 @@ public final class VariableActionHandler {
         }
 
         let resolvedValue = try resolveValue(value.value, context: context)
+        logger?.debug("updateVariable: '\(variableName)' = \(resolvedValue)")
         try store.setValue(name: variableName, value: resolvedValue)
     }
 
