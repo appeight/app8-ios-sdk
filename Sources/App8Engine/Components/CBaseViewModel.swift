@@ -276,10 +276,8 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
 
     // MARK: - Action Execution
 
-    /// Execute a variable action. Errors are logged (not silently swallowed) —
-    /// a write to an undefined/unreachable variable, a type mismatch, or a
-    /// `$parent.`-prefixed target (unsupported on the write path) otherwise fails
-    /// invisibly, which makes "the tap does nothing" bugs very hard to diagnose.
+    /// Errors are logged, not swallowed — an undefined target, type mismatch, or
+    /// `$parent.`-prefixed write otherwise fails invisibly ("the tap does nothing").
     func executeVariableAction(_ action: DSL.Model.Action) {
         do {
             try variableActionHandler.execute(action: action, store: variableStore, context: getVariableContext())

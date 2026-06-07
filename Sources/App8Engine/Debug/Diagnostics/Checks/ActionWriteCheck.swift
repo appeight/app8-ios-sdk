@@ -1,23 +1,10 @@
 import Foundation
 
-/// Validates variable-WRITE actions across a screen's component tree. These are
-/// silent-failure bugs that decode cleanly (so plain decode validation misses
-/// them) but no-op at runtime:
-///
-///   • ERROR — a `$`-prefixed dotted target (e.g. `$parent.selectedPlan`). The
-///     engine resolves `$parent` only when READING `{{…}}` expressions; on the
-///     write path `setValue` treats the whole string as a literal variable name,
-///     never finds it, and the thrown `undefinedVariable` is swallowed by the
-///     `try?` at the action dispatch site — so the update silently does nothing.
-///     The fix is the bare name: `setValue` already walks up the scope chain.
-///
-///   • WARNING — a target not declared in the screen's variables or any
-///     enclosing scope (and not an implicit loop/context name). Usually a typo
-///     or a missing declaration; the write no-ops unless the var is injected at
-///     runtime.
-///
-/// Operates on the screen's raw JSON (after template preprocessing) so it is
-/// independent of the typed component/action models.
+/// Lints variable-WRITE targets across a screen's tree — silent-failure bugs
+/// that decode cleanly but no-op at runtime: ERROR for `$`-prefixed dotted
+/// targets (resolve only on the read path) and WARNING for undeclared names.
+/// The findings' message strings carry the full rationale. Operates on raw JSON
+/// (after template preprocessing), independent of the typed models.
 enum ActionWriteCheck {
 
     typealias EC = App8.DiagnosticReport.ErrorCode
@@ -82,7 +69,6 @@ enum ActionWriteCheck {
         var errors: [App8.ValidationError] = []
         var warnings: [App8.ValidationWarning] = []
 
-        /// Qualifies a node path with the screen id when validating in app context.
         func qualified(_ path: String) -> String {
             screenId.map { "screens/\($0) > \(path)" } ?? path
         }

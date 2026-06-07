@@ -258,10 +258,8 @@ extension App8 {
             )
         }
 
-        /// Shared screen validation: a typed decode (structural errors with the
-        /// JSON coding path) plus the variable-write lint (`ActionWriteCheck`).
-        /// Pure/synchronous so both `validate(screenId:)` and
-        /// `validate(screenData:)` reuse it after resolving inputs.
+        /// Synchronous so both `validate(screenId:)` and `validate(screenData:)`
+        /// reuse it once they've resolved inputs.
         private func validateScreen(
             screenData: Data,
             screenId: String?,
@@ -275,8 +273,7 @@ extension App8 {
                 processed = TemplatePreprocessor(resolver: templateResolver).preprocess(screenData) ?? screenData
             }
 
-            // Typed decode — the same Codable path render uses; surfaces malformed
-            // JSON, wrong field types, and unknown enum values with a coding path.
+            // Typed decode via the same Codable path render uses.
             do {
                 _ = try decoder.decode(DSL.Model.Component.`Any`.self, from: processed)
             } catch {
@@ -300,8 +297,6 @@ extension App8 {
             errors += writes.errors
             warnings += writes.warnings
 
-            // Scroll-content anchoring lint — catches scroll views whose content
-            // collapses on the scroll axis (renders but won't scroll/tap).
             let scroll = ScrollAnchorCheck.findings(screenData: screenData, screenId: screenId)
             errors += scroll.errors
             warnings += scroll.warnings
