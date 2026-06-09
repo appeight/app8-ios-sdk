@@ -282,6 +282,9 @@ extension App8.DiagnosticReport {
         static let collectionMissingTemplates = "COL001"
         static let collectionMissingTemplateKey = "COL002"
 
+        // Video
+        static let videoAssetMissing = "VID001"
+
         // Layout (runtime)
         static let layoutConstraintConflict = "LAY001"
     }

@@ -143,8 +143,9 @@ A minimal screen:
 }
 ```
 
-The full DSL reference — components, styles, layout, variables, actions,
-navigation, collections, animations — lives in [`docs/dsl/`](docs/dsl/index.md).
+The full DSL reference — components (inputs, lists, feedback), styles, layout,
+variables, actions, navigation, collections, animations, forms, localization,
+and host integration — lives in [`docs/dsl/`](docs/dsl/index.md).
 
 ## Building and testing
 
