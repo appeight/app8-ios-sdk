@@ -48,6 +48,7 @@ Each component type has its own reference doc with its `properties`, styling, an
 | `label` | Text display | [components/label.md](components/label.md) |
 | `button` | Interactive button | [components/button.md](components/button.md) |
 | `image` | Image display | [components/image.md](components/image.md) |
+| `video` | Looping background video (local asset) | [components/video.md](components/video.md) |
 | `icon` | SF Symbol, asset, or remote icon | [components/icon.md](components/icon.md) |
 | `textField` | Single-line text input | [components/text-field.md](components/text-field.md) |
 | `textView` | Multi-line text input | [components/text-view.md](components/text-view.md) |

@@ -47,7 +47,7 @@ extension DSL.Model {
             case key(Key), custom(String)
             
             enum Key: String, Codable {
-                case screen, view, button, image, icon, striplet, label, textField, textView, list, scrollView, tabBarScreen, collection, map, stackView, shape, tableView, activityIndicator, toggle, slider, pageControl, picker, shimmer, datePicker
+                case screen, view, button, image, icon, striplet, label, textField, textView, list, scrollView, tabBarScreen, collection, map, stackView, shape, tableView, activityIndicator, toggle, slider, pageControl, picker, shimmer, datePicker, video
             }
             
             func isOneOf(_ keys: Key...) -> Bool {
@@ -138,6 +138,8 @@ extension DSL.Model.Component {
                 self.base = try ConcreteEntity<Button.C>(from: decoder)
             case .key(.image):
                 self.base = try ConcreteEntity<Image.C>(from: decoder)
+            case .key(.video):
+                self.base = try ConcreteEntity<Video.C>(from: decoder)
             case .key(.icon):
                 self.base = try ConcreteEntity<Icon.C>(from: decoder)
 //            case .key(.striplet):
@@ -216,6 +218,9 @@ extension DSL.Model.Component {
                 return entity.content
             }
             if let entity = base as? ConcreteEntity<Image.C> {
+                return entity.content
+            }
+            if let entity = base as? ConcreteEntity<Video.C> {
                 return entity.content
             }
             if let entity = base as? ConcreteEntity<Icon.C> {

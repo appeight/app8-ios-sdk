@@ -5,6 +5,7 @@
 
 import XCTest
 import UIKit
+import AVFoundation
 @testable import App8Engine
 
 @MainActor
@@ -275,6 +276,53 @@ final class NewComponentRenderTests: XCTestCase {
     }
 
     // MARK: - DatePicker
+
+    // MARK: - Video
+
+    func testVideoRendersPlayerLayer() throws {
+        let json = """
+        {
+            "type": "video", "id": "test-video",
+            "content": {
+                "properties": { "type": "localAsset", "name": "intro", "loop": true, "muted": true },
+                "style": { "contentMode": "scaleAspectFill", "corner": { "radius": 16, "curve": "continuous" } },
+                "layout": { "width": 300, "height": 200 }
+            }
+        }
+        """
+        let superview = try render(json)
+        let videoView = findView(ofType: CVideoView.self, in: superview)
+        XCTAssertNotNil(videoView, "CVideoView should be rendered")
+
+        // The player is hosted on an AVPlayerLayer-backed view, with gravity from style.
+        let playerLayer = findPlayerLayer(in: superview)
+        XCTAssertNotNil(playerLayer, "An AVPlayerLayer should be in the hierarchy")
+        XCTAssertEqual(playerLayer?.videoGravity, .resizeAspectFill)
+    }
+
+    func testVideoAspectFitMapsGravity() throws {
+        let json = """
+        {
+            "type": "video", "id": "test-video-fit",
+            "content": {
+                "properties": { "type": "localAsset", "name": "intro" },
+                "style": { "contentMode": "scaleAspectFit" },
+                "layout": { "width": 300, "height": 200 }
+            }
+        }
+        """
+        let superview = try render(json)
+        let playerLayer = findPlayerLayer(in: superview)
+        XCTAssertEqual(playerLayer?.videoGravity, .resizeAspect)
+    }
+
+    private func findPlayerLayer(in view: UIView) -> AVPlayerLayer? {
+        if let layer = view.layer as? AVPlayerLayer { return layer }
+        for sub in view.subviews {
+            if let found = findPlayerLayer(in: sub) { return found }
+        }
+        return nil
+    }
 
     func testDatePickerCompactRendersUIDatePicker() throws {
         let json = """

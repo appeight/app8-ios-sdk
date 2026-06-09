@@ -319,6 +319,63 @@ func shapePolylineDefaultsNilForNonPolyline() throws {
     #expect(content.properties.closed == nil)
 }
 
+// MARK: - Video Model Tests
+
+@Test
+func videoDecodesLocalAsset() throws {
+    let json = componentJSON(type: "video", properties: """
+    { "type": "localAsset", "name": "intro.mp4" }
+    """)
+
+    let content = try decodeComponent(json, as: DSL.Model.Component.Video.C.self)
+    guard case .asset(let asset) = content.properties.model else {
+        Issue.record("Expected .asset model")
+        return
+    }
+    #expect(asset.name == "intro.mp4")
+    // Flags default to true when omitted.
+    #expect(content.properties.autoplay == true)
+    #expect(content.properties.loop == true)
+    #expect(content.properties.muted == true)
+}
+
+@Test
+func videoDecodesFlagOverrides() throws {
+    let json = componentJSON(type: "video", properties: """
+    { "type": "localAsset", "name": "clip", "autoplay": false, "loop": false, "muted": false }
+    """)
+
+    let content = try decodeComponent(json, as: DSL.Model.Component.Video.C.self)
+    #expect(content.properties.autoplay == false)
+    #expect(content.properties.loop == false)
+    #expect(content.properties.muted == false)
+}
+
+@Test
+func videoDecodesNoneType() throws {
+    let json = componentJSON(type: "video", properties: """
+    { "type": "none" }
+    """)
+
+    let content = try decodeComponent(json, as: DSL.Model.Component.Video.C.self)
+    guard case .none = content.properties.model else {
+        Issue.record("Expected .none model")
+        return
+    }
+}
+
+@Test
+func videoDecodesGravityStyle() throws {
+    let json = componentJSON(type: "video", properties: """
+    { "type": "localAsset", "name": "intro" }
+    """, style: """
+    { "contentMode": "scaleAspectFit" }
+    """)
+
+    let content = try decodeComponent(json, as: DSL.Model.Component.Video.C.self)
+    #expect(content.style?.videoGravity == .resizeAspect)
+}
+
 // MARK: - DatePicker Model Tests
 
 @Test
