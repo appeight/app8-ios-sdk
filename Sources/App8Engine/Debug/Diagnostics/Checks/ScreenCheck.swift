@@ -149,6 +149,9 @@ enum ScreenCheck {
         let collectionWarnings = walkForCollectionIssues(component, screenId: screenId, path: "")
         warnings.append(contentsOf: collectionWarnings)
 
+        let videoWarnings = walkForVideoAssetIssues(component, screenId: screenId, path: "")
+        warnings.append(contentsOf: videoWarnings)
+
         let section = App8.DiagnosticReport.Section(
             kind: .screens,
             label: "Screen: \(screenId)",
@@ -208,6 +211,54 @@ enum ScreenCheck {
         if let entity = component.asEntity() {
             for child in entity.content.children {
                 warnings += walkForCollectionIssues(child, screenId: screenId, path: componentPath)
+            }
+        }
+
+        return warnings
+    }
+
+    /// Flags `video` components whose `localAsset` name resolves to no bundled file,
+    /// so a missing onboarding/background clip is caught at validation time rather
+    /// than rendering empty on device (VID001). `{{...}}` names resolve only at
+    /// runtime, so a static bundle lookup would be wrong — skip them.
+    private static func walkForVideoAssetIssues(
+        _ component: DSL.Model.Component.`Any`,
+        screenId: String,
+        path: String
+    ) -> [App8.ValidationWarning] {
+        var warnings: [App8.ValidationWarning] = []
+        let componentPath = path.isEmpty ? component.id : "\(path).\(component.id)"
+
+        if let videoEntity = component.base as?
+            DSL.Model.Component.ConcreteEntity<DSL.Model.Component.Video.C>,
+           case .asset(let asset) = videoEntity.content.properties.model,
+           !asset.name.contains("{{"),
+           VideoAssetLocator.url(forResource: asset.name) == nil {
+            warnings.append(App8.ValidationWarning(
+                code: EC.videoAssetMissing,
+                message: "Video \"\(component.id)\" references local asset \"\(asset.name)\" which was not found in the app bundle (looked for extensions: \(VideoAssetLocator.supportedExtensions.joined(separator: ", "))). Add the file to the app target, or the video will render empty.",
+                path: "screens/\(screenId)/\(componentPath)",
+                context: ["componentId": component.id, "screenId": screenId, "assetName": asset.name]
+            ))
+        }
+
+        // Collections hold cell templates and state views outside `content.children`.
+        if let collectionEntity = component.base as?
+            DSL.Model.Component.ConcreteEntity<CollectionContent> {
+            let cc = collectionEntity.content
+            let extras = [cc.template, cc.emptyState, cc.loadingState, cc.errorState, cc.defaultSectionHeader]
+                + (cc.sectionHeaders?.values.map { $0 } ?? [])
+            for sub in extras.compactMap({ $0 }) {
+                warnings += walkForVideoAssetIssues(sub, screenId: screenId, path: componentPath)
+            }
+            for case .inline(let tpl) in (cc.templates ?? [:]).values {
+                warnings += walkForVideoAssetIssues(tpl, screenId: screenId, path: componentPath)
+            }
+        }
+
+        if let entity = component.asEntity() {
+            for child in entity.content.children {
+                warnings += walkForVideoAssetIssues(child, screenId: screenId, path: componentPath)
             }
         }
 
