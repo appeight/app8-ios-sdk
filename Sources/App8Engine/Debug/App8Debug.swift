@@ -65,7 +65,7 @@ extension App8 {
         @MainActor func runDiagnostics(options: DiagnosticOptions) async -> DiagnosticReport
 
         // Validate by ID (uses DataSource internally)
-        func validate(screenId: String, options: ValidationOptions) async throws -> ValidationResult
+        @MainActor func validate(screenId: String, options: ValidationOptions) async throws -> ValidationResult
         func validate(componentId: String, options: ValidationOptions) async throws -> ValidationResult
         func validateStyles(options: ValidationOptions) async throws -> ValidationResult
 
@@ -219,8 +219,37 @@ extension App8 {
 
         // MARK: - Validate by ID
 
+        /// Validates a single screen by ID — same per-screen checks as the full-app
+        /// diagnostic (decode, type, style pointers, collection + video-asset checks),
+        /// scoped to one screen for fast targeted validation (e.g. from the MCP).
+        @MainActor
         func validate(screenId: String, options: ValidationOptions) async throws -> ValidationResult {
-            throw App8.Error.notImplemented("validate(screenId:options:)")
+            guard let dataSource = appInstance.dataSource else {
+                throw App8.Error.dataSourceDeallocated
+            }
+
+            // Styles only matter for pointer resolution; templates are always loaded
+            // so the screen's template pointers preprocess and decode correctly.
+            var resolvedStyles: [String: DSL.Model.Style.`Any`] = [:]
+            if options.resolvePointers {
+                resolvedStyles = await StylesCheck.run(
+                    dataSource: dataSource,
+                    resolvePointers: true
+                ).resolvedStyles
+            }
+            let templateResolver = await TemplatesCheck.run(dataSource: dataSource).templateResolver
+
+            let result = await ScreenCheck.run(
+                screenIds: [screenId],
+                dataSource: dataSource,
+                resolvedStyles: resolvedStyles,
+                templateResolver: templateResolver,
+                resolvePointers: options.resolvePointers
+            )
+
+            let errors = result.sections.flatMap(\.errors)
+            let warnings = result.sections.flatMap(\.warnings)
+            return ValidationResult(isValid: errors.isEmpty, errors: errors, warnings: warnings)
         }
 
         func validate(componentId: String, options: ValidationOptions) async throws -> ValidationResult {

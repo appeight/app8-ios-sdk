@@ -227,6 +227,12 @@ struct AssetReferenceCollector {
             }
             return
         }
+        if let videoProps = value as? DSL.Model.Component.Video.Properties {
+            if case .remoteAsset(let asset) = videoProps.model {
+                insert(asset: asset, scope: scope, into: &images)
+            }
+            return
+        }
         if let textModel = value as? DSL.Model.Style.TextModel {
             captureTextModelFonts(textModel, into: &fontFamilyNames)
             mirrorChildren(of: textModel, images: &images, fontFamilyNames: &fontFamilyNames, scope: scope, depth: depth)

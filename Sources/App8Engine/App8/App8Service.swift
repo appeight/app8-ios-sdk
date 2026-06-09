@@ -351,6 +351,28 @@ extension App8Service: ComponentRenderer, ComponentService {
             view.configure(viewModel: viewModel, superview: superview, animated: false)
             return .init(view: view, type: component.type, viewModel: viewModel)
 
+        case .video:
+            let viewModel: CVideoViewModel
+            if let reuse = reuseViewModel as? CVideoViewModel {
+                viewModel = reuse
+            } else {
+                guard
+                    let entity: DSLComponent.Video.Entity = component.asConcreteEntity(),
+                    let newVM = CVideoViewModel(component: entity, service: self, componentPath: componentPath, parentVariableStore: parentVariableStore)
+                else {
+                    return errorResult()
+                }
+                viewModel = newVM
+                componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
+            }
+            let view = CVideoView()
+            view.accessibilityIdentifier = component.id
+            componentRegistry.viewRegistry.register(id: componentPath, view: view)
+            superview.addSubview(view)
+            view.configure(viewModel: viewModel, superview: superview, animated: false)
+            return .init(view: view, type: component.type, viewModel: viewModel)
+
         case .icon:
             let viewModel: CIconViewModel
             if let reuse = reuseViewModel as? CIconViewModel {

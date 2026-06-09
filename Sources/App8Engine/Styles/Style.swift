@@ -71,7 +71,7 @@ extension DSL.Model {
                 // typography
                 case text, font
                 // components
-                case view, image, icon
+                case view, image, icon, video
             }
             
             func isKeyed(_ key: Key) -> Bool {
@@ -200,6 +200,8 @@ extension DSL.Model.Style {
                 self.base = try ConcreteEntity<View>(from: decoder)
             case .key(.image):
                 self.base = try ConcreteEntity<Image>(from: decoder)
+            case .key(.video):
+                self.base = try ConcreteEntity<Video>(from: decoder)
             case .key(.icon):
                 self.base = try ConcreteEntity<Icon>(from: decoder)
             case .custom(let customType):
