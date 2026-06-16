@@ -10,6 +10,13 @@ extension DSL.Model {
         /// Reusable animation registry. Each entry is a wrapped or flat
         /// `Animation` (no pointer-only entries here — those would self-reference).
         let animations: [Animation]?
+        /// Reusable screen-transition registry. Mirrors `animations`: each entry
+        /// is a wrapped or flat `ScreenTransition`, referenced elsewhere by
+        /// `{ "id": "..." }` pointer.
+        let transitions: [ScreenTransition]?
+        /// App-wide default transition. Lowest-priority fallback when neither the
+        /// navigation action nor the target screen declares one.
+        let defaultTransition: ScreenTransition?
 
         var initialScreenId: String? {
             guard let navigation else { return nil }

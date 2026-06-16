@@ -25,6 +25,12 @@ final class ComponentRegistry {
     /// Separate from ViewModel registry to decouple layout from accessibility identifiers.
     private(set) var viewRegistry = ViewRegistry()
 
+    /// Shared-element transition participants, grouped by **screen root id** then
+    /// by matching **key**. Populated as components render (see `App8Service`);
+    /// `App8Service.renderScreen` snapshots a screen's map onto its
+    /// `ScreenViewController` so the animator reads each screen independently.
+    private var transitionParticipants: [String: [String: TransitionParticipant]] = [:]
+
     /// Optional logger from owning context.
     weak var logger: A8Log?
 
@@ -66,11 +72,45 @@ final class ComponentRegistry {
         }
     }
 
+    // MARK: - Shared-element transition participants
+
+    /// Register a rendered component as a shared-element transition participant.
+    /// Keyed by `screenRoot` (so two screens' identical keys never collide) then
+    /// by the element's matching `key`.
+    func registerParticipant(
+        screenRoot: String,
+        key: String,
+        view: UIView,
+        config: DSL.Model.ScreenTransition.ElementTransition
+    ) {
+        transitionParticipants[screenRoot, default: [:]][key] = TransitionParticipant(view: view, config: config)
+    }
+
+    /// The participants collected for a screen, keyed by matching key. Returns a
+    /// value copy — safe to retain on the `ScreenViewController`.
+    func participants(forScreenRoot root: String) -> [String: TransitionParticipant] {
+        transitionParticipants[root] ?? [:]
+    }
+
     /// Clean up dead references
     func cleanUp() {
         viewModels = viewModels.filter { $0.value.value != nil }
         viewRegistry.cleanUp()
+        var pruned: [String: [String: TransitionParticipant]] = [:]
+        for (root, map) in transitionParticipants {
+            let live = map.filter { $0.value.view != nil }
+            if !live.isEmpty { pruned[root] = live }
+        }
+        transitionParticipants = pruned
     }
+}
+
+/// A rendered component taking part in a shared-element transition. Holds a weak
+/// reference to the live view (owned by the view hierarchy) plus its declared
+/// element config. Resolved to a frame at transition time.
+struct TransitionParticipant {
+    weak var view: UIView?
+    let config: DSL.Model.ScreenTransition.ElementTransition
 }
 
 // MARK: - View Registry

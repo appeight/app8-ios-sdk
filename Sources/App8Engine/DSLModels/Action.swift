@@ -32,9 +32,11 @@ extension DSL.Model {
         var nextScreen: String?   // ID of the screen to navigate to
         var isFinal: Bool?        // Whether this completes the entire flow
         var isBack: Bool?         // Whether this is a back navigation
+        var toRoot: Bool?         // With isBack: pop to the navigation-stack root ("back to list")
         var params: [String: AnyCodableValue]?  // Parameters to pass during navigation
         var presentation: PresentationStyle?    // How to present (push, sheet, fullScreen, etc.)
         var detents: [SheetDetent]?             // For sheet presentations: medium, large
+        var transition: ScreenTransition?       // Custom screen transition (overrides screen/app defaults)
 
         // State
         var stateName: String?    // For setState action: the target state name

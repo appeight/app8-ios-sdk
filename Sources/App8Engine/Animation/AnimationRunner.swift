@@ -85,31 +85,10 @@ enum AnimationRunner {
         animation: DSL.Model.Animation.Inline,
         viewBlock: @escaping () -> Void
     ) {
-        let timing: UITimingCurveProvider
-        switch animation.timing {
-        case .curve(let named):
-            timing = UICubicTimingParameters(animationCurve: named.uiAnimationCurve)
-        case .cubicBezier(let x1, let y1, let x2, let y2):
-            timing = UICubicTimingParameters(
-                controlPoint1: CGPoint(x: x1, y: y1),
-                controlPoint2: CGPoint(x: x2, y: y2)
-            )
-        case .spring(let s):
-            if let mass = s.mass, let stiffness = s.stiffness {
-                timing = UISpringTimingParameters(
-                    mass: CGFloat(mass),
-                    stiffness: CGFloat(stiffness),
-                    damping: CGFloat(s.damping),
-                    initialVelocity: CGVector(dx: CGFloat(s.velocity), dy: 0)
-                )
-            } else {
-                timing = UISpringTimingParameters(
-                    dampingRatio: CGFloat(s.damping),
-                    initialVelocity: CGVector(dx: CGFloat(s.velocity), dy: 0)
-                )
-            }
-        }
-        let animator = UIViewPropertyAnimator(duration: animation.duration, timingParameters: timing)
+        let animator = UIViewPropertyAnimator(
+            duration: animation.duration,
+            timingParameters: animation.timingParameters()
+        )
         animator.addAnimations(viewBlock)
         animator.startAnimation(afterDelay: animation.delay)
     }
@@ -135,16 +114,5 @@ enum AnimationRunner {
         }
         anim.fillMode = .both
         return anim
-    }
-}
-
-private extension DSL.Model.Animation.NamedCurve {
-    var uiAnimationCurve: UIView.AnimationCurve {
-        switch self {
-        case .linear:    return .linear
-        case .easeIn:    return .easeIn
-        case .easeOut:   return .easeOut
-        case .easeInOut: return .easeInOut
-        }
     }
 }

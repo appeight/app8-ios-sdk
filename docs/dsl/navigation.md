@@ -150,6 +150,22 @@ Parameters are available as variables:
 
 ---
 
+## Custom Transitions
+
+The presentation styles below cover the built-in system animations. To customize
+*how* a screen animates in and out — slide/fade/zoom/cover presets, fully custom
+opacity/translate/scale/rotate keyframes, reusable named transitions,
+gesture-driven interactive dismiss, and **shared-element** (hero / composite)
+morphs that grow a matched component into its counterpart on the next screen —
+add a `transition` to the navigation action:
+
+```json
+{ "type": "navigation", "nextScreen": "detail", "transition": "slide" }
+```
+
+See [transitions.md](transitions.md) for the full transition system, including the
+`shared` preset for shared-element transitions.
+
 ## Presentation Styles
 
 ### Push (Hierarchical)
@@ -475,6 +491,21 @@ Close modal screens (sheet, fullScreen, formSheet, pageSheet).
 {
   "type": "dismiss"
 }
+```
+
+---
+
+## Going Back
+
+Pop the current screen (back one) with `isBack`, or pop all the way to the
+navigation-stack root ("back to list") by adding `toRoot`:
+
+```json
+{ "type": "navigation", "isBack": true }
+```
+
+```json
+{ "type": "navigation", "isBack": true, "toRoot": true }
 ```
 
 ---

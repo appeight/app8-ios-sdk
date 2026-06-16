@@ -198,6 +198,7 @@ See [variables.md](variables.md) for full expression documentation.
 - [variables.md](variables.md) - Variables and expression syntax
 - [actions.md](actions.md) - Actions and event triggers
 - [navigation.md](navigation.md) - Navigation and flow system
+- [transitions.md](transitions.md) - Screen transitions (presets, custom keyframes, registry, interactive) and shared-element / hero / composite morphs
 
 **Building interfaces**
 

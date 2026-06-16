@@ -7,6 +7,7 @@ public enum ModalPresentationStyle: Sendable {
     case formSheet     // Smaller sheet (iPad optimized)
     case pageSheet     // Page sheet
     case crossDissolve // Full screen modal with fade transition
+    case custom        // Engine-driven custom transition (see NavigationRequest.transition)
 }
 
 /// Navigation request types posted via NotificationCenter
@@ -15,6 +16,8 @@ public enum NavigationRequestType {
     case push(screenId: String, params: [String: Any])
     /// Pop the current screen (go back)
     case pop
+    /// Pop to the root screen of the current navigation stack (back to the list)
+    case popToRoot
     /// Complete current flow and transition to destination flow (one-way)
     case completeFlow(destination: String)
     /// Switch to a different flow (reversible) - Future
@@ -36,8 +39,21 @@ public enum NavigationRequestType {
 public struct NavigationRequest {
     public let type: NavigationRequestType
 
+    /// Resolved action-level transition for a `.push` / `.presentModal`. Engine
+    /// internal — host code never constructs these. `nil` means "no action-level
+    /// transition" (the navigation container falls back to the screen/app default
+    /// for pushes, or the native modal animation).
+    let transition: DSL.Model.ScreenTransition.Resolved?
+
     public init(type: NavigationRequestType) {
         self.type = type
+        self.transition = nil
+    }
+
+    /// Engine-internal initializer attaching a resolved transition.
+    init(type: NavigationRequestType, transition: DSL.Model.ScreenTransition.Resolved?) {
+        self.type = type
+        self.transition = transition
     }
 }
 
