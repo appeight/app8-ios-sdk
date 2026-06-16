@@ -268,6 +268,14 @@ extension DSL.Model.Component {
             return nil
         }
 
+        /// The component's shared-element participation context, if it declares one
+        /// on `content.transition`. Read type-erased (mirrors `extractContent()`),
+        /// so the rendering pipeline can register a transition participant without
+        /// switching on the concrete component type.
+        var elementTransition: DSL.Model.ScreenTransition.ElementTransition? {
+            (extractContent() as? any TransitionHolder)?.transition?.elementOrNil
+        }
+
         mutating func patchBase(_ base: any `Protocol`) {
             self.base = base
         }

@@ -605,6 +605,14 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         }
     }
 
+    /// Expand an action's transition reference into its concrete resolved form,
+    /// resolving any animation pointer against the app animation registry.
+    private func resolveTransition(_ transition: DSL.Model.ScreenTransition?) -> DSL.Model.ScreenTransition.Resolved? {
+        guard let transition, let inline = transition.inlineOrNil else { return nil }
+        let animationResolver = service.context.animationResolver ?? { _ in nil }
+        return DSL.Model.ScreenTransition.resolve(inline, animationResolver: animationResolver)
+    }
+
     /// Execute an action directly (for event triggers)
     func executeAction(_ action: DSL.Model.Action) {
         switch action.type {
@@ -623,7 +631,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
             // fires for navigations that actually got dispatched.
             var didPost = false
             if action.isBack == true {
-                let request = NavigationRequest(type: .pop)
+                let request = NavigationRequest(type: action.toRoot == true ? .popToRoot : .pop)
                 NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
                 didPost = true
             } else if let nextScreen = action.nextScreen {
@@ -638,17 +646,41 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                     }
                 }
 
-                if let presentation = action.presentation, presentation != .push {
+                // Resolve the action-level transition. `mode` decides the route
+                // when the transition is custom; an explicit `.system` opts out
+                // (and suppresses screen/app defaults downstream).
+                let actionTransition = resolveTransition(action.transition)
+
+                if let actionTransition, actionTransition.kind != .system, actionTransition.mode == .modal {
+                    // Custom modal — engine-driven transition replaces the system modal.
+                    let request = NavigationRequest(
+                        type: .presentModal(
+                            screenId: nextScreen,
+                            params: resolvedParams,
+                            style: .custom,
+                            detents: action.detents,
+                            grabber: action.grabber
+                        ),
+                        transition: actionTransition
+                    )
+                    NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
+                } else if let presentation = action.presentation, presentation != .push {
+                    // System modal (sheet / fullScreen / …). Native animation.
                     let modalStyle = presentation.toModalPresentationStyle
                     let request = NavigationRequest(type: .presentModal(
                         screenId: nextScreen,
                         params: resolvedParams,
                         style: modalStyle,
-                        detents: action.detents
+                        detents: action.detents,
+                        grabber: action.grabber
                     ))
                     NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
                 } else {
-                    let request = NavigationRequest(type: .push(screenId: nextScreen, params: resolvedParams))
+                    // Push. A nil transition lets the container apply the screen/app default.
+                    let request = NavigationRequest(
+                        type: .push(screenId: nextScreen, params: resolvedParams),
+                        transition: actionTransition
+                    )
                     NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
                 }
                 didPost = true

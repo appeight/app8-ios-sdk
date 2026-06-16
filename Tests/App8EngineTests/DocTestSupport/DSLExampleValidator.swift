@@ -368,7 +368,10 @@ struct DSLExampleValidator {
 
         switch actionType {
         case "navigation":
-            if json["nextScreen"] == nil {
+            // A back navigation (`isBack`, optionally `toRoot`) carries no
+            // `nextScreen` — it pops rather than navigating to a named screen.
+            let isBack = (json["isBack"] as? Bool) == true
+            if json["nextScreen"] == nil && !isBack {
                 return .failed(error: ValidationError("navigation action missing 'nextScreen'"))
             }
         case "selectTab":

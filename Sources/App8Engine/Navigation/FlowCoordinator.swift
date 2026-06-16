@@ -161,21 +161,32 @@ final class FlowCoordinator {
         case .push(let screenId, let params):
             // When a modal is presented, the modal handles push/pop itself.
             guard currentFlowViewController?.presentedModal == nil else { return }
-            try await currentFlowViewController?.pushScreen(id: screenId, params: params, animated: true)
+            try await currentFlowViewController?.pushScreen(
+                id: screenId,
+                params: params,
+                transition: request.transition,
+                animated: true
+            )
 
         case .pop:
             guard currentFlowViewController?.presentedModal == nil else { return }
             currentFlowViewController?.popScreen(animated: true)
 
+        case .popToRoot:
+            guard currentFlowViewController?.presentedModal == nil else { return }
+            currentFlowViewController?.popToRoot(animated: true)
+
         case .completeFlow(let destination):
             try await completeFlow(destination: destination)
 
-        case .presentModal(let screenId, let params, let style, let detents):
+        case .presentModal(let screenId, let params, let style, let detents, let grabber):
             try await currentFlowViewController?.presentModal(
                 screenId: screenId,
                 params: params,
                 style: style,
-                detents: detents
+                detents: detents,
+                grabber: grabber,
+                transition: request.transition
             )
             emitVisibleContext()
 

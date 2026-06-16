@@ -275,4 +275,47 @@ extension DSL.Model.Animation.Inline {
 
     /// True when timing is spring-based.
     var isSpring: Bool { springParameters != nil }
+
+    /// `UITimingCurveProvider` for `UIViewPropertyAnimator`-driven animations
+    /// and view-controller transitions. Maps named curve / cubic-bézier / spring
+    /// to the matching UIKit timing provider so in-screen animations and screen
+    /// transitions share identical timing behavior. Shared by `AnimationRunner`
+    /// and `PropertyTransitionAnimator`.
+    func timingParameters() -> UITimingCurveProvider {
+        switch timing {
+        case .curve(let named):
+            return UICubicTimingParameters(animationCurve: named.uiAnimationCurve)
+        case .cubicBezier(let x1, let y1, let x2, let y2):
+            return UICubicTimingParameters(
+                controlPoint1: CGPoint(x: x1, y: y1),
+                controlPoint2: CGPoint(x: x2, y: y2)
+            )
+        case .spring(let s):
+            if let mass = s.mass, let stiffness = s.stiffness {
+                return UISpringTimingParameters(
+                    mass: CGFloat(mass),
+                    stiffness: CGFloat(stiffness),
+                    damping: CGFloat(s.damping),
+                    initialVelocity: CGVector(dx: CGFloat(s.velocity), dy: 0)
+                )
+            } else {
+                return UISpringTimingParameters(
+                    dampingRatio: CGFloat(s.damping),
+                    initialVelocity: CGVector(dx: CGFloat(s.velocity), dy: 0)
+                )
+            }
+        }
+    }
+}
+
+extension DSL.Model.Animation.NamedCurve {
+    /// `UIView.AnimationCurve` equivalent of the named curve.
+    var uiAnimationCurve: UIView.AnimationCurve {
+        switch self {
+        case .linear:    return .linear
+        case .easeIn:    return .easeIn
+        case .easeOut:   return .easeOut
+        case .easeInOut: return .easeInOut
+        }
+    }
 }

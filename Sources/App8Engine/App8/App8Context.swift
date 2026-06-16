@@ -31,6 +31,14 @@ final class App8Context {
     /// the bus stays a dumb pipe and never touches this set.
     var warnedNames: Set<String> = []
 
+    /// App-wide default screen transition (resolved inline form). Lowest-priority
+    /// fallback applied by the navigation containers. Set during app load.
+    var appDefaultTransition: DSL.Model.ScreenTransition.Inline?
+
+    /// Resolves animation pointers when expanding a transition to its concrete
+    /// form at navigation time. Set during app load from the animation registry.
+    var animationResolver: ((String) -> DSL.Model.Animation.Inline?)?
+
     init(
         logger: A8Log = A8Log(),
         appearance: App8Appearance = App8Appearance(),
@@ -66,4 +74,12 @@ extension CodingUserInfoKey {
     /// `.pointer(id)` (instantaneous at runtime + warning).
     /// Stored value type: `(String) -> DSL.Model.Animation.Inline?`.
     static let app8AnimationResolver = CodingUserInfoKey(rawValue: "dev.app8.engine.animationResolver")!
+
+    /// Inject a transition pointer resolver. When an action/screen references a
+    /// named transition by `{ "id": "..." }`, the engine sets a closure here so
+    /// `DSL.Model.ScreenTransition.init(from:)` can replace the pointer with the
+    /// resolved inline form during decode. Absent → pointer is preserved as
+    /// `.pointer(id)` (falls back to the native transition at runtime).
+    /// Stored value type: `(String) -> DSL.Model.ScreenTransition.Inline?`.
+    static let app8TransitionResolver = CodingUserInfoKey(rawValue: "dev.app8.engine.transitionResolver")!
 }
