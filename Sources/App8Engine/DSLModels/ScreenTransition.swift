@@ -52,6 +52,8 @@ extension DSL.Model {
             var dimming: Dimming?
             /// Gesture-driven interactive dismiss/pop configuration.
             var interactive: InteractiveConfig?
+            /// Modal-only sized-container geometry + chrome. Nil ⇒ full-screen modal.
+            var presentation: ModalPresentation?
         }
 
         // MARK: - Sub-models
@@ -73,6 +75,8 @@ extension DSL.Model {
             case scale
             case zoom
             case cover
+            case popup         // centered card modal (sized) — see ModalPresentation
+            case sheet         // bottom-anchored card modal (sized) — see ModalPresentation
             case shared        // shared-element morph (hero / composite) — see ElementTransition
             case none          // instantaneous (no animation)
             case system        // sentinel: use UIKit's native push / modal
@@ -83,7 +87,7 @@ extension DSL.Model {
             /// Default routing for the preset when `mode` is unspecified.
             var defaultMode: Mode {
                 switch self {
-                case .scale, .zoom, .cover: return .modal
+                case .scale, .zoom, .cover, .popup, .sheet: return .modal
                 case .slide, .fade, .crossDissolve, .shared, .none, .system: return .push
                 }
             }
@@ -308,13 +312,22 @@ extension DSL.Model {
             var color: DSL.Model.Style.Color.Hex?
             /// Peak opacity `0…1`.
             var opacity: Double
+            /// Whether tapping the dimmed backdrop dismisses the modal. Default `true`.
+            var dismissOnTap: Bool
 
-            private enum CodingKeys: String, CodingKey { case color, opacity }
+            init(color: DSL.Model.Style.Color.Hex? = nil, opacity: Double = 0.4, dismissOnTap: Bool = true) {
+                self.color = color
+                self.opacity = opacity
+                self.dismissOnTap = dismissOnTap
+            }
+
+            private enum CodingKeys: String, CodingKey { case color, opacity, dismissOnTap }
 
             init(from decoder: any Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
                 self.color = try c.decodeIfPresent(DSL.Model.Style.Color.Hex.self, forKey: .color)
                 self.opacity = (try c.decodeIfPresent(Double.self, forKey: .opacity)) ?? 0.4
+                self.dismissOnTap = (try c.decodeIfPresent(Bool.self, forKey: .dismissOnTap)) ?? true
             }
         }
 
@@ -513,12 +526,13 @@ extension DSL.Model.ScreenTransition.Inline: Decodable {
             reverse: .auto,
             raise: nil,
             dimming: nil,
-            interactive: nil
+            interactive: nil,
+            presentation: nil
         )
     }
 
     private enum CodingKeys: String, CodingKey {
-        case mode, preset, edge, animation, from, to, reverse, raise, dimming, interactive
+        case mode, preset, edge, animation, from, to, reverse, raise, dimming, interactive, presentation
     }
 
     init(from decoder: any Decoder) throws {
@@ -534,6 +548,7 @@ extension DSL.Model.ScreenTransition.Inline: Decodable {
         self.raise = try c.decodeIfPresent(DSL.Model.ScreenTransition.Raise.self, forKey: .raise)
         self.dimming = try c.decodeIfPresent(DSL.Model.ScreenTransition.Dimming.self, forKey: .dimming)
         self.interactive = try c.decodeIfPresent(DSL.Model.ScreenTransition.InteractiveConfig.self, forKey: .interactive)
+        self.presentation = try c.decodeIfPresent(DSL.Model.ScreenTransition.ModalPresentation.self, forKey: .presentation)
     }
 }
 

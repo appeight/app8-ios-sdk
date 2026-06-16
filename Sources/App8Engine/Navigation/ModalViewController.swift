@@ -66,8 +66,16 @@ final class ModalViewController: UIViewController {
         navController.delegate = navTransitionCoordinator
         addChild(navController)
         view.addSubview(navController.view)
-        navController.view.frame = view.bounds
-        navController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        // Pin with Auto Layout (not an autoresizing-mask frame) so the embedded
+        // content resizes in lockstep when the host resizes — e.g. a native sheet
+        // animating between detents — instead of catching up a frame later.
+        navController.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            navController.view.topAnchor.constraint(equalTo: view.topAnchor),
+            navController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            navController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            navController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
         navController.didMove(toParent: self)
     }
 

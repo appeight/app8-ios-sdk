@@ -27,7 +27,8 @@ public enum NavigationRequestType {
         screenId: String,
         params: [String: Any],
         style: ModalPresentationStyle,
-        detents: [DSL.Model.Action.SheetDetent]?
+        detents: [DSL.Model.Action.SheetDetent]?,
+        grabber: Bool?
     )
     /// Dismiss current modal
     case dismiss

@@ -22,6 +22,7 @@ final class App8TransitionManager: NSObject, UIViewControllerTransitioningDelega
     var requestDismiss: (() -> Void)?
 
     private var interactiveDriver: App8InteractiveTransitionDriver?
+    private weak var presentationController: App8DimmingPresentationController?
 
     init(resolved: DSL.Model.ScreenTransition.Resolved) {
         self.resolved = resolved
@@ -75,18 +76,26 @@ final class App8TransitionManager: NSObject, UIViewControllerTransitioningDelega
         let controller = App8DimmingPresentationController(
             presentedViewController: presented,
             presenting: presenting,
-            dimming: resolved.dimming
+            dimming: resolved.dimming,
+            presentation: resolved.presentation,
+            interactive: resolved.interactive
         )
         controller.onBackdropTap = { [weak self] in self?.requestDismiss?() }
+        // A frame-driven sheet plays out its own dismissal, then asks us to clear
+        // the modal bookkeeping (no separate animator runs for it).
+        controller.onInteractiveDismiss = { [weak self] in self?.onDismissCompleted?() }
+        presentationController = controller
         return controller
     }
 
     // MARK: - Interactive dismiss
 
     /// Install gesture-driven swipe-to-dismiss on the presented view. Call once
-    /// the modal has appeared. No-op when the transition isn't interactive.
+    /// the modal has appeared. No-op when the transition isn't interactive, or
+    /// when a sized sheet drives its own frame-based interaction.
     func installInteractiveDismiss(on view: UIView) {
         guard let config = resolved.interactive, config.enabled else { return }
+        if presentationController?.usesSheetInteraction == true { return }
         let driver = App8InteractiveTransitionDriver(
             edge: resolved.edge,
             config: config,

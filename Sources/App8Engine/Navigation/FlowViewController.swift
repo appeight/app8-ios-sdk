@@ -172,6 +172,7 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
         params: [String: Any],
         style: ModalPresentationStyle,
         detents: [DSL.Model.Action.SheetDetent]?,
+        grabber: Bool? = nil,
         transition: DSL.Model.ScreenTransition.Resolved? = nil
     ) async throws {
         let screenComponent = try await screenLoader.loadScreen(id: screenId)
@@ -202,13 +203,13 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
             case .sheet, .pageSheet:
                 modalVC.modalPresentationStyle = .pageSheet
                 if let sheet = modalVC.sheetPresentationController {
-                    sheet.detents = detents?.map { detent in
-                        switch detent {
-                        case .medium: return .medium()
-                        case .large: return .large()
-                        }
-                    } ?? [.large()]
-                    sheet.prefersGrabberVisible = true
+                    let list = (detents?.isEmpty == false) ? detents! : [.large]
+                    sheet.detents = list.map(Self.uiDetent(for:))
+                    sheet.prefersGrabberVisible = grabber ?? true
+                    // Scrolling past the top of the content grows the sheet to the
+                    // next detent instead of bouncing (matches the system default,
+                    // set explicitly for clarity).
+                    sheet.prefersScrollingExpandsWhenScrolledToEdge = true
                 }
             case .fullScreen:
                 modalVC.modalPresentationStyle = .fullScreen
@@ -242,6 +243,24 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
                 self?.presentedModal = nil
                 NotificationCenter.default.post(name: .app8ScreenContextChanged, object: nil)
             }
+        }
+    }
+
+    /// Map a declarative `SheetDetent` to a UIKit sheet detent. `fixed`/`fraction`
+    /// become custom detents (heights are clamped to the container by UIKit).
+    private static func uiDetent(for detent: DSL.Model.Action.SheetDetent) -> UISheetPresentationController.Detent {
+        switch detent {
+        case .medium:
+            return .medium()
+        case .large:
+            return .large()
+        case .fixed(let height):
+            let id = UISheetPresentationController.Detent.Identifier("app8.fixed.\(Int(height.rounded()))")
+            return .custom(identifier: id) { _ in CGFloat(height) }
+        case .fraction(let fraction):
+            let clamped = max(0.1, min(1, fraction))
+            let id = UISheetPresentationController.Detent.Identifier("app8.fraction.\(Int((clamped * 1000).rounded()))")
+            return .custom(identifier: id) { context in context.maximumDetentValue * CGFloat(clamped) }
         }
     }
 }

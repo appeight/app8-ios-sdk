@@ -658,7 +658,8 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                             screenId: nextScreen,
                             params: resolvedParams,
                             style: .custom,
-                            detents: action.detents
+                            detents: action.detents,
+                            grabber: action.grabber
                         ),
                         transition: actionTransition
                     )
@@ -670,7 +671,8 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                         screenId: nextScreen,
                         params: resolvedParams,
                         style: modalStyle,
-                        detents: action.detents
+                        detents: action.detents,
+                        grabber: action.grabber
                     ))
                     NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
                 } else {

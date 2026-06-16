@@ -395,3 +395,106 @@ func componentExposesElementTransitionTypeErased() throws {
     // The component id is untouched and independent of the transition key.
     #expect(component.id == "hero-card")
 }
+
+// MARK: - Modal presentation (sized popups & sheets)
+
+@Test
+func popupPresetResolvesToCenteredCardModal() throws {
+    let resolved = try #require(Transition.resolve(try decodeTransition(#""popup""#)))
+    #expect(resolved.mode == .modal)
+    #expect(resolved.kind == .custom)
+    let p = try #require(resolved.presentation)
+    #expect(p.align == .center)
+    #expect(p.width == .fraction(0.86))
+    #expect(p.height == .ratio(0.62))
+    // Curated presets seed a backdrop dim that dismisses on tap.
+    #expect(resolved.dimming?.dismissOnTap == true)
+    #expect((resolved.dimming?.opacity ?? 0) > 0)
+    #expect(p.corner != nil)
+}
+
+@Test
+func sheetPresetResolvesToBottomCardWithSwipeDismiss() throws {
+    let resolved = try #require(Transition.resolve(try decodeTransition(#""sheet""#)))
+    #expect(resolved.mode == .modal)
+    let p = try #require(resolved.presentation)
+    #expect(p.align == .bottom)
+    #expect(p.width == .fill)
+    #expect(p.ignoresSafeArea == true)
+    // Sheet swipes down to dismiss by default.
+    #expect(resolved.interactive?.enabled == true)
+    #expect(resolved.interactive?.edge == .bottom)
+}
+
+@Test
+func presetPresentationMergesAuthorOverrides() throws {
+    // `sheet` + a single `presentation.height` keeps every other sheet default.
+    let t = try decodeTransition(#"""
+    { "preset": "sheet", "presentation": { "height": "70%" } }
+    """#)
+    let p = try #require(Transition.resolve(t)?.presentation)
+    #expect(p.height == .fraction(0.7))
+    #expect(p.align == .bottom)      // untouched preset default
+    #expect(p.width == .fill)        // untouched preset default
+}
+
+@Test
+func explicitPresentationBlockOnPlainModalPreset() throws {
+    // A `presentation` block opts a non-curated modal (e.g. scale) into a sized
+    // container; gaps fall back to the centered-card defaults.
+    let t = try decodeTransition(#"""
+    {
+      "preset": "scale", "mode": "modal",
+      "presentation": {
+        "width": 320, "height": { "ratio": 1.2 }, "align": "bottom",
+        "margin": 16, "corner": { "radius": 20 },
+        "ignoresSafeArea": false, "avoidsKeyboard": false
+      }
+    }
+    """#)
+    let p = try #require(Transition.resolve(t)?.presentation)
+    #expect(p.width == .points(320))
+    #expect(p.height == .ratio(1.2))
+    #expect(p.align == .bottom)
+    #expect(p.margin.top == 16)
+    #expect(p.avoidsKeyboard == false)
+}
+
+@Test
+func modalDimensionDecodesEveryForm() throws {
+    #expect(try decode(Transition.ModalDimension.self, "240") == .points(240))
+    #expect(try decode(Transition.ModalDimension.self, #""75%""#) == .fraction(0.75))
+    #expect(try decode(Transition.ModalDimension.self, #""fill""#) == .fill)
+    #expect(try decode(Transition.ModalDimension.self, #"{ "ratio": 0.5 }"#) == .ratio(0.5))
+}
+
+@Test
+func dimmingDismissOnTapDefaultsTrueAndIsOverridable() throws {
+    let on = try #require(Transition.resolve(try decodeTransition(#"""
+    { "preset": "scale", "mode": "modal", "dimming": { "opacity": 0.6 } }
+    """#))?.dimming)
+    #expect(on.dismissOnTap == true)
+
+    let off = try #require(Transition.resolve(try decodeTransition(#"""
+    { "preset": "scale", "mode": "modal", "dimming": { "opacity": 0.6, "dismissOnTap": false } }
+    """#))?.dimming)
+    #expect(off.dismissOnTap == false)
+}
+
+@Test
+func plainPushTransitionHasNoModalPresentation() throws {
+    let resolved = try #require(Transition.resolve(try decodeTransition(#""slide""#)))
+    #expect(resolved.presentation == nil)
+}
+
+@Test
+func resolvedPresentationComputesSizedCenteredFrame() throws {
+    let p = try #require(Transition.resolve(try decodeTransition(#""popup""#))?.presentation)
+    let bounds = CGRect(x: 0, y: 0, width: 400, height: 800)
+    let frame = p.frame(in: bounds, safeArea: .zero, keyboardHeight: 0)
+    // 86% of 400 = 344 wide; height = width * 0.62; centered.
+    #expect(abs(frame.width - 344) < 0.5)
+    #expect(abs(frame.height - 344 * 0.62) < 0.5)
+    #expect(abs(frame.midX - bounds.midX) < 0.5)
+    #expect(abs(frame.midY - bounds.midY) < 0.5)
+}

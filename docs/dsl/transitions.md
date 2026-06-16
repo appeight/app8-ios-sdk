@@ -75,8 +75,10 @@ A `transition` value can be written four ways — identical to the
   "reverse": "auto",              // "auto" (default) or an explicit { from, to } for an asymmetric exit
   "raise": "incoming",            // z-order: "incoming" (default) | "outgoing" — see Layering
 
-  "dimming":     { "color": "#000000", "opacity": 0.4 },     // modal backdrop (optional)
-  "interactive": { "enabled": true, "edge": "trailing", "threshold": 0.3, "velocity": 800 }
+  "dimming":     { "color": "#000000", "opacity": 0.4, "dismissOnTap": true },  // modal backdrop (optional)
+  "interactive": { "enabled": true, "edge": "trailing", "threshold": 0.3, "velocity": 800 },
+
+  "presentation": { /* modal-only: sized popup / sheet container — see below */ }
 }
 ```
 
@@ -142,6 +144,8 @@ field on the transition overrides the preset's value.
 | `fade` / `crossDissolve` | push | Incoming fades in over the outgoing. |
 | `scale` / `zoom` | modal | Incoming scales up from 92% while fading in (spring). |
 | `cover` | modal | Incoming slides in from `edge` (default bottom); pairs well with `dimming`. |
+| `popup` | modal | **Sized** centered card (scale + fade, dimming, rounded). See [Sized modal presentation](#sized-modal-presentation-popups--sheets). |
+| `sheet` | modal | **Sized** bottom-anchored card (slides up, dimming, rounded top, swipe-to-dismiss). See [Sized modal presentation](#sized-modal-presentation-popups--sheets). |
 | `shared` | push | **Shared-element** morph — matched elements fly between screens (hero / composite). See [Shared-element transitions](#shared-element-transitions-zoom--composite). |
 | `none` | push | Instantaneous (no animation). |
 | `system` | push / modal | Sentinel — installs **no** custom animation; uses UIKit's native push / modal. Opt back out per-navigation. |
@@ -149,6 +153,78 @@ field on the transition overrides the preset's value.
 ```jsonc
 { "type": "navigation", "nextScreen": "photo", "transition": { "preset": "cover", "edge": "bottom" } }
 ```
+
+---
+
+## Sized modal presentation (popups & sheets)
+
+By default a custom modal covers the whole screen. Add a **`presentation`** block
+(modal-only) to size the container — relatively or absolutely, like layout — and
+give it chrome (corner radius, shadow). The transition's motion (`preset` / `from`
+/ `to` / `animation`) is unchanged; `presentation` only controls *where and how big*
+the container sits and how it is clipped. The presented screen's own
+`style.material` remains its background.
+
+The one-liner presets cover the common cases; both are fully overridable:
+
+```jsonc
+"transition": "popup"     // centered card: scale+fade, dimming, 86% wide, rounded
+"transition": "sheet"     // bottom card: slides up, dimming, rounded top, swipe-to-dismiss
+```
+
+Fully spelled out:
+
+```jsonc
+{ "type": "navigation", "nextScreen": "details", "transition": {
+  "mode": "modal",
+  "preset": "scale",                       // motion — any modal preset
+  "animation": { "spring": { "damping": 0.78 } },
+  "dimming": { "color": "#000000", "opacity": 0.5, "dismissOnTap": true },
+  "interactive": { "enabled": true, "edge": "bottom" },
+  "presentation": {
+    "width":  "86%",                       // points (number) | "NN%" | "fill"
+    "height": { "ratio": 0.62 },           // points | "NN%" | { "ratio": k } (×width) | "fill"
+    "align":  "center",                    // center | top | bottom | leading | trailing
+    "margin": 16,                          // number, or { top, bottom, leading, trailing }
+    "corner": 28,                          // number | "NN%" | { "radius", "curve" }
+    "shadow": { "layers": [ { "color": "#000000", "radius": 30, "offset": { "x": 0, "y": 12 }, "opacity": 0.22 } ] },
+    "ignoresSafeArea": false,
+    "avoidsKeyboard": true
+  }
+} }
+```
+
+### Fields
+
+- **`width` / `height`** — each axis sizes independently:
+  - a number → absolute points;
+  - `"NN%"` → fraction of the available area (container minus safe area minus `margin`);
+  - `"fill"` → fill the available axis;
+  - `{ "ratio": k }` → **(height only)** `k ×` the resolved width — an aspect lock.
+- **`align`** — which edge the box anchors to; the cross axis always centers.
+  `center` centers both. `bottom` makes a sheet; `top` a banner.
+- **`margin`** — inset from the available area (a single number or per-edge).
+- **`corner`** — corner radius clipped onto the container. Reuses the
+  [`Corner`](styles.md) grammar but `curve` is optional here (defaults to
+  `continuous`), so `28` or `"50%"` work directly. For `bottom`/`top` alignment only
+  the leading edge's corners are rounded (clean sheet/banner).
+- **`shadow`** — a drop shadow rendered *behind* the clipped container. Reuses the
+  [`Shadow`](styles.md) grammar; use inline hex colours (like `dimming`).
+- **`ignoresSafeArea`** — lay out within the full container bounds instead of the
+  safe area (default `false`; the `sheet` preset sets `true` to hug the bottom edge).
+- **`avoidsKeyboard`** — re-center the container above the keyboard when it appears
+  (default `true`).
+
+### Dimming & dismissal
+
+`dimming` fades a backdrop in behind the card. `dismissOnTap` (default `true`) makes
+a tap on the backdrop dismiss the modal. Combine with `interactive` for
+swipe-to-dismiss (the `sheet` preset enables a downward swipe by default). All three
+compose: tap-outside, swipe, or an in-card back/close button all dismiss through the
+same path.
+
+A `presentation` block can be attached to **any** modal preset (`scale`, `cover`, …),
+not just `popup`/`sheet` — those two are just curated defaults.
 
 ---
 
@@ -294,7 +370,7 @@ The navigation **action** decides the route; the transition decides how it looks
 
 Set `interactive.enabled` to drive the dismiss (modal) or pop (push) with a pan
 gesture. Drag toward the dismissal `edge`; lifting past `threshold` (fraction of
-the screen) **or** above `velocity` (points/sec) completes, otherwise it springs
+the screen) **or** above `velocity` (points/sec) completes, otherwise it eases
 back.
 
 ```jsonc
@@ -305,6 +381,19 @@ back.
   "interactive": { "enabled": true, "edge": "bottom", "threshold": 0.3, "velocity": 700 }
 }
 ```
+
+**Feel.** While your finger is down the sheet tracks it **1:1** (linear), so the
+card sits exactly under the gesture. On release it settles with a single, monotonic
+**ease-in-out** (no spring overshoot — one clean release); the same applies to a
+non-gesture dismiss (button / backdrop tap).
+
+**Sized sheets** (the `sheet`/`popup` presets, or any modal with a `presentation`
+block anchored `bottom`/`top`) are driven from the *frame*, so dragging toward the
+edge slides the card off 1:1, and dragging the *other* way **stretches** the sheet —
+its far edge stays anchored while it grows with elastic resistance, so the
+background fills and edge-pinned content (e.g. a bottom `Done` button) stays put.
+It eases back to its resting size on release. Full-screen interactive transitions
+rubber-band via transform instead (nothing to stretch).
 
 For a custom interactive push, the engine installs its own screen-edge gesture and
 disables the system swipe-back so the two never fight.

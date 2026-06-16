@@ -155,16 +155,18 @@ Parameters are available as variables:
 The presentation styles below cover the built-in system animations. To customize
 *how* a screen animates in and out — slide/fade/zoom/cover presets, fully custom
 opacity/translate/scale/rotate keyframes, reusable named transitions,
-gesture-driven interactive dismiss, and **shared-element** (hero / composite)
-morphs that grow a matched component into its counterpart on the next screen —
-add a `transition` to the navigation action:
+gesture-driven interactive dismiss, **sized modal popups & sheets** (a `presentation`
+block sizing the container relatively or absolutely), and **shared-element**
+(hero / composite) morphs that grow a matched component into its counterpart on the
+next screen — add a `transition` to the navigation action:
 
 ```json
 { "type": "navigation", "nextScreen": "detail", "transition": "slide" }
 ```
 
 See [transitions.md](transitions.md) for the full transition system, including the
-`shared` preset for shared-element transitions.
+`popup` / `sheet` presets for sized modals and the `shared` preset for
+shared-element transitions.
 
 ## Presentation Styles
 
@@ -182,17 +184,39 @@ Standard navigation push with back button.
 
 ### Sheet
 
-iOS-style bottom sheet.
+iOS-style bottom sheet (native `UISheetPresentationController`), with a grabber and
+swipe-to-dismiss.
 
 ```json
 {
   "type": "navigation",
   "nextScreen": "filter",
-  "presentation": "sheet"
+  "presentation": "sheet",
+  "detents": ["medium", "large"]
 }
 ```
 
-Sheets support detents (medium, large) and swipe-to-dismiss.
+**Detents** are the heights the sheet can rest at; supply several to let the user
+drag between them. Each entry is one of:
+
+| Form | Meaning |
+|------|---------|
+| `"medium"` | System half-height detent. |
+| `"large"` | System full-height detent. |
+| a number, e.g. `320` | Custom detent at a fixed height in points. |
+| `"NN%"`, e.g. `"60%"` | Custom detent at a fraction of the largest available height. |
+
+```json
+{ "type": "navigation", "nextScreen": "peer", "presentation": "pageSheet",
+  "detents": ["60%", "large"], "grabber": false }
+```
+
+Omitting `detents` defaults to a single `large` detent. Scrolling the content past
+its top grows the sheet to the next detent. Set **`grabber: false`** to hide the
+drag indicator (it's shown by default). For a fully custom-styled bottom card (your
+own size, corner radius, shadow, and dismiss animation) use the engine-driven
+[`sheet` transition preset](transitions.md#sized-modal-presentation-popups--sheets)
+instead.
 
 ### Full Screen Modal
 
@@ -224,9 +248,13 @@ Smaller modal, optimized for iPad. Centered with backdrop.
 {
   "type": "navigation",
   "nextScreen": "settings",
-  "presentation": "pageSheet"
+  "presentation": "pageSheet",
+  "detents": ["medium", "large"]
 }
 ```
+
+Same native sheet as [Sheet](#sheet) and accepts the same `detents`
+(`medium` / `large` / a fixed number / `"NN%"`).
 
 ### Cross Dissolve
 

@@ -213,3 +213,46 @@ func datePickerComponentDecodesInActionContext() throws {
     #expect(entity?.content.properties.bindVariable == "date")
     #expect(entity?.content.actions?[.tap]?.first?.type == .haptic)
 }
+
+// MARK: - Sheet detents (native pageSheet)
+
+private typealias Detent = DSL.Model.Action.SheetDetent
+
+private func decodeDetents(_ json: String) throws -> [Detent] {
+    let action = try decodeAction(#"{ "type": "navigation", "nextScreen": "x", "presentation": "pageSheet", "detents": \#(json) }"#)
+    return try #require(action.detents)
+}
+
+@Test
+func sheetDetentsDecodeSystemSizes() throws {
+    #expect(try decodeDetents(#"["medium", "large"]"#) == [.medium, .large])
+}
+
+@Test
+func sheetDetentDecodesFixedHeightNumber() throws {
+    #expect(try decodeDetents(#"[320]"#) == [.fixed(320)])
+}
+
+@Test
+func sheetDetentDecodesFractionPercent() throws {
+    #expect(try decodeDetents(#"["60%"]"#) == [.fraction(0.6)])
+}
+
+@Test
+func sheetDetentsMixSystemAndCustom() throws {
+    #expect(try decodeDetents(#"["medium", 480, "90%"]"#) == [.medium, .fixed(480), .fraction(0.9)])
+}
+
+@Test
+func pageSheetPresentationDecodes() throws {
+    let action = try decodeAction(#"{ "type": "navigation", "nextScreen": "x", "presentation": "pageSheet" }"#)
+    #expect(action.presentation == .pageSheet)
+}
+
+@Test
+func sheetGrabberFlagDecodes() throws {
+    let on = try decodeAction(#"{ "type": "navigation", "nextScreen": "x", "presentation": "pageSheet" }"#)
+    #expect(on.grabber == nil)   // defaults applied at the UIKit boundary (true)
+    let off = try decodeAction(#"{ "type": "navigation", "nextScreen": "x", "presentation": "pageSheet", "grabber": false }"#)
+    #expect(off.grabber == false)
+}

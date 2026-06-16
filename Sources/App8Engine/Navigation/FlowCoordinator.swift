@@ -179,12 +179,13 @@ final class FlowCoordinator {
         case .completeFlow(let destination):
             try await completeFlow(destination: destination)
 
-        case .presentModal(let screenId, let params, let style, let detents):
+        case .presentModal(let screenId, let params, let style, let detents, let grabber):
             try await currentFlowViewController?.presentModal(
                 screenId: screenId,
                 params: params,
                 style: style,
                 detents: detents,
+                grabber: grabber,
                 transition: request.transition
             )
             emitVisibleContext()

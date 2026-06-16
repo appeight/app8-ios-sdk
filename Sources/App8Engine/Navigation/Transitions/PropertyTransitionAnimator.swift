@@ -41,6 +41,24 @@ final class PropertyTransitionAnimator: NSObject, UIViewControllerAnimatedTransi
 
     private var reduceMotion: Bool { UIAccessibility.isReduceMotionEnabled }
 
+    /// True for the gesture-scrubbable side of an interactive transition (the
+    /// dismiss / pop). Such transitions settle with a single, monotonic ease
+    /// rather than a spring so the release reads as one motion.
+    private var isInteractive: Bool {
+        direction == .reverse && (resolved.interactive?.enabled == true)
+    }
+
+    /// Timing for the property animation. Interactive transitions use a cubic
+    /// **ease-in-out** so the settle is a single, overshoot-free release; paired
+    /// with `scrubsLinearly` the finger-tracking phase stays perfectly linear
+    /// (the view follows the finger 1:1). Non-interactive transitions keep the
+    /// authored animation (which may be a spring).
+    private func timingParameters() -> UITimingCurveProvider {
+        isInteractive
+            ? UICubicTimingParameters(animationCurve: .easeInOut)
+            : resolved.animation.timingParameters()
+    }
+
     func transitionDuration(using transitionContext: UIViewControllerContextTransitioning?) -> TimeInterval {
         reduceMotion ? min(resolved.animation.duration, 0.25) : resolved.animation.duration
     }
@@ -121,8 +139,11 @@ final class PropertyTransitionAnimator: NSObject, UIViewControllerAnimatedTransi
 
         let animator = UIViewPropertyAnimator(
             duration: transitionDuration(using: transitionContext),
-            timingParameters: resolved.animation.timingParameters()
+            timingParameters: timingParameters()
         )
+        // While a percent-driven gesture scrubs a *paused* animator, track the
+        // finger 1:1 regardless of the release curve.
+        animator.scrubsLinearly = true
         animator.addAnimations { [weak self] in
             guard let self else { return }
             self.apply(plan.outgoing.end, to: fromView, container: container)
