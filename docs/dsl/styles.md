@@ -483,7 +483,7 @@ Typography styling for text content.
 | `alignment` | Alignment | `natural` | Text alignment |
 | `color` | Color | | Text color |
 | `lineHeight` | LineHeight | | Line height |
-| `letterSpacing` | LetterSpacing | | Letter spacing |
+| `letterSpacing` | LetterSpacing \| number | | Letter spacing (kerning, in points) |
 | `numberOfLines` | number | 0 | Max lines (0 = unlimited) |
 | `adjustsFontSizeToFitWidth` | boolean | false | Shrink font to fit width instead of truncating |
 | `minimumScaleFactor` | number | 0.5 | Smallest font scale autoshrink may use (0–1); only used when `adjustsFontSizeToFitWidth` is true |
@@ -532,8 +532,20 @@ Typography styling for text content.
 
 | Type | Description |
 |------|-------------|
-| `auto` | Automatic |
+| `auto` | Automatic (no kerning applied) |
 | `fixed` | Fixed value in points |
+
+### LetterSpacing Example
+
+Object form, or a bare number shorthand for fixed spacing in points:
+
+```json
+"letterSpacing": { "type": "fixed", "value": -1.5 }
+```
+
+```json
+"letterSpacing": -1.5
+```
 
 ### Complete Example
 

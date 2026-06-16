@@ -20,6 +20,11 @@ final class ScreenViewController: BaseViewController {
     /// streaming structural updates.
     let rootContainerView = UIView()
 
+    /// Shared-element transition participants on this screen, keyed by matching
+    /// key. Snapshotted by `App8Service.renderScreen` after the screen renders;
+    /// read by `SharedElementTransitionAnimator` to morph matched elements.
+    var transitionParticipants: [String: TransitionParticipant] = [:]
+
     /// Active streaming session (non-nil for screens with streaming: true).
     private var streamingSession: StreamingSession?
 

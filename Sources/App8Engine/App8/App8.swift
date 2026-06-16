@@ -190,6 +190,32 @@ final class A8: App8.DebugInstance {
                     self.decoder.userInfo[.app8AnimationResolver] = { @Sendable (id: String) -> DSL.Model.Animation.Inline? in
                         registry[id]
                     }
+                    // Expose the animation registry to navigation-time transition
+                    // resolution (e.g. a transition whose `animation` is a pointer).
+                    self.context.animationResolver = { id in registry[id] }
+
+                    // Build the transition registry. App.json is decoded before the
+                    // animation resolver above is installed, so a registry transition's
+                    // `animation` pointer is still unresolved here — normalize it now
+                    // against `registry` so resolved entries carry concrete timing.
+                    let resolveAnim: (String) -> DSL.Model.Animation.Inline? = { registry[$0] }
+                    let transitionRegistry: [String: DSL.Model.ScreenTransition.Inline] =
+                        (model.transitions ?? []).reduce(into: [:]) { acc, entry in
+                            guard var inline = entry.inlineOrNil, let key = inline.id else { return }
+                            inline.normalizeAnimation(resolveBy: resolveAnim)
+                            acc[key] = inline
+                        }
+                    self.decoder.userInfo[.app8TransitionResolver] = { @Sendable (id: String) -> DSL.Model.ScreenTransition.Inline? in
+                        transitionRegistry[id]
+                    }
+
+                    // App-wide default transition (lowest-priority fallback). Resolve
+                    // its pointer against the registry we just built, and its animation
+                    // pointer against the animation registry.
+                    if var defaultInline = model.defaultTransition?.inline(resolveBy: { transitionRegistry[$0] }) {
+                        defaultInline.normalizeAnimation(resolveBy: resolveAnim)
+                        self.context.appDefaultTransition = defaultInline
+                    }
                 } catch {
                     throw Self.Error.appDecodeFailed(underlying: error)
                 }

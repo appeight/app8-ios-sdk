@@ -65,6 +65,28 @@ extension DSL.Model.Style {
                 case auto
                 case fixed
             }
+
+            init(type: `Type`, value: CGFloat) {
+                self.type = type
+                self.value = value
+            }
+
+            private enum CodingKeys: String, CodingKey { case type, value }
+
+            init(from decoder: any Decoder) throws {
+                // Shorthand: a bare number is fixed letter spacing in points
+                // (`"letterSpacing": -1.5` ⇒ `{ "type": "fixed", "value": -1.5 }`).
+                if let single = try? decoder.singleValueContainer(),
+                   let number = try? single.decode(CGFloat.self) {
+                    self.type = .fixed
+                    self.value = number
+                    return
+                }
+                // Object form: `{ "type": "fixed" | "auto", "value": <number> }`.
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                self.type = try c.decode(`Type`.self, forKey: .type)
+                self.value = (try c.decodeIfPresent(CGFloat.self, forKey: .value)) ?? 0
+            }
         }
 
         enum Alignment: Int, Codable {

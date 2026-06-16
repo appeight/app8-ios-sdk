@@ -63,6 +63,29 @@ func textModelDecodesNegativeLetterSpacing() throws {
     #expect(model.letterSpacing?.value == -0.5)
 }
 
+@Test
+func textModelDecodesBareNumberLetterSpacingAsFixed() throws {
+    // Shorthand: a bare number is treated as fixed letter spacing in points.
+    let json = """
+    { "fontSize": 16, "letterSpacing": -1.5 }
+    """
+    let data = json.data(using: .utf8)!
+    let model = try JSONDecoder().decode(DSL.Model.Style.TextModel.self, from: data)
+    #expect(model.letterSpacing?.type == .fixed)
+    #expect(model.letterSpacing?.value == -1.5)
+}
+
+@Test
+func textModelDecodesIntegerLetterSpacingAsFixed() throws {
+    let json = """
+    { "fontSize": 16, "letterSpacing": 2 }
+    """
+    let data = json.data(using: .utf8)!
+    let model = try JSONDecoder().decode(DSL.Model.Style.TextModel.self, from: data)
+    #expect(model.letterSpacing?.type == .fixed)
+    #expect(model.letterSpacing?.value == 2)
+}
+
 // MARK: - TextModel lineHeight
 
 @Test

@@ -22,6 +22,15 @@ extension DSL.Model.Component {
         /// Navigation bar configuration (for screens only)
         let navigationBar: M.NavigationBar?
 
+        /// Per-component transition context. On a **screen root** this is the
+        /// screen's default `ScreenTransition` (used when navigating *to* this
+        /// screen and the navigation action declares no transition of its own;
+        /// overridden by an action-level transition, overrides the app default).
+        /// On a **child component** this is an `ElementTransition` participation
+        /// context (a matching `key`) for shared-element transitions. See
+        /// `M.ComponentTransition`.
+        let transition: M.ComponentTransition?
+
         /// Whether to hide the tab bar when this screen is pushed (for screens only)
         let hidesTabBar: Bool?
 
@@ -62,6 +71,7 @@ extension DSL.Model.Component {
             case triggers
             case variables
             case navigationBar
+            case transition
             case hidesTabBar
             case dismissKeyboardOnTap
             case streaming
@@ -132,6 +142,7 @@ extension DSL.Model.Component {
             states           = try c.decodeIfPresent([String: M.State<Properties, StyleContent>].self, forKey: .states)
             variables        = try c.decodeIfPresent([String: VariableDefinition].self, forKey: .variables)
             navigationBar    = try c.decodeIfPresent(M.NavigationBar.self, forKey: .navigationBar)
+            transition       = try c.decodeIfPresent(M.ComponentTransition.self, forKey: .transition)
             hidesTabBar      = try c.decodeIfPresent(Bool.self, forKey: .hidesTabBar)
             dismissKeyboardOnTap = try c.decodeIfPresent(Bool.self, forKey: .dismissKeyboardOnTap)
             streaming        = try c.decodeIfPresent(Bool.self, forKey: .streaming)

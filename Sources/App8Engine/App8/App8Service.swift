@@ -279,6 +279,11 @@ extension App8Service: ComponentRenderer, ComponentService {
             )
         }
 
+        // Snapshot this screen's shared-element participants (registered as its
+        // children rendered above) so the transition animator can read them
+        // independently of the global registry.
+        root.transitionParticipants = componentRegistry.participants(forScreenRoot: screenRootId)
+
         return root
     }
     
@@ -286,6 +291,21 @@ extension App8Service: ComponentRenderer, ComponentService {
     @MainActor
     @discardableResult
     func renderComponent(_ component: DSL.Model.Component.`Any`, superview: UIView, parentPath: String? = nil, parentVariableStore: VariableStoreProtocol? = nil, reuseViewModel: ComponentViewModelAbstract? = nil) -> RenderResult {
+        let result = renderComponentImpl(component, superview: superview, parentPath: parentPath, parentVariableStore: parentVariableStore, reuseViewModel: reuseViewModel)
+        // Register a shared-element transition participant when the component
+        // declares an element context on `content.transition`. Done once here
+        // (not per render-site) using the same `view` every site already builds.
+        if let element = component.elementTransition {
+            let path = parentPath.map { "\($0).\(component.id)" } ?? component.id
+            let screenRoot = String(path.split(separator: ".").first ?? Substring(path))
+            componentRegistry.registerParticipant(screenRoot: screenRoot, key: element.key, view: result.view, config: element)
+        }
+        return result
+    }
+
+    @MainActor
+    @discardableResult
+    private func renderComponentImpl(_ component: DSL.Model.Component.`Any`, superview: UIView, parentPath: String? = nil, parentVariableStore: VariableStoreProtocol? = nil, reuseViewModel: ComponentViewModelAbstract? = nil) -> RenderResult {
         guard case .key(let type) = component.type else {
             // Custom component types are not renderable yet.
             return RenderResult(view: renderErrorView(), type: .key(.view))

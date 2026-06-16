@@ -5,6 +5,7 @@ The `animation` primitive describes how a property change should transition over
 - **State transitions** — every `state.animation` field on a `StatefulContent` view (button, view, etc.). When the component moves between states (touchDown → "pressed", focus, hover, …), the runner uses this descriptor to animate **alpha, transform, and material layers** (gradient fill, shadow, outline, cornerRadius) under one synchronized transition.
 - **Per-property variable changes** *(parsing only — runtime hookup pending)* — properties driven by `{{expression}}` values can declare an `animation` next to the `value` so future variable mutations animate.
 - **Default press feedback** — buttons without explicit `states` use a built-in animation as touch-down/up feedback.
+- **Screen transitions** — the [transition](transitions.md) system reuses this primitive for the timing of screen-to-screen animations.
 
 The same primitive shows up everywhere — one schema, one runner, one mental model.
 

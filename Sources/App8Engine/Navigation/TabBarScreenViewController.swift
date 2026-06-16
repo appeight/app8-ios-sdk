@@ -157,6 +157,9 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         case .pop:
             currentNavController.popViewController(animated: true)
 
+        case .popToRoot:
+            currentNavController.popToRootViewController(animated: true)
+
         case .selectTab(let index, let id):
             if let index = index, index >= 0, index < tabIds.count {
                 selectedIndex = index

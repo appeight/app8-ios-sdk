@@ -67,6 +67,7 @@ A trigger may also list **multiple actions** to run in JSON order:
 | `nextScreen` | string | | Screen ID to navigate to |
 | `params` | object | | Parameters to pass |
 | `presentation` | Presentation | `push` | Presentation style |
+| `transition` | Transition | | Custom screen transition — see [transitions.md](transitions.md) |
 
 ### Presentation Styles
 

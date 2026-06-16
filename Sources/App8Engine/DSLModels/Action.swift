@@ -32,9 +32,12 @@ extension DSL.Model {
         var nextScreen: String?   // ID of the screen to navigate to
         var isFinal: Bool?        // Whether this completes the entire flow
         var isBack: Bool?         // Whether this is a back navigation
+        var toRoot: Bool?         // With isBack: pop to the navigation-stack root ("back to list")
         var params: [String: AnyCodableValue]?  // Parameters to pass during navigation
         var presentation: PresentationStyle?    // How to present (push, sheet, fullScreen, etc.)
-        var detents: [SheetDetent]?             // For sheet presentations: medium, large
+        var detents: [SheetDetent]?             // For native sheets: medium | large | <points> | "NN%"
+        var grabber: Bool?                      // For native sheets: show the drag grabber (default true)
+        var transition: ScreenTransition?       // Custom screen transition (overrides screen/app defaults)
 
         // State
         var stateName: String?    // For setState action: the target state name
@@ -155,10 +158,37 @@ extension DSL.Model {
             }
         }
 
-        /// Sheet detent sizes
-        public enum SheetDetent: String, Decodable, Sendable {
-            case medium     // ~50% height
-            case large      // Full height
+        /// A resting height for a native sheet (`UISheetPresentationController`).
+        /// DSL forms: `"medium"` · `"large"` · a number (fixed points) · `"NN%"`
+        /// (fraction of the largest available height). Several may be supplied so
+        /// the sheet can be dragged between them.
+        public enum SheetDetent: Decodable, Sendable, Equatable {
+            case medium             // system ~half height
+            case large              // system full height
+            case fixed(Double)      // absolute height in points
+            case fraction(Double)   // 0…1 of the largest detent height
+
+            public init(from decoder: any Decoder) throws {
+                let c = try decoder.singleValueContainer()
+                if let number = try? c.decode(Double.self) {
+                    self = .fixed(number)
+                    return
+                }
+                let raw = (try? c.decode(String.self)) ?? "large"
+                let s = raw.trimmingCharacters(in: .whitespaces)
+                switch s.lowercased() {
+                case "medium": self = .medium
+                case "large":  self = .large
+                default:
+                    if s.hasSuffix("%"), let pct = Double(s.dropLast()) {
+                        self = .fraction(pct / 100)
+                    } else if let n = Double(s) {
+                        self = .fixed(n)
+                    } else {
+                        self = .large
+                    }
+                }
+            }
         }
 
         /// Scope for variable operations

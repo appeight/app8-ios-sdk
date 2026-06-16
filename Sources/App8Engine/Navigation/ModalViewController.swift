@@ -12,6 +12,14 @@ final class ModalViewController: UIViewController {
 
     private let navController: UINavigationController
 
+    /// Strong reference to the transitioning delegate for a custom presentation
+    /// (`transitioningDelegate` is weak). Set by the presenter.
+    var transitionManager: App8TransitionManager?
+
+    /// Owns delegate duties for the modal's own navigation stack (intra-modal
+    /// custom push/pop transitions + context notifications).
+    private let navTransitionCoordinator = App8NavTransitionCoordinator()
+
     var topScreenViewController: ScreenViewController? {
         navController.topViewController as? ScreenViewController
     }
@@ -55,11 +63,26 @@ final class ModalViewController: UIViewController {
     }
 
     private func setupNavigationController() {
+        navController.delegate = navTransitionCoordinator
         addChild(navController)
         view.addSubview(navController.view)
-        navController.view.frame = view.bounds
-        navController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        // Pin with Auto Layout (not an autoresizing-mask frame) so the embedded
+        // content resizes in lockstep when the host resizes — e.g. a native sheet
+        // animating between detents — instead of catching up a frame later.
+        navController.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            navController.view.topAnchor.constraint(equalTo: view.topAnchor),
+            navController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            navController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            navController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
         navController.didMove(toParent: self)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Install gesture-driven swipe-to-dismiss for interactive custom modals.
+        transitionManager?.installInteractiveDismiss(on: view)
     }
 
     private func subscribeToNavigationRequests() {
@@ -96,12 +119,17 @@ final class ModalViewController: UIViewController {
 
         switch request.type {
         case .push(let screenId, let params):
-            try await pushScreen(id: screenId, params: params, animated: true)
+            try await pushScreen(id: screenId, params: params, transition: request.transition, animated: true)
 
         case .pop:
             // At root, dismiss is left to the FlowCoordinator.
             if navController.viewControllers.count > 1 {
                 popScreen(animated: true)
+            }
+
+        case .popToRoot:
+            if navController.viewControllers.count > 1 {
+                navController.popToRootViewController(animated: true)
             }
 
         case .dismiss:
@@ -115,10 +143,26 @@ final class ModalViewController: UIViewController {
 
     // MARK: - Navigation API
 
-    func pushScreen(id: String, params: [String: Any] = [:], animated: Bool = true) async throws {
+    func pushScreen(
+        id: String,
+        params: [String: Any] = [:],
+        transition: DSL.Model.ScreenTransition.Resolved? = nil,
+        animated: Bool = true
+    ) async throws {
         let screenComponent = try await screenLoader.loadScreen(id: id)
         let screenVC = await appService.renderScreen(screenComponent, screenId: id, params: params.isEmpty ? nil : params)
-        navController.pushViewController(screenVC, animated: animated)
+
+        // Intra-modal pushes honor an action-level custom transition; otherwise
+        // fall back to UIKit's native push.
+        switch transition?.kind {
+        case .some(.custom):
+            navTransitionCoordinator.register(transition, for: screenVC)
+            navController.pushViewController(screenVC, animated: true)
+        case .some(.none):
+            navController.pushViewController(screenVC, animated: false)
+        default:   // .some(.system) or nil → UIKit's native push
+            navController.pushViewController(screenVC, animated: animated)
+        }
     }
 
     func popScreen(animated: Bool = true) {

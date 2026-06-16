@@ -29,11 +29,28 @@ final class MaterialView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        // A CALayer doesn't autoresize, so the fill's geometry is set by hand —
+        // and *how* it's set must match how the host is resizing, or the fill
+        // visibly lags/leads the view:
+        //   • Direct, per-frame resize (dragging a sheet, static layout): snap to
+        //     `bounds` with actions disabled — no independent implicit animation.
+        //   • Animated resize (a sheet settling between detents): replay the host's
+        //     *exact* bounds animation — spring physics and all — onto the fill so
+        //     it resizes in perfect sync. Approximating the curve (e.g. a spring's
+        //     settling duration as an ease) is what makes it trail.
+        // (Style/appearance animations go through `update`/`apply`, not here.)
+        let hostResize = layer.animation(forKey: "bounds.size") as? CABasicAnimation
+                      ?? layer.animation(forKey: "bounds") as? CABasicAnimation
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)   // we add explicit animations, never implicit ones
+        defer { CATransaction.commit() }
+
         for tracked in trackedLayers {
-            tracked.layer?.frame = bounds
+            setGeometry(of: tracked.layer, mirroring: hostResize)
         }
         for tracked in trackedViews {
-            tracked.view?.frame = bounds
+            setGeometry(of: tracked.view?.layer, mirroring: hostResize)
         }
         // Re-resolve a size-dependent (fraction) corner now that bounds are known.
         // Outline / shadow layers self-resolve in their own `layoutSublayers`;
@@ -45,6 +62,40 @@ final class MaterialView: UIView {
             for tracked in trackedViews where tracked.typeKey == .visualEffect {
                 tracked.view?.layer.apply(cornerStyle: cornerStyle)
             }
+        }
+    }
+
+    private static let fillBoundsKey = "app8.fill.bounds"
+    private static let fillPositionKey = "app8.fill.position"
+
+    /// Pin `sublayer` to `bounds`. When the host is mid-resize-animation, replay a
+    /// copy of that animation onto the sublayer's bounds + position (centre) so it
+    /// tracks the view exactly; `from` is read from the sublayer's live
+    /// presentation so spring/additive encodings don't matter.
+    private func setGeometry(of sublayer: CALayer?, mirroring hostResize: CABasicAnimation?) {
+        guard let sublayer else { return }
+        let fromSize = sublayer.presentation()?.bounds.size ?? sublayer.bounds.size
+        sublayer.frame = bounds                 // model → final (actions disabled here)
+        let toSize = bounds.size
+
+        guard let hostResize, fromSize != toSize else {
+            sublayer.removeAnimation(forKey: Self.fillBoundsKey)
+            sublayer.removeAnimation(forKey: Self.fillPositionKey)
+            return
+        }
+        if let boundsAnim = hostResize.copy() as? CABasicAnimation {
+            boundsAnim.isAdditive = false
+            boundsAnim.keyPath = "bounds"
+            boundsAnim.fromValue = NSValue(cgRect: CGRect(origin: .zero, size: fromSize))
+            boundsAnim.toValue = NSValue(cgRect: CGRect(origin: .zero, size: toSize))
+            sublayer.add(boundsAnim, forKey: Self.fillBoundsKey)
+        }
+        if let positionAnim = hostResize.copy() as? CABasicAnimation {
+            positionAnim.isAdditive = false
+            positionAnim.keyPath = "position"
+            positionAnim.fromValue = NSValue(cgPoint: CGPoint(x: fromSize.width / 2, y: fromSize.height / 2))
+            positionAnim.toValue = NSValue(cgPoint: CGPoint(x: toSize.width / 2, y: toSize.height / 2))
+            sublayer.add(positionAnim, forKey: Self.fillPositionKey)
         }
     }
 
