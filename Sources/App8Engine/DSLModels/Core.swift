@@ -46,7 +46,19 @@ extension DSL.Model {
         /// Author-declared analytics bindings keyed by trigger. Independent
         /// from `actions` — same trigger can have both.
         var analytics: [ActionTrigger: AnalyticsBinding]? { get }
+
+        /// Continuous interaction → variable bindings (pan, …). Distinct from
+        /// `actions`: these stream raw gesture quantities into variables rather
+        /// than firing one-shot actions. Optional; defaults to `nil`.
+        var gestures: Gestures? { get }
     }
+}
+
+extension DSL.Model.ActionsHolder {
+    var gestures: DSL.Model.Gestures? { nil }
+}
+
+extension DSL.Model {
 
     /// Protocol for nodes that can define variables
     protocol VariablesHolder: Node {

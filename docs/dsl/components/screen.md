@@ -14,6 +14,7 @@ Top-level container for a screen.
 | `style` | ScreenStyle | Screen styling |
 | `additionalSafeAreaInsets` | EdgeInsets | Extra safe area insets applied to the screen — see [layout.md](../layout.md#additional-safe-area-insets-screen-level) |
 | `hidesTabBar` | boolean | Hide the tab bar when this screen is pushed |
+| `swipeBackEnabled` | boolean | Allow the interactive swipe-back (edge-pan pop) gesture while this screen is on top (default `true`). Set `false` for a forward-only screen — see [navigation.md — Disabling swipe-back](../navigation.md#disabling-swipe-back) |
 | `dismissKeyboardOnTap` | boolean | Dismiss keyboard when tapping outside inputs (default `true`) |
 
 ## Navigation Bar

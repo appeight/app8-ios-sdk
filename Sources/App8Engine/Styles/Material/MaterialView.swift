@@ -18,10 +18,36 @@ final class MaterialView: UIView {
     private struct TrackedView {
         weak var view: UIView?
         let typeKey: DSL.Model.Style.SType.Key
+        /// iOS 26 `UIGlassEffect` view — its corner is driven by
+        /// `cornerConfiguration`, not a CALayer mask.
+        var isGlass: Bool = false
+        /// Container glass — the owning view's content is hosted inside this
+        /// effect view's `contentView`.
+        var isContainerGlass: Bool = false
     }
 
     private var trackedLayers: [TrackedLayer] = []
     private var trackedViews: [TrackedView] = []
+
+    /// The container glass effect view, if the current material declares one.
+    /// The owning component reparents its `contentView` into this view's
+    /// `contentView` so children render inside the glass.
+    var containerGlassEffectView: UIVisualEffectView? {
+        for tracked in trackedViews where tracked.isContainerGlass {
+            if let v = tracked.view as? UIVisualEffectView { return v }
+        }
+        return nil
+    }
+
+    /// Classify a visual-effect style as iOS 26 glass / container glass.
+    private static func glassInfo(_ style: DSL.Model.Style.`Any`) -> (isGlass: Bool, isContainer: Bool) {
+        guard let entity: VisualEffect.Entity = style.asConcreteEntity(),
+              entity.content.glass != nil else { return (false, false) }
+        if #available(iOS 26.0, *) {
+            return (true, entity.content.container == true)
+        }
+        return (false, false)
+    }
 
     /// Corner of the current material, kept so a `fraction` radius can be
     /// re-resolved against the real bounds on every layout pass.
@@ -60,7 +86,11 @@ final class MaterialView: UIView {
                 tracked.layer?.apply(cornerStyle: cornerStyle)
             }
             for tracked in trackedViews where tracked.typeKey == .visualEffect {
-                tracked.view?.layer.apply(cornerStyle: cornerStyle)
+                if #available(iOS 26.0, *), tracked.isGlass, let v = tracked.view as? UIVisualEffectView {
+                    v.cornerConfiguration = cornerStyle.uiCornerConfiguration(in: v.bounds.size)
+                } else {
+                    tracked.view?.layer.apply(cornerStyle: cornerStyle)
+                }
             }
         }
     }
@@ -211,14 +241,16 @@ final class MaterialView: UIView {
                 if let newView {
                     newView.frame = bounds
                     insertSubview(newView, at: index)
-                    trackedViews[index] = TrackedView(view: newView, typeKey: entry.typeKey)
+                    let g = entry.typeKey == .visualEffect ? Self.glassInfo(entry.style) : (isGlass: false, isContainer: false)
+                    trackedViews[index] = TrackedView(view: newView, typeKey: entry.typeKey, isGlass: g.isGlass, isContainerGlass: g.isContainer)
                 }
             } else {
                 let newView = createUIView(typeKey: entry.typeKey, style: entry.style, cornerStyle: cornerStyle)
                 if let newView {
                     newView.frame = bounds
                     addSubview(newView)
-                    trackedViews.append(TrackedView(view: newView, typeKey: entry.typeKey))
+                    let g = entry.typeKey == .visualEffect ? Self.glassInfo(entry.style) : (isGlass: false, isContainer: false)
+                    trackedViews.append(TrackedView(view: newView, typeKey: entry.typeKey, isGlass: g.isGlass, isContainerGlass: g.isContainer))
                 }
             }
         }
@@ -414,11 +446,17 @@ final class MaterialView: UIView {
         cornerStyle: DSL.Model.Style.Corner?
     ) -> UIVisualEffectView {
         let effect: UIVisualEffect
+        var isGlass26 = false
         if let blur = style.blur {
             effect = UIBlurEffect(style: blur.uiBlurStyle)
         } else if style.glass != nil {
             if #available(iOS 26.0, *) {
-                effect = UIGlassEffect(style: .regular)
+                let glass = UIGlassEffect(style: .regular)
+                // Container glass hosts interactive content, so make the glass
+                // itself interactive (touch-responsive morph).
+                glass.isInteractive = (style.container == true)
+                effect = glass
+                isGlass26 = true
             } else {
                 effect = UIBlurEffect(style: .systemUltraThinMaterial)
             }
@@ -427,9 +465,22 @@ final class MaterialView: UIView {
         }
 
         let view = UIVisualEffectView(effect: effect)
+        // UIVisualEffectView self-manages its layout and ignores the manual
+        // `layer.frame` poke MaterialView applies to other tracked views, so it
+        // would otherwise stay 0×0 and collapse any hosted content. Track the
+        // MaterialView's bounds via autoresizing instead.
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         if let cornerStyle {
-            view.layer.apply(cornerStyle: cornerStyle)
-            view.clipsToBounds = true
+            if #available(iOS 26.0, *), isGlass26 {
+                // iOS 26 glass renders its own contoured corner via the view's
+                // corner configuration — don't hard-clip the layer (which would
+                // slice off the glass edge). Re-applied on resize in
+                // layoutSubviews for size-relative radii.
+                view.cornerConfiguration = cornerStyle.uiCornerConfiguration(in: view.bounds.size)
+            } else {
+                view.layer.apply(cornerStyle: cornerStyle)
+                view.clipsToBounds = true
+            }
         }
         return view
     }

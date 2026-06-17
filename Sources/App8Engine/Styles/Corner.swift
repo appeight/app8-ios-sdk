@@ -8,6 +8,21 @@ extension DSL.Model.Style {
         let radius: Radius
         let curve: Curve
 
+        init(radius: Radius, curve: Curve) {
+            self.radius = radius
+            self.curve = curve
+        }
+
+        private enum CodingKeys: String, CodingKey { case radius, curve }
+
+        init(from decoder: any Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            radius = try c.decode(Radius.self, forKey: .radius)
+            // `curve` is optional — defaults to circular (the capsule shorthand
+            // and simple radii rarely need to specify it).
+            curve = try c.decodeIfPresent(Curve.self, forKey: .curve) ?? .circular
+        }
+
         static var none: Corner {
             .init(radius: .fixed(0), curve: .circular)
         }
@@ -15,6 +30,23 @@ extension DSL.Model.Style {
         /// Resolve the corner radius for a concrete layer/view size.
         func resolvedRadius(in size: CGSize) -> CGFloat {
             radius.resolved(in: size)
+        }
+
+        /// Map to an iOS 26 `UICornerConfiguration`, used for `UIGlassEffect`
+        /// views so the glass renders its own contoured edge instead of being
+        /// hard-clipped by a CALayer mask. `capsule` (and any fraction ≥ 0.5)
+        /// becomes a size-scaling capsule; everything else is a fixed radius.
+        @available(iOS 26.0, *)
+        func uiCornerConfiguration(in size: CGSize) -> UICornerConfiguration {
+            switch radius {
+            case .capsule:
+                return .capsule()
+            case .fraction(let f) where f >= 0.5:
+                return .capsule()
+            default:
+                // A fixed point radius; UICornerRadius is ExpressibleByFloatLiteral.
+                return .corners(radius: UICornerRadius(floatLiteral: Double(resolvedRadius(in: size))))
+            }
         }
 
         enum Curve: String, SafeEnumCodable {
@@ -41,12 +73,17 @@ extension DSL.Model.Style {
             case fixed(CGFloat)
             /// Fraction of `min(width, height)`. `0.5` = full circle.
             case fraction(CGFloat)
+            /// Pill shape: `min(width, height) / 2`, scaling with the view. The
+            /// natural fit for the iOS 26 glass capsule (see `uiCornerConfiguration`).
+            case capsule
 
             /// True when the resolved value depends on the view's size and so
             /// must be re-applied on every layout pass.
             var isRelative: Bool {
-                if case .fraction = self { return true }
-                return false
+                switch self {
+                case .fraction, .capsule: return true
+                case .fixed: return false
+                }
             }
 
             func resolved(in size: CGSize) -> CGFloat {
@@ -55,11 +92,13 @@ extension DSL.Model.Style {
                     return max(0, value)
                 case .fraction(let fraction):
                     return max(0, min(size.width, size.height) * fraction)
+                case .capsule:
+                    return max(0, min(size.width, size.height) / 2)
                 }
             }
 
             private enum CodingKeys: String, CodingKey { case type, value }
-            private enum RadiusType: String, Decodable { case fixed, fraction }
+            private enum RadiusType: String, Decodable { case fixed, fraction, capsule }
 
             init(from decoder: any Decoder) throws {
                 if let single = try? decoder.singleValueContainer() {
@@ -68,21 +107,26 @@ extension DSL.Model.Style {
                         self = .fixed(number)
                         return
                     }
-                    // Shorthand: "50%" → fraction of the smaller dimension.
-                    if let string = try? single.decode(String.self),
-                       string.hasSuffix("%"),
-                       let percent = Double(string.dropLast()) {
-                        self = .fraction(CGFloat(percent) / 100)
-                        return
+                    if let string = try? single.decode(String.self) {
+                        // Shorthand: "capsule" → pill shape.
+                        if string == "capsule" {
+                            self = .capsule
+                            return
+                        }
+                        // Shorthand: "50%" → fraction of the smaller dimension.
+                        if string.hasSuffix("%"), let percent = Double(string.dropLast()) {
+                            self = .fraction(CGFloat(percent) / 100)
+                            return
+                        }
                     }
                 }
-                // Keyed form: { "type": "fixed" | "fraction", "value": N }
+                // Keyed form: { "type": "fixed" | "fraction" | "capsule", "value": N }
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 let type = try container.decode(RadiusType.self, forKey: .type)
-                let value = try container.decode(CGFloat.self, forKey: .value)
                 switch type {
-                case .fixed:    self = .fixed(value)
-                case .fraction: self = .fraction(value)
+                case .capsule:  self = .capsule
+                case .fixed:    self = .fixed(try container.decode(CGFloat.self, forKey: .value))
+                case .fraction: self = .fraction(try container.decode(CGFloat.self, forKey: .value))
                 }
             }
         }

@@ -388,8 +388,15 @@ yields a perfect circle/capsule.
 |------|---------|---------|
 | Fixed | `16` | Absolute radius in points |
 | Percent string | `"50%"` | Fraction of `min(width, height)` |
+| Capsule | `"capsule"` | Pill shape — `min(width, height) / 2`, scales with the view |
 | Keyed object | `{ "type": "fraction", "value": 0.5 }` | Fraction of `min(width, height)` |
 | Keyed object | `{ "type": "fixed", "value": 16 }` | Absolute radius in points |
+| Keyed object | `{ "type": "capsule" }` | Pill shape |
+
+`curve` is optional and defaults to `circular`. On an iOS 26 **glass** effect the
+corner is applied via the system glass corner configuration (`"capsule"` → a true
+glass capsule), so the glass keeps its own contoured edge instead of being
+hard-clipped by a layer mask.
 
 ### Curve Values
 
@@ -432,6 +439,28 @@ Blur and glass effects.
 |----------|------|-------------|
 | `blur` | BlurStyle | Background blur style |
 | `glass` | GlassStyle | Glass effect |
+| `container` | boolean | iOS 26 glass only. When `true`, the owning view's content renders *inside* the glass (`UIVisualEffectView.contentView`) so it refracts/morphs with the glass, and the glass is made interactive. Default `false` — glass is a background layer with content layered above it. No effect on blur or below iOS 26. |
+
+### Glass as a content container
+
+By default a glass `visualEffect` is a **background** layer: the view's children
+are drawn on top of it. Set `container: true` to host the view's content *inside*
+the glass instead — children then refract and morph with the iOS 26 liquid glass,
+and the glass becomes touch-interactive. All of the view's children move together
+(their mutual constraints are preserved); this is a view-level switch, not per child.
+
+```json
+{
+  "type": "view",
+  "content": {
+    "style": { "material": [
+      { "id": "g", "type": "visualEffect", "content": { "glass": "normal", "container": true } },
+      { "id": "c", "type": "corner", "content": { "radius": "capsule" } }
+    ] },
+    "children": [ /* rendered inside the glass */ ]
+  }
+}
+```
 
 ### Blur Styles
 

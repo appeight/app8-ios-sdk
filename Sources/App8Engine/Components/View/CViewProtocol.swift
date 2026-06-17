@@ -119,6 +119,19 @@ extension CViewProtocol where Self: UIView {
         bottomRight.isHidden = !labelsVisible
     }
 
+    /// Host `contentView` (and therefore all children, with their mutual
+    /// constraints intact) under `host`, re-pinning it edge-to-edge. Used to
+    /// move content into a container-glass effect view's `contentView` (so it
+    /// refracts/morphs with the glass) or back out to the component itself.
+    /// No-op when already correctly parented.
+    @MainActor
+    func reconcileContentHosting(into host: UIView) {
+        guard contentView.superview !== host else { return }
+        contentView.removeFromSuperview()
+        host.addSubview(contentView)
+        contentView.cMakeEqualToSuperview()
+    }
+
     @MainActor
     func applyBaseStyle(
         _ style: DSL.Model.Style.BaseStyleProtocol?,
@@ -212,6 +225,9 @@ extension CViewProtocol where Self: UIView {
                     self.transform = targetTransform
                 }
             )
+            // Container glass hosts content inside the effect's contentView;
+            // otherwise content stays layered above the material on the view.
+            reconcileContentHosting(into: materialView.containerGlassEffectView?.contentView ?? self)
         } else {
             AnimationRunner.run(
                 animation: resolved,
@@ -226,6 +242,8 @@ extension CViewProtocol where Self: UIView {
                     self.transform = targetTransform
                 }
             )
+            // No material → content is hosted directly on the component.
+            reconcileContentHosting(into: self)
         }
     }
 }

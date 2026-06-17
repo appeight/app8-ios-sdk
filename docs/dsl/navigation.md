@@ -538,6 +538,36 @@ navigation-stack root ("back to list") by adding `toRoot`:
 
 ---
 
+## Disabling swipe-back
+
+By default a pushed screen can be popped with the iOS interactive **swipe-back**
+edge gesture. Set `swipeBackEnabled: false` on the screen's `content` to turn that
+gesture off while the screen is on top — useful for forward-only flows
+(onboarding, a wizard, a checkout step) where an accidental back-swipe would lose
+state or skip a required action.
+
+```json
+{
+  "type": "screen",
+  "id": "onboarding-goals",
+  "content": {
+    "navigationBar": { "hidden": true },
+    "swipeBackEnabled": false,
+    "children": [ ]
+  }
+}
+```
+
+The flag is per-screen and applies whenever that screen is the visible (top)
+one. It disables **both** the system swipe-back and any custom interactive-pop
+edge-pan (see [transitions.md](transitions.md#interactive-dismiss--pop)), so the
+screen can only be left programmatically (a button running
+`{ "type": "navigation", "isBack": true }`, `completeFlow`, etc.). It does not
+affect the push/pop **animation** — pair it with any `transition`. A back button
+in the `navigationBar` still works; only the gesture is suppressed.
+
+---
+
 ## Complete Example
 
 ### App with Onboarding and Tabs

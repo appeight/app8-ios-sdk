@@ -208,9 +208,27 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
 
     // MARK: - Variable Context
 
+    /// Provides this component's current host-view size, set by the component
+    /// view once it exists. Lets expressions reference the component's own
+    /// geometry via the reserved `view` object: `view.width`, `view.height`,
+    /// `view.centerX`, `view.centerY`. Read fresh at every resolve so the value
+    /// reflects the latest layout. Note this is the component's *own* measured
+    /// size — referencing the same axis you are sizing (a `width` expression
+    /// reading `view.width`) is circular and unsupported.
+    var geometryProvider: (() -> CGSize)?
+
     /// Get a variable context for property resolution
     func getVariableContext() -> VariableContext {
-        return VariableContext(store: variableStore)
+        let base = VariableContext(store: variableStore)
+        guard let size = geometryProvider?(), size.width > 0 || size.height > 0 else {
+            return base
+        }
+        return base.overlaying("view", value: [
+            "width": Double(size.width),
+            "height": Double(size.height),
+            "centerX": Double(size.width / 2),
+            "centerY": Double(size.height / 2)
+        ])
     }
 
     /// Resolve a string property that may contain {{expressions}}
@@ -279,6 +297,32 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     /// Execute a variable action
     func executeVariableAction(_ action: DSL.Model.Action) {
         try? variableActionHandler.execute(action: action, store: variableStore, context: getVariableContext())
+    }
+
+    // MARK: - Gesture Bindings
+
+    /// Write a pan recognizer's raw quantities into the variables bound under
+    /// `content.gestures.pan`. Only declared bindings are written; values are in
+    /// the gesture view's own coordinate space (translation/location in points,
+    /// velocity in points/sec). This is a continuous *binding*, not an action
+    /// trigger — it intentionally does not route through analytics.
+    func applyPanGesture(translation: CGPoint, velocity: CGPoint, location: CGPoint) {
+        guard let pan = component.gestures?.pan else { return }
+        // Coalesce all bound quantities into one store transaction so dependent
+        // variables / expressions recompute once per frame, not once per binding.
+        var updates: [String: Any?] = [:]
+        func bind(_ name: String?, _ value: CGFloat) {
+            guard let name, !name.isEmpty else { return }
+            updates[name] = Double(value)
+        }
+        bind(pan.translationX, translation.x)
+        bind(pan.translationY, translation.y)
+        bind(pan.velocityX, velocity.x)
+        bind(pan.velocityY, velocity.y)
+        bind(pan.locationX, location.x)
+        bind(pan.locationY, location.y)
+        guard !updates.isEmpty else { return }
+        try? variableStore.setMultipleValues(updates)
     }
 
     /// Execute every action declared for `trigger` (in JSON order) and fire

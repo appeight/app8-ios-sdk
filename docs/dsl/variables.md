@@ -129,6 +129,32 @@ Expressions use `{{...}}` syntax.
 "text": "{{users[selectedIndex].name}}"
 ```
 
+### Reserved `view` geometry
+
+Inside a component's own expressions, the reserved `view` object exposes that
+component's current measured size, re-read on every resolve:
+
+| Reference | Value |
+|-----------|-------|
+| `view.width` | the component's current width (points) |
+| `view.height` | the component's current height (points) |
+| `view.centerX` / `view.centerY` | half the width / height |
+
+```json
+"height": "{{ brightness / 100 * view.height }}"
+"alpha":  "{{ dragY / view.height }}"
+```
+
+This lets a control map a raw [gesture](gestures.md) quantity into a fraction
+without hard-coding pixel sizes. Notes:
+
+- `view` is the component's **own** size. Referencing the same axis you are sizing
+  (a `width` expression that reads `view.width`) is circular and unsupported —
+  reference the cross axis, a parent's known dimension, or a literal instead.
+- Geometry-driven expressions re-resolve on variable changes and, for layout
+  `width`/`height`, on resize. Other geometry-dependent properties update on the
+  next variable change.
+
 ---
 
 ## Operators
