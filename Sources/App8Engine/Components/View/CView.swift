@@ -60,6 +60,11 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
 
     private var dynamicWidthExpression: String?
     private var dynamicHeightExpression: String?
+    /// True when a dimension expression references its own axis geometry
+    /// (`view.width` in a width expr) — excluded from layout-triggered
+    /// re-resolution to avoid an infinite layout loop.
+    private var widthExprSelfReferential = false
+    private var heightExprSelfReferential = false
 
     private var widthConstraint: NSLayoutConstraint?
     private var heightConstraint: NSLayoutConstraint?
@@ -75,6 +80,7 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
 
     func configure(viewModel: CViewModel, superview: UIView? = nil, animated: Bool = true) {
         self.viewModel = viewModel
+        viewModel.geometryProvider = { [weak self] in self?.bounds.size ?? .zero }
 
         guard let superview = superview ?? self.superview else {
             return
@@ -96,6 +102,7 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         bindDynamicDimensions(viewModel: viewModel)
         configureContent(viewModel: viewModel, animated: animated)
         setupTapGestureIfNeeded()
+        setupGestureBindingsIfNeeded()
         viewModel.startEventTriggers()
     }
 
@@ -309,6 +316,21 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
 
     // MARK: - Dynamic Dimensions
 
+    private var lastLaidOutSize: CGSize = .zero
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // When the view resizes, re-resolve dimension expressions that may
+        // reference the component's own geometry (`view.width` / `view.height`).
+        // `updateDynamicDimensions` is cached, so a stable size is a no-op.
+        if bounds.size != lastLaidOutSize {
+            lastLaidOutSize = bounds.size
+            if dynamicWidthExpression != nil || dynamicHeightExpression != nil {
+                updateDynamicDimensions(fromLayout: true)
+            }
+        }
+    }
+
     private func bindDynamicDimensions(viewModel: CViewModel) {
         let layout = viewModel.component.layout
 
@@ -322,6 +344,14 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
 
         guard dynamicWidthExpression != nil || dynamicHeightExpression != nil else { return }
 
+        // A dimension expression that references its OWN axis geometry
+        // (`width` reading `view.width`) is circular: re-resolving it from
+        // layoutSubviews would set the constraint, trigger layout, and re-resolve
+        // forever. Such axes resolve once + on variable changes only, never from
+        // the layout pass.
+        widthExprSelfReferential = dynamicWidthExpression?.contains("view.width") ?? false
+        heightExprSelfReferential = dynamicHeightExpression?.contains("view.height") ?? false
+
         viewModel.variablesChanged
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -332,10 +362,10 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         updateDynamicDimensions()
     }
 
-    private func updateDynamicDimensions() {
+    private func updateDynamicDimensions(fromLayout: Bool = false) {
         guard let viewModel = viewModel else { return }
 
-        if let widthExpr = dynamicWidthExpression,
+        if let widthExpr = dynamicWidthExpression, !(fromLayout && widthExprSelfReferential),
            let width = viewModel.resolvePropertyToFloat(widthExpr) {
             if lastDynamicWidth != width {
                 lastDynamicWidth = width
@@ -343,7 +373,7 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
             }
         }
 
-        if let heightExpr = dynamicHeightExpression,
+        if let heightExpr = dynamicHeightExpression, !(fromLayout && heightExprSelfReferential),
            let height = viewModel.resolvePropertyToFloat(heightExpr) {
             if lastDynamicHeight != height {
                 lastDynamicHeight = height
@@ -489,6 +519,7 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         bindDynamicBackgroundColor(viewModel: viewModel)
         configureContent(viewModel: viewModel, animated: animated)
         setupTapGestureIfNeeded()
+        setupGestureBindingsIfNeeded()
         viewModel.startEventTriggers()
     }
 
@@ -555,6 +586,45 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         viewModel?.executeAction(for: .longPress)
     }
 
+    // MARK: - Gesture Bindings (continuous → variables)
+
+    private var panBindingGesture: UIPanGestureRecognizer?
+    private var panTapBindingGesture: UITapGestureRecognizer?
+
+    /// Install recognizers for `content.gestures.pan` when present. Separate
+    /// from `setupTapGestureIfNeeded` (which drives `actions.tap`): these
+    /// recognizers stream raw quantities into variables and coexist with the
+    /// action tap via simultaneous recognition.
+    private func setupGestureBindingsIfNeeded() {
+        guard let pan = viewModel?.component.gestures?.pan, pan.hasBindings else { return }
+        if panBindingGesture == nil {
+            let g = UIPanGestureRecognizer(target: self, action: #selector(handlePanBinding(_:)))
+            g.delegate = self
+            addGestureRecognizer(g)
+            panBindingGesture = g
+        }
+        // A stationary tap is a zero-distance drag; let it set location bindings
+        // too (tap-to-set), without disturbing translation/velocity.
+        if panTapBindingGesture == nil, pan.locationX != nil || pan.locationY != nil {
+            let t = UITapGestureRecognizer(target: self, action: #selector(handleTapBinding(_:)))
+            t.delegate = self
+            addGestureRecognizer(t)
+            panTapBindingGesture = t
+        }
+    }
+
+    @objc private func handlePanBinding(_ g: UIPanGestureRecognizer) {
+        viewModel?.applyPanGesture(
+            translation: g.translation(in: self),
+            velocity: g.velocity(in: self),
+            location: g.location(in: self)
+        )
+    }
+
+    @objc private func handleTapBinding(_ g: UITapGestureRecognizer) {
+        viewModel?.applyPanGesture(translation: .zero, velocity: .zero, location: g.location(in: self))
+    }
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
         guard shouldHandleTouches else { return }
@@ -574,5 +644,19 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         guard shouldHandleTouches else { return }
         viewModel?.service.context.logger.debug("CView.touchesCancelled: \(viewModel?.componentPath ?? "unknown")")
         viewModel?.fireTrigger(.touchUp)
+    }
+}
+
+// MARK: - UIGestureRecognizerDelegate
+
+extension CView: UIGestureRecognizerDelegate {
+    /// Only the `gestures.pan` binding recognizers set `self` as delegate, so
+    /// this applies to them alone: let them recognize alongside the action tap,
+    /// long-press, and any ancestor gestures.
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        return true
     }
 }

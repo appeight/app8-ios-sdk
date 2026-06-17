@@ -197,6 +197,7 @@ See [variables.md](variables.md) for full expression documentation.
 - [layout.md](layout.md) - Layout and constraint system
 - [variables.md](variables.md) - Variables and expression syntax
 - [actions.md](actions.md) - Actions and event triggers
+- [gestures.md](gestures.md) - Continuous gesture → variable bindings (`pan`), and composing custom controls
 - [navigation.md](navigation.md) - Navigation and flow system
 - [transitions.md](transitions.md) - Screen transitions (presets, custom keyframes, registry, interactive), sized modal popups / sheets, and shared-element / hero / composite morphs
 
