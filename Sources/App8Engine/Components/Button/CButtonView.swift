@@ -9,6 +9,13 @@ class CButtonView: App8BaseView<DSL.Model.Component.Button.C>, CViewProtocol {
     private var viewModel: CButtonViewModel?  // strong ref keeps viewModel alive
     private var propertiesCancellable: AnyCancellable?
 
+    /// `true` while a `style.system` configuration owns the button's appearance.
+    /// Title/subtitle are then injected into `button.configuration` rather than via
+    /// `setTitle(_:for:)`, so content survives independent style/property updates.
+    private var usesSystemConfig = false
+    private var currentTitle: String = ""
+    private var currentSubtitle: String?
+
     override var intrinsicContentSource: UIView? { button }
 
     override func setup() {
@@ -44,18 +51,37 @@ class CButtonView: App8BaseView<DSL.Model.Component.Button.C>, CViewProtocol {
     }
 
     private func applyProperties(_ properties: Content.Properties) {
-        if let viewModel = viewModel {
-            button.setTitle(viewModel.resolvePropertyToString(properties.text), for: .normal)
+        currentTitle = viewModel?.resolvePropertyToString(properties.text) ?? properties.text
+
+        let isEnabled = properties.isEnabled.flatMap { viewModel?.resolvePropertyToBool($0) } ?? true
+        let isSelected = properties.isSelected.flatMap { viewModel?.resolvePropertyToBool($0) } ?? false
+        button.isEnabled = isEnabled
+        button.isSelected = isSelected
+        // System configs dim themselves when disabled; the Material path doesn't, so
+        // reflect the disabled state by dimming the button's own content.
+        button.alpha = (usesSystemConfig || isEnabled) ? 1.0 : 0.4
+
+        refreshButtonContent()
+    }
+
+    /// Applies the current title/subtitle to whichever rendering path is active.
+    /// Ordering-independent: works whether style or properties were applied first.
+    private func refreshButtonContent() {
+        if usesSystemConfig, button.configuration != nil {
+            button.configuration?.title = currentTitle
+            button.configuration?.subtitle = currentSubtitle
         } else {
-            button.setTitle(properties.text, for: .normal)
+            button.setTitle(currentTitle, for: .normal)
         }
     }
 
     // MARK: - Touch Triggers
 
-    /// Whether this button has custom press states defined in DSL
+    /// Whether this button has custom press states defined in DSL, or a system
+    /// configuration that supplies its own highlighted/disabled appearance. In
+    /// either case the built-in alpha press feedback is suppressed.
     private var hasCustomPressStates: Bool {
-        viewModel?.component.triggers != nil
+        viewModel?.component.triggers != nil || usesSystemConfig
     }
 
     @objc private func handleTouchDown() {
@@ -95,11 +121,62 @@ class CButtonView: App8BaseView<DSL.Model.Component.Button.C>, CViewProtocol {
         useSpring: Bool = false
     ) {
         super.applyStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
+
+        if let system = style?.system {
+            applySystemConfiguration(system, textModel: style?.text)
+        } else if usesSystemConfig {
+            // Reverted to the Material path (e.g. via a streaming update).
+            usesSystemConfig = false
+            button.configuration = nil
+        }
+
+        // Material background layers are ignored in the system path (the configuration
+        // owns the background/corner), but alpha/transform/shadow still apply.
         applyBaseStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
 
-        if let textModel = style?.text {
+        if !usesSystemConfig, let textModel = style?.text {
             applyTextModel(textModel)
         }
+    }
+
+    /// Renders the button via `UIButton.Configuration`, giving it the native system
+    /// look (filled / tinted / bordered / the iOS 26 glassy capsule, …) plus the
+    /// system's automatic highlighted/disabled appearance.
+    private func applySystemConfiguration(
+        _ system: DSL.Model.Style.SystemButton,
+        textModel: DSL.Model.Style.TextModel?
+    ) {
+        usesSystemConfig = true
+        var configuration = system.makeConfiguration()
+        configuration.image = system.image?.resolved()
+
+        if let subtitleExpr = system.subtitle {
+            currentSubtitle = viewModel?.resolvePropertyToString(subtitleExpr) ?? subtitleExpr
+        } else {
+            currentSubtitle = nil
+        }
+        if let indicatorExpr = system.showsActivityIndicator,
+           let shows = viewModel?.resolvePropertyToBool(indicatorExpr) {
+            configuration.showsActivityIndicator = shows
+        }
+
+        // Honour an explicit `style.text` font/colour on top of the configuration.
+        if let textModel {
+            let font = textModel.resolveUIFont()
+            let color = textModel.color?.ui
+            configuration.titleTextAttributesTransformer = .init { incoming in
+                var outgoing = incoming
+                outgoing.font = font
+                if let color { outgoing.foregroundColor = color }
+                return outgoing
+            }
+        }
+
+        button.configuration = configuration
+        if #available(iOS 26.0, *), let role = system.uiRole {
+            button.role = role
+        }
+        refreshButtonContent()
     }
 
     private func applyTextModel(_ textModel: DSL.Model.Style.TextModel) {
