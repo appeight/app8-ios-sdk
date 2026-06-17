@@ -231,6 +231,13 @@ struct AssetReferenceCollector {
             if case .remoteAsset(let asset) = videoProps.model {
                 insert(asset: asset, scope: scope, into: &images)
             }
+            // Warm remote poster / end-poster stills alongside the video bytes.
+            if let posterAsset = videoProps.poster?.remoteAsset {
+                insert(asset: posterAsset, scope: scope, into: &images)
+            }
+            if let endPosterAsset = videoProps.endPoster?.remoteAsset {
+                insert(asset: endPosterAsset, scope: scope, into: &images)
+            }
             return
         }
         if let textModel = value as? DSL.Model.Style.TextModel {

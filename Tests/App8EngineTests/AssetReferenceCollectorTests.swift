@@ -229,6 +229,55 @@ final class AssetReferenceCollectorTests: XCTestCase {
         XCTAssertEqual(refs.fonts.first?.postScriptName, "Inter-Bold")
     }
 
+    // MARK: - Video posters
+
+    func testVideoRemotePosterAndEndPosterAreCollected() throws {
+        let json = """
+        {
+          "id": "intro",
+          "type": "video",
+          "content": {
+            "properties": {
+              "type": "remoteAsset",
+              "id": "vid-1",
+              "name": "intro.mp4",
+              "loop": false,
+              "endBehavior": "showPoster",
+              "poster": { "type": "remoteAsset", "id": "poster-1", "name": "poster.png" },
+              "endPoster": { "type": "url", "url": "https://cdn.example/end.png" }
+            }
+          }
+        }
+        """
+        let component = try decode(json)
+        let refs = collect(component)
+        // video bytes + poster + endPoster.
+        XCTAssertEqual(refs.images.count, 3)
+        XCTAssertTrue(refs.images.contains { $0.id == "vid-1" })
+        XCTAssertTrue(refs.images.contains { $0.id == "poster-1" })
+        XCTAssertTrue(refs.images.contains { $0.url == "https://cdn.example/end.png" })
+    }
+
+    func testVideoLocalAndFramePostersAreNotPrefetched() throws {
+        let json = """
+        {
+          "id": "intro",
+          "type": "video",
+          "content": {
+            "properties": {
+              "type": "localAsset",
+              "name": "intro.mp4",
+              "poster": { "type": "firstFrame" },
+              "endPoster": { "type": "localAsset", "name": "bundled.png" }
+            }
+          }
+        }
+        """
+        let component = try decode(json)
+        let refs = collect(component)
+        XCTAssertEqual(refs.images.count, 0)
+    }
+
     // MARK: - Empty / pointer / pathological
 
     func testEmptyScreenReturnsEmptySet() throws {

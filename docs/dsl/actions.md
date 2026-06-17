@@ -44,6 +44,14 @@ A trigger may also list **multiple actions** to run in JSON order:
 | `onAnnotationTap` | Map | Map annotation tapped |
 | `onRegionChange` | Map | Visible map region changed |
 | `onUserLocationUpdate` | Map | User location updated |
+| `onVideoReady` | Video | Item is ready to play (before first frame) |
+| `onVideoStart` | Video | Playback starts (first time it begins playing) |
+| `onVideoPause` | Video | Playback pauses |
+| `onVideoComplete` | Video | A non-looping clip plays to its end |
+| `onVideoLoop` | Video | A looping clip completes a cycle (overlay `$loopCount`) |
+| `onVideoStall` | Video | Playback stalls waiting to buffer |
+| `onVideoError` | Video | The item fails to load/decode (overlay `$error`) |
+| `onTimeMark` | Video | Playback crosses a configured `marks` time (overlay `$markId`) |
 
 > Every trigger in this table also accepts an `analytics:` map alongside `actions:` — the engine fires the analytics binding regardless of whether `actions` is present. See [`analytics.md`](analytics.md).
 
