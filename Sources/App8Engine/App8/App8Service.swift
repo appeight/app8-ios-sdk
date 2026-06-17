@@ -214,6 +214,7 @@ extension App8Service: ComponentRenderer, ComponentService {
 
         let navigationBar = entity.content.navigationBar
         let hidesTabBar = entity.content.hidesTabBar ?? false
+        let swipeBackEnabled = entity.content.swipeBackEnabled ?? true
         let dismissKeyboardOnTap = entity.content.dismissKeyboardOnTap ?? true
         let dslInsets: UIEdgeInsets? = entity.content.additionalSafeAreaInsets.map {
             UIEdgeInsets(top: $0.top ?? 0, left: $0.left ?? 0, bottom: $0.bottom ?? 0, right: $0.right ?? 0)
@@ -236,6 +237,7 @@ extension App8Service: ComponentRenderer, ComponentService {
             screenId: screenId,
             navigationBar: navigationBar,
             hidesTabBar: hidesTabBar,
+            swipeBackEnabled: swipeBackEnabled,
             dismissKeyboardOnTap: dismissKeyboardOnTap,
             additionalSafeAreaInsets: additionalSafeAreaInsets,
             titleViewService: self,

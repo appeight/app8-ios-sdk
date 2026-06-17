@@ -84,7 +84,14 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
         let canPop = navigationController.viewControllers.count > 1
         let top = navigationController.topViewController
         let resolved = top.flatMap { transitions[ObjectIdentifier($0)] }
+
+        // Screen-level opt-out (DSL `swipeBackEnabled: false`): the visible screen
+        // forbids any swipe-back gesture — neither the system pop nor a custom
+        // interactive edge-pan is installed, so it can only be left programmatically.
+        let allowsSwipeBack = (top as? ScreenViewController)?.allowsSwipeBack ?? true
+
         let wantsCustomInteractive = canPop
+            && allowsSwipeBack
             && (resolved?.isAnimated ?? false)
             && (resolved?.interactive?.enabled ?? false)
 
@@ -109,9 +116,10 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
             )
             interactiveDriver = driver
         } else {
-            // Default behavior: system interactive pop gesture (as before).
+            // Default behavior: system interactive pop gesture (as before),
+            // unless the visible screen opts out via `swipeBackEnabled: false`.
             navigationController.interactivePopGestureRecognizer?.delegate = self
-            navigationController.interactivePopGestureRecognizer?.isEnabled = canPop
+            navigationController.interactivePopGestureRecognizer?.isEnabled = canPop && allowsSwipeBack
         }
     }
 
