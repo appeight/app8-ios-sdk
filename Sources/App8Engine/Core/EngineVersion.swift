@@ -14,5 +14,5 @@ import Foundation
 /// `"0.0.0-dev"` sentinel — events fired in development carry that string
 /// rather than a stale-but-plausible version number.
 public enum EngineVersion {
-    public static let current = "0.2.8"
+    public static let current = "0.2.9"
 }
