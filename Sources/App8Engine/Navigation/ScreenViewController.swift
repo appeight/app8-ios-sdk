@@ -9,6 +9,11 @@ final class ScreenViewController: BaseViewController {
 
     private let navigationBarConfig: DSL.Model.NavigationBar?
     private let dismissKeyboardOnTap: Bool
+
+    /// Whether the interactive swipe-back (edge-pan pop) gesture is allowed while
+    /// this screen is on top. Read by `App8NavTransitionCoordinator` in `didShow`.
+    /// `false` makes the screen non-dismissable by swipe (DSL `swipeBackEnabled: false`).
+    let allowsSwipeBack: Bool
     private let additionalSafeAreaInsetsConfig: UIEdgeInsets?
     private weak var titleViewService: App8Service?
     private var titleViewVariableStore: VariableStoreProtocol?
@@ -47,6 +52,7 @@ final class ScreenViewController: BaseViewController {
         screenId: String? = nil,
         navigationBar: DSL.Model.NavigationBar?,
         hidesTabBar: Bool = false,
+        swipeBackEnabled: Bool = true,
         dismissKeyboardOnTap: Bool = true,
         additionalSafeAreaInsets: UIEdgeInsets? = nil,
         titleViewService: App8Service? = nil,
@@ -55,6 +61,7 @@ final class ScreenViewController: BaseViewController {
     ) {
         self.screenId = screenId
         self.navigationBarConfig = navigationBar
+        self.allowsSwipeBack = swipeBackEnabled
         self.dismissKeyboardOnTap = dismissKeyboardOnTap
         self.additionalSafeAreaInsetsConfig = additionalSafeAreaInsets
         self.titleViewService = titleViewService

@@ -11,6 +11,7 @@ extension DSL.Model.Component {
         let layout: M.Layout?
         let actions: [M.ActionTrigger: [M.Action]]?
         let analytics: [M.ActionTrigger: M.AnalyticsBinding]?
+        let gestures: M.Gestures?
 
         /// Default state name - can be static ("normal") or expression ("{{condition ? 'a' : 'b'}}")
         let defaultStateName: String?
@@ -33,6 +34,12 @@ extension DSL.Model.Component {
 
         /// Whether to hide the tab bar when this screen is pushed (for screens only)
         let hidesTabBar: Bool?
+
+        /// Whether the interactive swipe-back (edge-pan pop) gesture is enabled
+        /// while this screen is on top of the navigation stack (for screens only).
+        /// Defaults to `true` (standard iOS behavior). Set `false` to make a
+        /// screen non-dismissable by swipe — e.g. a forward-only onboarding step.
+        let swipeBackEnabled: Bool?
 
         /// Whether tapping outside text inputs dismisses the keyboard (for screens only)
         let dismissKeyboardOnTap: Bool?
@@ -66,6 +73,7 @@ extension DSL.Model.Component {
             case layout
             case actions
             case analytics
+            case gestures
             case defaultStateName
             case states
             case triggers
@@ -73,6 +81,7 @@ extension DSL.Model.Component {
             case navigationBar
             case transition
             case hidesTabBar
+            case swipeBackEnabled
             case dismissKeyboardOnTap
             case streaming
             case additionalSafeAreaInsets
@@ -138,12 +147,14 @@ extension DSL.Model.Component {
             } else {
                 analytics = nil
             }
+            gestures         = try c.decodeIfPresent(M.Gestures.self, forKey: .gestures)
             defaultStateName = try c.decodeIfPresent(String.self, forKey: .defaultStateName)
             states           = try c.decodeIfPresent([String: M.State<Properties, StyleContent>].self, forKey: .states)
             variables        = try c.decodeIfPresent([String: VariableDefinition].self, forKey: .variables)
             navigationBar    = try c.decodeIfPresent(M.NavigationBar.self, forKey: .navigationBar)
             transition       = try c.decodeIfPresent(M.ComponentTransition.self, forKey: .transition)
             hidesTabBar      = try c.decodeIfPresent(Bool.self, forKey: .hidesTabBar)
+            swipeBackEnabled = try c.decodeIfPresent(Bool.self, forKey: .swipeBackEnabled)
             dismissKeyboardOnTap = try c.decodeIfPresent(Bool.self, forKey: .dismissKeyboardOnTap)
             streaming        = try c.decodeIfPresent(Bool.self, forKey: .streaming)
             additionalSafeAreaInsets = try c.decodeIfPresent(M.EdgeInsets.self, forKey: .additionalSafeAreaInsets)
