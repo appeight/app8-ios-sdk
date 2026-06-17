@@ -72,6 +72,8 @@ extension DSL.Model {
                 case text, font
                 // components
                 case view, image, icon, video
+                // native control styling
+                case systemButton
             }
             
             func isKeyed(_ key: Key) -> Bool {
@@ -204,6 +206,8 @@ extension DSL.Model.Style {
                 self.base = try ConcreteEntity<Video>(from: decoder)
             case .key(.icon):
                 self.base = try ConcreteEntity<Icon>(from: decoder)
+            case .key(.systemButton):
+                self.base = try ConcreteEntity<SystemButton>(from: decoder)
             case .custom(let customType):
                 // Content present with a custom discriminator — unsupported. (Custom pointers without content are handled above.)
                 throw DecodingError.dataCorrupted(.init(

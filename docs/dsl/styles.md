@@ -69,6 +69,7 @@ When `content` is absent, the engine treats the entity as a pointer and resolves
 | `view` | ViewStyle | General view appearance |
 | `image` | ImageStyle | Image rendering options |
 | `font` | Font | Font definition |
+| `systemButton` | SystemButton | Native `UIButton.Configuration` styling (filled/tinted/bordered/glass, capsule corners, tint, role, SF-Symbol image). Reference it from a button via `style.system`. See [components/button.md](components/button.md#style-systembutton-native). |
 
 ### Component Examples
 
