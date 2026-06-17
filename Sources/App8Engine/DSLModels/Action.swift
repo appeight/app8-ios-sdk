@@ -16,6 +16,15 @@ extension DSL.Model {
         case onUserLocationUpdate
         // ScrollView triggers
         case onScrollThreshold
+        // Video triggers
+        case onVideoReady       // first frame displayed (AVPlayerLayer.isReadyForDisplay)
+        case onVideoStart       // playback actually began (timeControlStatus -> .playing, first time)
+        case onVideoPause       // playback paused
+        case onVideoComplete    // played to end (non-looping)
+        case onVideoLoop        // per loop cycle (AVPlayerLooper.loopCount increment)
+        case onVideoStall       // buffering (timeControlStatus -> .waitingToPlayAtSpecifiedRate)
+        case onVideoError       // AVPlayerItem.status == .failed
+        case onTimeMark         // a marks[] boundary crossed (overlay: $markId)
     }
 
     public struct Action: Decodable, Sendable {

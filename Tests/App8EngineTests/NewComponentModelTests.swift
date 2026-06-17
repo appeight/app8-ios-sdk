@@ -376,6 +376,103 @@ func videoDecodesGravityStyle() throws {
     #expect(content.style?.videoGravity == .resizeAspect)
 }
 
+@Test
+func videoEndBehaviorDefaultsToFreeze() throws {
+    let json = componentJSON(type: "video", properties: """
+    { "type": "localAsset", "name": "intro" }
+    """)
+
+    let content = try decodeComponent(json, as: DSL.Model.Component.Video.C.self)
+    #expect(content.properties.endBehavior == .freezeLastFrame)
+    #expect(content.properties.poster == nil)
+    #expect(content.properties.endPoster == nil)
+    #expect(content.properties.marks == nil)
+    #expect(content.properties.startDelay == nil)
+    #expect(content.properties.startTime == nil)
+    #expect(content.properties.rate == nil)
+    // `loop: true` (default) drives the looping path.
+    #expect(content.properties.loops == true)
+}
+
+@Test
+func videoDecodesPosterTimingAndMarks() throws {
+    let json = componentJSON(type: "video", properties: """
+    {
+        "type": "localAsset", "name": "intro", "loop": false,
+        "endBehavior": "showPoster",
+        "poster": { "type": "remoteAsset", "id": "p1", "name": "poster.png" },
+        "endPoster": { "type": "url", "url": "https://cdn.example/end.png" },
+        "startDelay": 1.5, "startTime": 2, "rate": 0.5,
+        "marks": [ { "id": "m1", "time": 0.35 }, { "id": "m2", "time": 0.57 } ]
+    }
+    """)
+
+    let content = try decodeComponent(json, as: DSL.Model.Component.Video.C.self)
+    let props = content.properties
+    #expect(props.endBehavior == .showPoster)
+    #expect(props.loops == false)
+    #expect(props.poster?.kind == .remoteAsset)
+    #expect(props.poster?.id == "p1")
+    #expect(props.poster?.name == "poster.png")
+    #expect(props.endPoster?.kind == .url)
+    #expect(props.endPoster?.url == "https://cdn.example/end.png")
+    #expect(props.startDelay == 1.5)
+    #expect(props.startTime == 2)
+    #expect(props.rate == 0.5)
+    #expect(props.marks?.count == 2)
+    #expect(props.marks?.first?.id == "m1")
+    #expect(props.marks?.first?.time == 0.35)
+}
+
+@Test
+func videoEndBehaviorLoopImpliesLooping() throws {
+    let json = componentJSON(type: "video", properties: """
+    { "type": "localAsset", "name": "intro", "loop": false, "endBehavior": "loop" }
+    """)
+
+    let content = try decodeComponent(json, as: DSL.Model.Component.Video.C.self)
+    #expect(content.properties.endBehavior == .loop)
+    #expect(content.properties.loops == true)
+}
+
+@Test
+func videoPosterRemoteAssetHelper() throws {
+    let remote = DSL.Model.Component.Video.PosterSource(kind: .remoteAsset, name: "p.png", id: "p1")
+    #expect(remote.remoteAsset?.id == "p1")
+    let urlPoster = DSL.Model.Component.Video.PosterSource(kind: .url, url: "https://x/y.png")
+    #expect(urlPoster.remoteAsset?.url == "https://x/y.png")
+    let firstFrame = DSL.Model.Component.Video.PosterSource(kind: .firstFrame)
+    #expect(firstFrame.remoteAsset == nil)
+    let local = DSL.Model.Component.Video.PosterSource(kind: .localAsset, name: "bundled")
+    #expect(local.remoteAsset == nil)
+}
+
+@Test
+func videoDecodesPlaybackActionsAndAnalytics() throws {
+    let json = """
+    {
+        "type": "video",
+        "id": "test-video",
+        "content": {
+            "properties": { "type": "localAsset", "name": "intro", "loop": false },
+            "style": {},
+            "layout": {},
+            "actions": {
+                "onVideoComplete": [ { "type": "emit", "name": "intro.finished" } ],
+                "onTimeMark": [ { "type": "updateVariable", "variableName": "step", "value": 1 } ]
+            },
+            "analytics": { "onVideoComplete": "introDone" }
+        }
+    }
+    """
+
+    let content = try decodeComponent(json, as: DSL.Model.Component.Video.C.self)
+    #expect(content.actions?[.onVideoComplete]?.first?.type == .emit)
+    #expect(content.actions?[.onVideoComplete]?.first?.name == "intro.finished")
+    #expect(content.actions?[.onTimeMark]?.first?.type == .updateVariable)
+    #expect(content.analytics?[.onVideoComplete]?.name == "introDone")
+}
+
 // MARK: - DatePicker Model Tests
 
 @Test
