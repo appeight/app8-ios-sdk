@@ -19,6 +19,14 @@ public extension App8 {
     @MainActor
     protocol Instance: AnyObject {
         func startApp() async throws -> UIViewController
+
+        /// Render a single flow from the app manifest, starting at `flowId`
+        /// rather than `navigation.startFlow`. Member screens load lazily via
+        /// the data source as the user navigates. A cloud-delivery SDK pairs
+        /// this with a flow-scoped data source so a published flow's screens
+        /// resolve through the flow channel, not the public screen channel.
+        func renderFlow(flowId: String) async throws -> UIViewController
+
         func stopApp()
 
         /// Publishes the currently visible screen context within the navigation hierarchy

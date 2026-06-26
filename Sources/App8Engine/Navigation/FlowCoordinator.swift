@@ -23,12 +23,22 @@ final class FlowCoordinator {
     /// Cached FlowViewControllers by flow ID (for switchFlow — future).
     private var flowViewControllers: [String: FlowViewController] = [:]
 
-    init(app: DSL.Model.App, screenLoader: ScreenLoaderProtocol, appService: App8Service, context: App8Context) {
+    /// - Parameter startFlowId: When non-nil, the coordinator starts at this
+    ///   flow instead of the manifest's `navigation.startFlow`. Used by
+    ///   `renderFlow(flowId:)` to render a specific (possibly non-default) flow
+    ///   from a multi-flow manifest.
+    init(
+        app: DSL.Model.App,
+        screenLoader: ScreenLoaderProtocol,
+        appService: App8Service,
+        context: App8Context,
+        startFlowId: String? = nil
+    ) {
         self.app = app
         self.screenLoader = screenLoader
         self.appService = appService
         self.context = context
-        self.currentFlowId = app.navigation?.startFlow ?? ""
+        self.currentFlowId = startFlowId ?? app.navigation?.startFlow ?? ""
     }
 
     deinit {
@@ -65,6 +75,7 @@ final class FlowCoordinator {
 
         let newFlowVC = try await createFlowViewController(for: flow)
 
+        let previousFlowId = currentFlowId
         currentFlowId = destination
         currentFlowViewController = newFlowVC
         flowViewControllers[destination] = newFlowVC
@@ -72,7 +83,7 @@ final class FlowCoordinator {
         // App8RootViewController observes this to swap the flow.
         NotificationCenter.default.post(
             name: .app8FlowComplete,
-            object: FlowTransition(from: currentFlowId, to: destination, viewController: newFlowVC)
+            object: FlowTransition(from: previousFlowId, to: destination, viewController: newFlowVC)
         )
 
         emitVisibleContext()

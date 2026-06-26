@@ -18,7 +18,6 @@ public struct App8 {
     }
 }
 
-/// Conforms to `App8.DebugInstance`, `App8.Instance`
 @MainActor
 final class A8: App8.DebugInstance {
 
@@ -129,7 +128,6 @@ final class A8: App8.DebugInstance {
 
         let root = App8RootViewController(app: app, context: context)
 
-        // Create and start the flow coordinator
         let coordinator = FlowCoordinator(app: app, screenLoader: self, appService: appService, context: context)
         self.flowCoordinator = coordinator
 
@@ -143,7 +141,45 @@ final class A8: App8.DebugInstance {
         return root
     }
 
-    /// Stop the app and clean up resources
+    /// Render a single flow from the app manifest, starting at `flowId`
+    /// instead of `navigation.startFlow`. Returns a root view controller that
+    /// hosts the flow's navigation stack.
+    ///
+    /// Member screens load lazily through the data source's `getScreen` as the
+    /// user navigates — a cloud-delivery SDK supplies a data source that routes
+    /// those fetches to the flow-scoped endpoint, keeping a published flow's
+    /// screens isolated from the public single-screen channel.
+    public func renderFlow(flowId: String) async throws -> UIViewController {
+        // Infrastructure only (app model + styles + templates). Unlike
+        // `awaitReady()` we don't pre-load the manifest's initialScreen — the
+        // coordinator loads `flowId`'s start screen, which may differ.
+        try await ensureInfrastructureReady()
+
+        guard let app, let appService else {
+            throw Error.appInitFailed
+        }
+
+        let root = App8RootViewController(app: app, context: context)
+
+        let coordinator = FlowCoordinator(
+            app: app,
+            screenLoader: self,
+            appService: appService,
+            context: context,
+            startFlowId: flowId
+        )
+        self.flowCoordinator = coordinator
+
+        do {
+            let flowVC = try await coordinator.start()
+            root.embedFlow(flowVC)
+        } catch {
+            return appService.renderErrorScreen(errorText: "Failed to start flow: \(error.localizedDescription)")
+        }
+
+        return root
+    }
+
     public func stopApp() {
         flowCoordinator?.stop()
         flowCoordinator = nil
@@ -347,7 +383,6 @@ final class A8: App8.DebugInstance {
     }
     
     private func decodeComponent<T: Decodable>(_ data: Data, as type: T.Type) throws -> DSL.Model.Component.`Any` {
-        // Merge templates before decoding.
         let processedData: Data
         if let resolver = templateResolver {
             let preprocessor = TemplatePreprocessor(resolver: resolver)
@@ -544,7 +579,6 @@ extension A8 {
 
 extension A8: ScreenLoaderProtocol {
 
-    /// Load and decode a screen by its ID
     func loadScreen(id: String) async throws -> DSL.Model.Component.`Any` {
         guard let ds = dataSource else {
             throw Error.dataSourceDeallocated
@@ -661,7 +695,6 @@ extension A8 {
                         finalParams[name] = value
                     }
                 }
-                // Fall back to type defaults for anything still missing
                 let stillMissing = missingParams.filter { finalParams[$0.name] == nil }
                 for param in stillMissing {
                     let type = VariableType(rawValue: param.inferredType ?? "string") ?? .string
@@ -678,7 +711,6 @@ extension A8 {
         )
     }
 
-    /// Render a screen and capture it as a UIImage.
     func screenshotScreen(screenId: String, options: ScreenRenderOptions) async throws -> UIImage {
         let viewController = try await renderScreen(screenId: screenId, options: options)
 
@@ -710,7 +742,6 @@ extension A8 {
         return try await performAnalysis(screenId: screenId)
     }
 
-    /// Get analysis for all screens in the app.
     func getAllScreenManifest() async throws -> [ScreenManifestEntry] {
         try await ensureInfrastructureReady()
 
