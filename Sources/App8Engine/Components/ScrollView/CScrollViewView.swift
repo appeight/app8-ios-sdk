@@ -160,6 +160,16 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         let insetAdjustment = viewModel.component.properties.contentInsetAdjustment ?? .automatic
         scrollView.contentInsetAdjustmentBehavior = insetAdjustment == .automatic ? .automatic : .never
 
+        let props = viewModel.component.properties
+        scrollView.bounces = props.bounces ?? true
+        scrollView.isPagingEnabled = props.pagingEnabled ?? false
+        if let dismissMode = props.keyboardDismissMode {
+            scrollView.keyboardDismissMode = dismissMode.ui
+        }
+        if let decelerationRate = props.decelerationRate {
+            scrollView.decelerationRate = decelerationRate.ui
+        }
+
         switch direction {
         case .vertical:
             scrollView.showsVerticalScrollIndicator = showsIndicator

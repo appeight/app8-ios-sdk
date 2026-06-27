@@ -21,6 +21,12 @@ extension DSL.Model {
         
         protocol EntityContent: Decodable, StyleHolder, LayoutHolder, PropertiesHolder, ActionsHolder, ChildrenHolder {
             mutating func resolveStateStylePointers(resolver: (String) -> (any DSL.Model.Style.Entity)?)
+
+            /// Universal interaction overrides. Default nil; `Content<P,S>` provides
+            /// the decoded value. Lets the engine reach the props generically.
+            var interaction: DSL.Model.Interaction? { get }
+            /// Universal accessibility metadata. Default nil; `Content<P,S>` provides it.
+            var accessibility: DSL.Model.Accessibility? { get }
         }
         
         protocol Entity: Protocol {
@@ -80,8 +86,16 @@ extension DSL.Model {
     }
 }
 
+extension DSL.Model.Component.EntityContent {
+    /// Default for content types (e.g. `TabBarScreenContent`) that don't carry
+    /// universal interaction/accessibility blocks. `Content<P,S>` overrides these
+    /// with its decoded stored properties.
+    var interaction: DSL.Model.Interaction? { nil }
+    var accessibility: DSL.Model.Accessibility? { nil }
+}
+
 extension DSL.Model.Component.Entity {
-    
+
     @discardableResult
     mutating func setContent(_ content: any DSL.Model.Component.EntityContent) -> Bool {
         if let content = content as? Content {

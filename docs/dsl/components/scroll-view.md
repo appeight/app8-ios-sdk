@@ -11,6 +11,10 @@ Scrollable container.
 | `properties.outputVariable` | string | | Variable to write scroll offset to (0 at rest, positive when scrolled) |
 | `properties.contentInsetAdjustment` | ContentInsetAdjustment | `automatic` | How iOS adjusts content insets for safe areas |
 | `properties.contentInset` | EdgeInsets | | Explicit padding around the scroll content |
+| `properties.bounces` | boolean | true | Whether the scroll view bounces past its content edges |
+| `properties.pagingEnabled` | boolean | false | Snap scrolling to multiples of the scroll view's bounds |
+| `properties.keyboardDismissMode` | KeyboardDismissMode | `none` | How an on-screen keyboard is dismissed while scrolling |
+| `properties.decelerationRate` | DecelerationRate | `normal` | Deceleration rate after a scroll gesture ends |
 | `properties.autoScroll` | AutoScroll | | Continuous auto-scroll / marquee — see [Auto-scroll](#auto-scroll) |
 | `children` | Component[] | | Content components |
 | `style` | ScrollViewStyle | | Styling |
@@ -20,6 +24,18 @@ Scrollable container.
 ## Direction Values
 
 `vertical`, `horizontal`
+
+## KeyboardDismissMode Values
+
+| Value | Description |
+|-------|-------------|
+| `none` | Default. The keyboard is not dismissed by scrolling. |
+| `onDrag` | The keyboard is dismissed when a drag begins. |
+| `interactive` | The keyboard follows the drag, and can be dismissed interactively. |
+
+## DecelerationRate Values
+
+`normal` (default), `fast`
 
 ## ContentInsetAdjustment Values
 
@@ -56,6 +72,8 @@ Use this to drive animations (parallax, sticky headers, fading nav bars, etc.) v
     "properties": {
       "direction": "horizontal",
       "showsIndicator": false,
+      "pagingEnabled": true,
+      "bounces": false,
       "autoScroll": { "speed": 30, "infinite": true, "loopGap": 30 }
     },
     "children": []
