@@ -18,6 +18,14 @@ extension DSL.Model.Component {
             let scrollThreshold: CGFloat?  // Offset to fire onScrollThreshold action (with $crossed overlay)
             let contentInset: DSL.Model.EdgeInsets?
             let contentInsetAdjustment: ContentInsetAdjustment?
+            /// Whether the scroll view bounces past its content edges. Default: true (UIKit default).
+            let bounces: Bool?
+            /// Whether scrolling snaps to multiples of the scroll view's bounds. Default: false.
+            let pagingEnabled: Bool?
+            /// How an on-screen keyboard is dismissed while scrolling.
+            let keyboardDismissMode: KeyboardDismissMode?
+            /// Deceleration rate after a scroll gesture ends.
+            let decelerationRate: DecelerationRate?
             /// Optional auto-scroll (marquee/ticker) behavior.
             /// When set, the engine drives `contentOffset` on every display frame
             /// using a `CADisplayLink`. With `infinite: true` the rendered content
@@ -34,6 +42,31 @@ extension DSL.Model.Component {
             enum ContentInsetAdjustment: String, Decodable {
                 case never
                 case automatic
+            }
+
+            /// Maps to `UIScrollView.keyboardDismissMode`.
+            enum KeyboardDismissMode: String, Decodable {
+                case none, onDrag, interactive
+
+                var ui: UIScrollView.KeyboardDismissMode {
+                    switch self {
+                    case .none:        return .none
+                    case .onDrag:      return .onDrag
+                    case .interactive: return .interactive
+                    }
+                }
+            }
+
+            /// Maps to `UIScrollView.DecelerationRate`.
+            enum DecelerationRate: String, Decodable {
+                case normal, fast
+
+                var ui: UIScrollView.DecelerationRate {
+                    switch self {
+                    case .normal: return .normal
+                    case .fast:   return .fast
+                    }
+                }
             }
 
             /// Auto-scroll / marquee configuration.

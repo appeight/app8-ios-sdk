@@ -13,6 +13,14 @@ extension DSL.Model.Component {
         let analytics: [M.ActionTrigger: M.AnalyticsBinding]?
         let gestures: M.Gestures?
 
+        /// Universal interaction overrides (isUserInteractionEnabled, clipsToBounds,
+        /// zIndex). Applies to every component type — see `M.Interaction`.
+        let interaction: M.Interaction?
+
+        /// Universal accessibility metadata (label, hint, value, traits, …).
+        /// Applies to every component type — see `M.Accessibility`.
+        let accessibility: M.Accessibility?
+
         /// Default state name - can be static ("normal") or expression ("{{condition ? 'a' : 'b'}}")
         let defaultStateName: String?
         var states: [String: M.State<Properties, StyleContent>]?
@@ -74,6 +82,8 @@ extension DSL.Model.Component {
             case actions
             case analytics
             case gestures
+            case interaction
+            case accessibility
             case defaultStateName
             case states
             case triggers
@@ -148,6 +158,8 @@ extension DSL.Model.Component {
                 analytics = nil
             }
             gestures         = try c.decodeIfPresent(M.Gestures.self, forKey: .gestures)
+            interaction      = try c.decodeIfPresent(M.Interaction.self, forKey: .interaction)
+            accessibility    = try c.decodeIfPresent(M.Accessibility.self, forKey: .accessibility)
             defaultStateName = try c.decodeIfPresent(String.self, forKey: .defaultStateName)
             states           = try c.decodeIfPresent([String: M.State<Properties, StyleContent>].self, forKey: .states)
             variables        = try c.decodeIfPresent([String: VariableDefinition].self, forKey: .variables)

@@ -10,6 +10,14 @@ extension DSL.Model.Style {
         let letterSpacing: LetterSpacing?
         let numberOfLines: Int?
 
+        /// How text is truncated/wrapped when it overflows. Defaults to UIKit's
+        /// behavior (`.byTruncatingTail`) when omitted.
+        let lineBreakMode: LineBreakMode?
+        /// Draws a single underline under the text.
+        let underline: Bool?
+        /// Draws a single strikethrough line through the text.
+        let strikethrough: Bool?
+
         /// Shrinks the font to fit the label's width instead of truncating.
         /// Most effective with a constrained `numberOfLines` (e.g. 1).
         let adjustsFontSizeToFitWidth: Bool?
@@ -91,6 +99,23 @@ extension DSL.Model.Style {
 
         enum Alignment: Int, Codable {
             case left, center, right, justified, natural
+        }
+
+        /// Author-facing line-break modes mapped to `NSLineBreakMode`.
+        enum LineBreakMode: String, Decodable {
+            case wordWrap, charWrap, clip
+            case truncateHead, truncateTail, truncateMiddle
+
+            var ui: NSLineBreakMode {
+                switch self {
+                case .wordWrap:        return .byWordWrapping
+                case .charWrap:        return .byCharWrapping
+                case .clip:            return .byClipping
+                case .truncateHead:    return .byTruncatingHead
+                case .truncateTail:    return .byTruncatingTail
+                case .truncateMiddle:  return .byTruncatingMiddle
+                }
+            }
         }
     }
 }

@@ -31,9 +31,63 @@ Every component shares the same envelope:
 | `style` | Visual styling | [styles.md](styles.md) |
 | `layout` | Position and size constraints | [layout.md](layout.md) |
 | `actions` | Event handlers | [actions.md](actions.md) |
+| `gestures` | Continuous gesture → variable bindings | [gestures.md](gestures.md) |
+| `interaction` | Touch / clipping / z-order overrides | [Interaction](#interaction) below |
+| `accessibility` | VoiceOver metadata | [Accessibility](#accessibility) below |
 | `variables` | Component-scoped variables | [variables.md](variables.md) |
 | `states` / `triggers` | State machine | [states.md](states.md) |
 | `children` | Nested components (containers only) | — |
+
+---
+
+## Interaction
+
+The optional `content.interaction` block overrides touch handling, clipping, and
+z-ordering on **any** component. All fields accept a literal (`"true"`, `"2"`) or a
+`{{expression}}` and re-evaluate reactively when variables change.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean/expression | Explicit `isUserInteractionEnabled`. By default a component only handles touches when it declares `actions` / `triggers` / `gestures`; set this to force-enable a passive container or force-disable an otherwise-interactive subtree. |
+| `clipsToBounds` | boolean/expression | Clip children to the component's bounds. |
+| `zIndex` | number/expression | Raise/lower the component among its siblings (maps to `layer.zPosition`) without reordering the hierarchy. |
+
+```json
+{
+  "type": "view",
+  "content": {
+    "interaction": { "enabled": "{{editing}}", "clipsToBounds": "true", "zIndex": "10" }
+  }
+}
+```
+
+## Accessibility
+
+The optional `content.accessibility` block sets VoiceOver metadata on any component.
+String fields accept a literal or `{{expression}}`. (`accessibilityIdentifier` is set
+automatically from the component `id`.)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `label` | string/expression | Spoken label. |
+| `hint` | string/expression | Spoken hint. |
+| `value` | string/expression | Spoken value (e.g. a slider's current value). |
+| `traits` | string[] | Accessibility traits — e.g. `["button", "header"]`. See values below. |
+| `isElement` | boolean/expression | Override `isAccessibilityElement`. |
+| `hidden` | boolean/expression | Hide from accessibility (`accessibilityElementsHidden`). |
+
+Trait values: `button`, `link`, `header`, `image`, `selected`, `disabled`,
+`adjustable`, `searchField`, `staticText`, `summaryElement`, `updatesFrequently`,
+`startsMediaSession`, `allowsDirectInteraction`.
+
+```json
+{
+  "type": "image",
+  "content": {
+    "accessibility": { "label": "Profile photo", "hint": "Double tap to change", "traits": ["button"] }
+  }
+}
+```
 
 ---
 
