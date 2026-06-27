@@ -515,6 +515,9 @@ Typography styling for text content.
 | `lineHeight` | LineHeight | | Line height |
 | `letterSpacing` | LetterSpacing \| number | | Letter spacing (kerning, in points) |
 | `numberOfLines` | number | 0 | Max lines (0 = unlimited) |
+| `lineBreakMode` | LineBreakMode | `truncateTail` | How text wraps/truncates on overflow |
+| `underline` | boolean | false | Draw a single underline under the text |
+| `strikethrough` | boolean | false | Draw a single strikethrough line through the text |
 | `adjustsFontSizeToFitWidth` | boolean | false | Shrink font to fit width instead of truncating |
 | `minimumScaleFactor` | number | 0.5 | Smallest font scale autoshrink may use (0–1); only used when `adjustsFontSizeToFitWidth` is true |
 
@@ -541,6 +544,17 @@ Typography styling for text content.
 | `right` | Right aligned |
 | `justified` | Justified |
 | `natural` | Natural (follows locale) |
+
+### LineBreakMode Values
+
+| Value | Description |
+|-------|-------------|
+| `wordWrap` | Wrap at word boundaries |
+| `charWrap` | Wrap at character boundaries |
+| `clip` | Clip at the edge, no truncation |
+| `truncateHead` | Truncate at the start (…end) |
+| `truncateTail` | Truncate at the end (start…) — UIKit default |
+| `truncateMiddle` | Truncate in the middle (sta…end) |
 
 ### LineHeight Types
 

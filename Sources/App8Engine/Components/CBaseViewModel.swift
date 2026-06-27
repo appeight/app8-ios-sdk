@@ -8,6 +8,32 @@ import UIKit
 protocol ComponentViewModelAbstract: AnyObject {
     var variableStore: ScopedVariableStore { get }
     var componentPath: String { get }
+
+    /// Fires when any variable in this component's scope changes. Lets the shared
+    /// common-property binder re-resolve `interaction` / `accessibility` reactively.
+    var variablesChanged: AnyPublisher<String, Never> { get }
+
+    /// Universal interaction overrides declared on this component's content.
+    var interactionProps: DSL.Model.Interaction? { get }
+    /// Universal accessibility metadata declared on this component's content.
+    var accessibilityProps: DSL.Model.Accessibility? { get }
+
+    func resolvePropertyToBool(_ value: String) -> Bool?
+    func resolvePropertyToFloat(_ value: String) -> CGFloat?
+    func resolvePropertyToString(_ value: String) -> String
+}
+
+/// Defaults for lightweight conformers (e.g. `CellVariableStoreWrapper`) that
+/// exist only for caching and never carry component content / a property
+/// resolver. `CBaseViewModel` provides real implementations that take precedence
+/// as the protocol witnesses.
+extension ComponentViewModelAbstract {
+    var variablesChanged: AnyPublisher<String, Never> { variableStore.anyVariableChanged }
+    var interactionProps: DSL.Model.Interaction? { nil }
+    var accessibilityProps: DSL.Model.Accessibility? { nil }
+    func resolvePropertyToBool(_ value: String) -> Bool? { nil }
+    func resolvePropertyToFloat(_ value: String) -> CGFloat? { nil }
+    func resolvePropertyToString(_ value: String) -> String { value }
 }
 
 protocol ComponentService: AnyObject, ComponentRenderer, A8.DataSourceHolder {
@@ -109,6 +135,11 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     var variablesChanged: AnyPublisher<String, Never> {
         variableStore.anyVariableChanged
     }
+
+    /// Universal interaction overrides from this component's content (nil unless declared).
+    var interactionProps: DSL.Model.Interaction? { component.interaction }
+    /// Universal accessibility metadata from this component's content (nil unless declared).
+    var accessibilityProps: DSL.Model.Accessibility? { component.accessibility }
 
     var animation: AnyPublisher<DSL.Model.Animation?, Never> {
         stateManager.animation

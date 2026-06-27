@@ -308,6 +308,9 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         label.font = textModel.resolveUIFont()
         let maxLines = textModel.numberOfLines ?? 0
         label.numberOfLines = maxLines
+        if let lineBreakMode = textModel.lineBreakMode {
+            label.lineBreakMode = lineBreakMode.ui
+        }
         // We take over UILabel's autoshrink because it doesn't work reliably for
         // multi-line attributed text with custom paragraph styles.
         label.adjustsFontSizeToFitWidth = false
@@ -334,6 +337,15 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
 
         if let letterSpacing = textModel.letterSpacing, letterSpacing.type == .fixed {
             attrs[.kern] = letterSpacing.value
+        }
+
+        // Underline/strikethrough are added before the `lineHeight` early-return
+        // below so they survive the `.auto` case.
+        if textModel.underline == true {
+            attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+        }
+        if textModel.strikethrough == true {
+            attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
         }
 
         if let lineHeight = textModel.lineHeight {
