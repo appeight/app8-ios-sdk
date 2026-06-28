@@ -391,9 +391,26 @@ class CVideoView: App8BaseView<DSL.Model.Component.Video.C>, CViewProtocol {
     /// player's automatic playback management), so `rate` actually takes effect.
     private func beginPlayback() {
         guard let player else { return }
+        configureAudioSession()
         let rate = viewModel?.component.properties.rate ?? 0
         player.playImmediately(atRate: rate > 0 ? rate : 1.0)
         markPlaybackStarted()
+    }
+
+    /// Declare the clip's audio-session policy so a background loop doesn't
+    /// hijack the device's audio. Done here (start), not at build time, so an
+    /// off-screen/preloaded player never touches the shared session until it
+    /// actually plays. `audioMix: .auto` (default) derives from `muted`.
+    private func configureAudioSession() {
+        guard let props = viewModel?.component.properties else { return }
+        let policy: VideoAudioSession.Policy
+        switch props.audioMix {
+        case .auto:      policy = props.muted ? .mix : .interrupt
+        case .mix:       policy = .mix
+        case .duck:      policy = .duck
+        case .interrupt: policy = .interrupt
+        }
+        VideoAudioSession.configure(policy)
     }
 
     /// First real start of this play-through — fade the pre-playback poster out.

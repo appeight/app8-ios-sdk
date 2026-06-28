@@ -38,6 +38,24 @@ extension DSL.Model.Component {
             case showPoster
         }
 
+        /// How a playing clip's audio coexists with whatever else the device is
+        /// already playing (music, a podcast, another app). The engine maps each
+        /// case onto an `AVAudioSession` category so a silent background loop never
+        /// hijacks the device's audio.
+        enum AudioMix: String, Decodable, Equatable {
+            /// Derive from `muted` (default): muted clips behave like `mix`,
+            /// audible clips like `interrupt`.
+            case auto
+            /// Mix silently alongside other audio — never interrupt it. Governed
+            /// by the ringer switch. Best for muted background loops.
+            case mix
+            /// Lower (duck) other audio while this clip plays, then restore it.
+            case duck
+            /// Take over device audio, stopping other sources; plays through the
+            /// ringer switch. For a real video the user is meant to hear.
+            case interrupt
+        }
+
         /// A still image shown before playback (and optionally after, via
         /// `endPoster`). Reused for both pre- and post-playback posters so the
         /// schema stays small.
@@ -120,6 +138,9 @@ extension DSL.Model.Component.Video {
         let loop: Bool
         /// Mute audio. Default `true` (background/onboarding loops are silent).
         let muted: Bool
+        /// How this clip's audio coexists with other device audio. Default
+        /// `.auto` (derives from `muted`). See `AudioMix`.
+        let audioMix: AudioMix
         /// What to show after a non-looping clip completes. Default `.freezeLastFrame`.
         let endBehavior: EndBehavior
         /// Still shown before the first frame paints.
@@ -142,6 +163,7 @@ extension DSL.Model.Component.Video {
             autoplay: Bool = true,
             loop: Bool = true,
             muted: Bool = true,
+            audioMix: AudioMix = .auto,
             endBehavior: EndBehavior = .freezeLastFrame,
             poster: PosterSource? = nil,
             endPoster: PosterSource? = nil,
@@ -155,6 +177,7 @@ extension DSL.Model.Component.Video {
             self.autoplay = autoplay
             self.loop = loop
             self.muted = muted
+            self.audioMix = audioMix
             self.endBehavior = endBehavior
             self.poster = poster
             self.endPoster = endPoster
@@ -165,7 +188,7 @@ extension DSL.Model.Component.Video {
         }
 
         enum CodingKeys: String, CodingKey {
-            case type, autoplay, loop, muted
+            case type, autoplay, loop, muted, audioMix
             case endBehavior, poster, endPoster, startDelay, startTime, rate, marks
         }
 
@@ -183,6 +206,7 @@ extension DSL.Model.Component.Video {
             self.autoplay = try container.decodeIfPresent(Bool.self, forKey: .autoplay) ?? true
             self.loop = try container.decodeIfPresent(Bool.self, forKey: .loop) ?? true
             self.muted = try container.decodeIfPresent(Bool.self, forKey: .muted) ?? true
+            self.audioMix = try container.decodeIfPresent(AudioMix.self, forKey: .audioMix) ?? .auto
             self.endBehavior = try container.decodeIfPresent(EndBehavior.self, forKey: .endBehavior) ?? .freezeLastFrame
             self.poster = try container.decodeIfPresent(PosterSource.self, forKey: .poster)
             self.endPoster = try container.decodeIfPresent(PosterSource.self, forKey: .endPoster)

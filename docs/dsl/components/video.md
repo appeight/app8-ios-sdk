@@ -1,9 +1,10 @@
 # Video
 
-Muted, autoplaying video with no playback chrome — designed for onboarding and marketing
+Autoplaying video with no playback chrome — designed for onboarding and marketing
 screens where a short clip plays behind or within the layout, behaving like an animated
-`image`. Supports seamless looping, posters, end behaviors, timing controls
-(`startDelay` / `startTime` / `rate`), and playback events.
+`image`. Muted by default, but can carry sound. Supports seamless looping, posters, end
+behaviors, timing controls (`startDelay` / `startTime` / `rate`), per-clip audio policy
+(`audioMix`), and playback events.
 
 > **Sources:** a `localAsset` bundled in the host app target (`.mp4` / `.mov` / `.m4v`),
 > or a `remoteAsset` resolved at runtime through the data source (the host's prefetched
@@ -21,6 +22,7 @@ screens where a short clip plays behind or within the layout, behaving like an a
 | `properties.autoplay` | boolean | Start playing when on-screen. Default `true` |
 | `properties.loop` | boolean | Seamlessly loop playback. Default `true` |
 | `properties.muted` | boolean | Mute audio. Default `true` |
+| `properties.audioMix` | string | How this clip's audio coexists with other device audio (music, podcasts): `auto` *(default)*, `mix`, `duck`, `interrupt`. See [Audio behavior](#audio-behavior). |
 | `properties.endBehavior` | string | What happens when a non-looping clip ends: `freezeLastFrame` *(default)*, `loop`, `showPoster`, `hidePoster`. See [End behavior](#end-behavior). |
 | `properties.startDelay` | number | Seconds to wait before playback starts (the poster stays up during the delay). Default `0` |
 | `properties.startTime` | number | Seek offset in seconds — playback begins at this point in the clip. Default `0` |
@@ -39,6 +41,52 @@ returns — so a video inside an onboarding loop doesn't burn CPU/battery off-sc
 
 Playback startup (seek, `startDelay`, `rate`) is **gated on the item becoming ready**, so
 those settings apply reliably rather than being dropped against a not-yet-loaded item.
+
+## Audio behavior
+
+By default a video shouldn't hijack the device's audio. iOS apps start in a "solo" audio
+mode, and the instant *any* player begins — **even a muted one** — it silences whatever
+else is playing (music, a podcast, another app). `audioMix` controls how a clip's audio
+coexists with the rest of the device:
+
+| Value | Behavior | Use for |
+|-------|----------|---------|
+| `auto` *(default)* | Derives from `muted`: a muted clip behaves like `mix`, an unmuted clip like `interrupt`. | Most videos — just set `muted` and forget. |
+| `mix` | Plays alongside other audio without ever interrupting it; governed by the ringer switch. | Silent background/onboarding loops over the user's music. |
+| `duck` | Lowers (ducks) other audio while the clip plays, then restores it afterward. | A clip with narration meant to be heard over quiet background music. |
+| `interrupt` | Takes over the device's audio, stopping other sources; plays through the ringer switch. | A real video the user is meant to watch with sound. |
+
+> `audioMix` is independent of `muted`. `muted` controls whether *this* clip emits sound;
+> `audioMix` controls what happens to *other* audio on the device. The default (`auto`)
+> ties them together sensibly, so you only need `audioMix` when you want to override that —
+> e.g. a clip with sound (`muted: false`) that still mixes with the user's music
+> (`audioMix: "mix"`) instead of interrupting it.
+
+> The audio session is process-global and only changes when a video actually starts
+> playing (not when it's preloaded off-screen). The most recently started clip wins, so a
+> screen with one muted background loop and one tap-to-play sound clip behaves as expected.
+
+A clip with sound that the user is meant to hear, without silencing their music until it
+plays:
+
+<!-- @dsl-type: Component -->
+```json
+{
+  "type": "video",
+  "id": "trailer",
+  "content": {
+    "properties": {
+      "type": "remoteAsset",
+      "name": "trailer.mp4",
+      "loop": false,
+      "muted": false,
+      "audioMix": "interrupt"
+    },
+    "style": { "contentMode": "scaleAspectFit" },
+    "layout": { "width": "100%", "height": 240 }
+  }
+}
+```
 
 ## End behavior
 

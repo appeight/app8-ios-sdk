@@ -337,6 +337,8 @@ func videoDecodesLocalAsset() throws {
     #expect(content.properties.autoplay == true)
     #expect(content.properties.loop == true)
     #expect(content.properties.muted == true)
+    // Audio policy defaults to `.auto` (derives from `muted`).
+    #expect(content.properties.audioMix == .auto)
 }
 
 @Test
@@ -349,6 +351,20 @@ func videoDecodesFlagOverrides() throws {
     #expect(content.properties.autoplay == false)
     #expect(content.properties.loop == false)
     #expect(content.properties.muted == false)
+}
+
+@Test
+func videoDecodesAudioMix() throws {
+    let cases: [(String, DSL.Model.Component.Video.AudioMix)] = [
+        ("mix", .mix), ("duck", .duck), ("interrupt", .interrupt), ("auto", .auto),
+    ]
+    for (raw, expected) in cases {
+        let json = componentJSON(type: "video", properties: """
+        { "type": "localAsset", "name": "clip", "audioMix": "\(raw)" }
+        """)
+        let content = try decodeComponent(json, as: DSL.Model.Component.Video.C.self)
+        #expect(content.properties.audioMix == expected)
+    }
 }
 
 @Test
