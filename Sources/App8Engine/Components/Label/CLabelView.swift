@@ -92,23 +92,79 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         performAutoshrinkIfNeeded()
     }
 
-    /// The widest this label may grow before it must wrap: the narrowest `bounds`
-    /// width among its ancestors up to (and including) the window. In a
-    /// center-aligned subtree the genuinely bounded container (e.g. a stack pinned
-    /// to the screen edges, or the device-sized screen root) is always narrower
-    /// than the overflowing intrinsic-width stacks between it and the label, so
-    /// `min` naturally selects it; overflowing ancestors are wider and never win.
-    /// Returns 0 before any ancestor has a real width (we're not laid out yet).
+    /// The widest this label may grow before it must wrap: the narrowest
+    /// *content-independent* width among the label's own view and its ancestors.
+    ///
+    /// We must NOT clamp to just any ancestor. A content-hugging container — a
+    /// badge/chip pinned on only one edge, or an intrinsic-width stack — derives
+    /// its width FROM the label. Clamping the wrap width to it feeds a collapse
+    /// loop: narrower wrap → narrower container → narrower wrap → … until the
+    /// label renders one character per line. So we skip those and clamp only to
+    /// boundaries whose width is fixed independent of their content: an explicit
+    /// width, both horizontal edges pinned to a content-independent parent, a
+    /// frame-driven root, or the window. The genuinely bounded container (a stack
+    /// pinned to the screen margins, or the device-sized root) is selected; the
+    /// hugging containers between it and the label are ignored.
+    ///
+    /// Returns 0 before anything has a real width (we're not laid out yet).
     private func availableWrapWidth() -> CGFloat {
         var width = CGFloat.greatestFiniteMagnitude
-        var ancestor = superview
-        while let view = ancestor {
+        var node: UIView? = self
+        var isSelf = true
+        while let view = node {
             let w = view.bounds.width
-            if w > 0.5 { width = min(width, w) }
+            if w > 0.5 {
+                // `self` counts only via an explicit width of its own. A both-edges
+                // pin on self just tracks a (possibly hugging) parent — that case is
+                // handled by walking up to the parent.
+                let counts = isSelf ? hasExplicitWidthConstraint(view)
+                                    : hasContentIndependentWidth(view)
+                if counts { width = min(width, w) }
+            }
             if view is UIWindow { break }
-            ancestor = view.superview
+            node = view.superview
+            isSelf = false
         }
         return width == .greatestFiniteMagnitude ? 0 : width
+    }
+
+    /// True when `view` carries its own width constraint (a constant, or a
+    /// fraction of another view) — its width does not depend on its content.
+    private func hasExplicitWidthConstraint(_ view: UIView) -> Bool {
+        for c in view.constraints where c.isActive {
+            if (c.firstItem === view && c.firstAttribute == .width) ||
+               (c.secondItem === view && c.secondAttribute == .width) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// True when `view`'s width is fixed independent of its content: the window,
+    /// a frame-driven (autoresizing) root, an explicit width, or both horizontal
+    /// edges pinned with an equal relation to a parent that is itself
+    /// content-independent. Inequality edge pins (`>=` / `<=`) and single-edge
+    /// pins do NOT count — those let the view hug its content.
+    private func hasContentIndependentWidth(_ view: UIView) -> Bool {
+        if view is UIWindow { return true }
+        if view.translatesAutoresizingMaskIntoConstraints { return true }
+        if hasExplicitWidthConstraint(view) { return true }
+        guard let superview = view.superview else { return false }
+        var pinnedLeading = false
+        var pinnedTrailing = false
+        // Cross-view edge constraints install on the nearest common ancestor —
+        // for a child pinned to its superview, that's the superview.
+        for c in superview.constraints where c.isActive && c.relation == .equal {
+            func note(_ item: AnyObject?, _ attr: NSLayoutConstraint.Attribute) {
+                guard item === view else { return }
+                if attr == .leading || attr == .left { pinnedLeading = true }
+                if attr == .trailing || attr == .right { pinnedTrailing = true }
+            }
+            note(c.firstItem, c.firstAttribute)
+            note(c.secondItem, c.secondAttribute)
+        }
+        guard pinnedLeading, pinnedTrailing else { return false }
+        return hasContentIndependentWidth(superview)
     }
 
     func configure(viewModel: CLabelViewModel, superview: UIView? = nil, animated: Bool = true) {
