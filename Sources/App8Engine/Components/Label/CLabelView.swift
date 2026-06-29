@@ -71,13 +71,44 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     // preferred width to the laid-out bounds so intrinsic stays correct.
     override func layoutSubviews() {
         super.layoutSubviews()
-        let newWidth = label.bounds.width
-        if abs(label.preferredMaxLayoutWidth - newWidth) > 0.5, newWidth > 0 {
+        // Clamp the wrap width to the narrowest BOUNDED ancestor, not the label's
+        // own bounds. A center-aligned stack doesn't pin a child's cross-axis
+        // width, so a multi-line label left to its own devices sizes to its full
+        // SINGLE-LINE width and overflows its container — UIKit then renders it on
+        // one truncated line. Worse, syncing `preferredMaxLayoutWidth` from the
+        // label's own bounds has two stable fixed points (wrapped vs. single-line
+        // overflow); which one wins depends on transient bounds during the first
+        // pass, so the same text renders wrapped on one launch and truncated on
+        // the next. Capping at the available width collapses that to a single
+        // fixed point: the text always wraps to fit.
+        let available = availableWrapWidth()
+        var newWidth = label.bounds.width
+        if available > 0.5 { newWidth = min(newWidth, available) }
+        if newWidth > 0, abs(label.preferredMaxLayoutWidth - newWidth) > 0.5 {
             label.preferredMaxLayoutWidth = newWidth
             label.invalidateIntrinsicContentSize()
             invalidateIntrinsicContentSize()
         }
         performAutoshrinkIfNeeded()
+    }
+
+    /// The widest this label may grow before it must wrap: the narrowest `bounds`
+    /// width among its ancestors up to (and including) the window. In a
+    /// center-aligned subtree the genuinely bounded container (e.g. a stack pinned
+    /// to the screen edges, or the device-sized screen root) is always narrower
+    /// than the overflowing intrinsic-width stacks between it and the label, so
+    /// `min` naturally selects it; overflowing ancestors are wider and never win.
+    /// Returns 0 before any ancestor has a real width (we're not laid out yet).
+    private func availableWrapWidth() -> CGFloat {
+        var width = CGFloat.greatestFiniteMagnitude
+        var ancestor = superview
+        while let view = ancestor {
+            let w = view.bounds.width
+            if w > 0.5 { width = min(width, w) }
+            if view is UIWindow { break }
+            ancestor = view.superview
+        }
+        return width == .greatestFiniteMagnitude ? 0 : width
     }
 
     func configure(viewModel: CLabelViewModel, superview: UIView? = nil, animated: Bool = true) {
@@ -244,9 +275,13 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         }
         // Seed preferredMaxLayoutWidth so multi-line intrinsic reports correct
         // height before the first layout pass establishes bounds. `layoutSubviews`
-        // refines it to the actual width once we have one.
+        // refines it to the actual width once we have one. Prefer the bounded
+        // ancestor's width (the device-sized screen container) when we're already
+        // installed — on Mac Catalyst `UIScreen.main.bounds.width` is the whole
+        // display, which would seed a single-line/overflow layout that then sticks.
         if label.bounds.width <= 0, label.preferredMaxLayoutWidth <= 0 {
-            label.preferredMaxLayoutWidth = UIScreen.main.bounds.width
+            let seed = availableWrapWidth()
+            label.preferredMaxLayoutWidth = seed > 0.5 ? seed : UIScreen.main.bounds.width
         }
         invalidateIntrinsicContentSize()
         // If we already know our width (e.g. mid-streaming update), apply the
