@@ -71,21 +71,24 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     // preferred width to the laid-out bounds so intrinsic stays correct.
     override func layoutSubviews() {
         super.layoutSubviews()
-        // Clamp the wrap width to the narrowest BOUNDED ancestor, not the label's
-        // own bounds. A center-aligned stack doesn't pin a child's cross-axis
-        // width, so a multi-line label left to its own devices sizes to its full
-        // SINGLE-LINE width and overflows its container — UIKit then renders it on
-        // one truncated line. Worse, syncing `preferredMaxLayoutWidth` from the
-        // label's own bounds has two stable fixed points (wrapped vs. single-line
-        // overflow); which one wins depends on transient bounds during the first
-        // pass, so the same text renders wrapped on one launch and truncated on
-        // the next. Capping at the available width collapses that to a single
-        // fixed point: the text always wraps to fit.
+        // Wrap at the nearest CONTENT-INDEPENDENT boundary (see
+        // `availableWrapWidth`). A center-aligned stack doesn't pin a child's
+        // cross-axis width, so a multi-line label left to its own devices sizes
+        // to its full SINGLE-LINE width and overflows its container — UIKit then
+        // renders it on one truncated line. And syncing `preferredMaxLayoutWidth`
+        // from the label's own bounds has two stable fixed points (wrapped vs.
+        // single-line overflow), so the same text renders wrapped on one launch
+        // and truncated on the next. The boundary width collapses that to one
+        // fixed point.
+        //
+        // Use the boundary DIRECTLY — never `min(label.bounds.width, boundary)`.
+        // In a content-hugging chain (a badge/chip, or a centerX stack of link
+        // rows) the label's own bounds IS the squeezed value, so taking the min
+        // would feed the collapse loop back in and wrap the text one character
+        // per line. The boundary is already the true cap.
         let available = availableWrapWidth()
-        var newWidth = label.bounds.width
-        if available > 0.5 { newWidth = min(newWidth, available) }
-        if newWidth > 0, abs(label.preferredMaxLayoutWidth - newWidth) > 0.5 {
-            label.preferredMaxLayoutWidth = newWidth
+        if available > 0.5, abs(label.preferredMaxLayoutWidth - available) > 0.5 {
+            label.preferredMaxLayoutWidth = available
             label.invalidateIntrinsicContentSize()
             invalidateIntrinsicContentSize()
         }
