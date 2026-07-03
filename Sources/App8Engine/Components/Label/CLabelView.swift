@@ -116,38 +116,91 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         // A single-line label never soft-wraps; its intrinsic width is already
         // correct and `preferredMaxLayoutWidth` would only truncate it.
         guard label.numberOfLines != 1 else { return }
-        let containerWidth = superview?.bounds.width ?? 0
+        // Key the measurement cache on the width of the environment that does NOT
+        // change when this label wraps — the nearest scroll frame, or the window.
+        // Using our immediate superview here would be self-defeating: committing a
+        // wrap shrinks our own container, which would look like a new environment
+        // and re-open the measurement, oscillating between wrapped and unwrapped.
+        let referenceWidth = stableReferenceWidth()
 
         // Steady-state fast path: once committed (`lastWrapNatural > 0`, reset to
         // -1 on every text change), skip the `boundingRect` measurement entirely
-        // while the container width is unchanged.
+        // while the environment width is unchanged.
         if wrapPhase == .idle, lastWrapNatural > 0,
-           abs(containerWidth - lastWrapContainerWidth) < 0.5 { return }
+           abs(referenceWidth - lastWrapContainerWidth) < 0.5 { return }
 
         let natural = naturalUnwrappedWidth()
         guard natural > 0.5 else { return }
 
         if wrapPhase == .idle {
             // Nothing that affects the answer changed → the committed width holds.
-            if abs(containerWidth - lastWrapContainerWidth) < 0.5,
+            if abs(referenceWidth - lastWrapContainerWidth) < 0.5,
                abs(natural - lastWrapNatural) < 0.5 { return }
-            // Publish our full unwrapped width and let the container re-grant our
-            // bounds on the next pass — unless we're already reporting it, in which
-            // case `bounds.width` already reflects the grant and we can commit now.
+            // Publish our full unwrapped width and let every ancestor re-lay out
+            // against that request on the next pass — unless we're already
+            // reporting it, in which case ancestor bounds already reflect the
+            // grant and we can commit now.
             if abs(label.preferredMaxLayoutWidth - natural) > 0.5 {
                 wrapPhase = .measuring
                 setPreferredMaxWidth(natural)
                 return
             }
         }
-        // `.measuring` (or already-at-natural): `bounds.width` is the width the
-        // container grants when we ask for our full width. Commit the wrap width.
-        let granted = label.bounds.width
+        // `.measuring` (or already-at-natural): every ancestor's bounds now reflect
+        // this label asking for its full unwrapped width, so the NARROWEST ancestor
+        // width (below the scroll decoupling point) is the firmest boundary we are
+        // actually subject to. A content-hugging chain has expanded to our full
+        // width — no boundary is narrower than `natural`, so we hug. A screen-pinned
+        // stack or a frame-pinned vertical scroll stays put and shows up narrower —
+        // we wrap there. A floating stack that merely lets us overflow does NOT
+        // fool us: the firm boundary above it is still the minimum.
+        let granted = grantedWidth()
         let target = granted + 0.5 >= natural ? natural : granted
         wrapPhase = .idle
-        lastWrapContainerWidth = containerWidth
+        lastWrapContainerWidth = referenceWidth
         lastWrapNatural = natural
         setPreferredMaxWidth(target)
+    }
+
+    /// The narrowest laid-out width this label is actually subject to: the minimum
+    /// `bounds.width` across the label and its ancestors, stopping BELOW the first
+    /// `UIScrollView` (a scroll decouples its content's width from everything
+    /// outside its frame, so ancestors beyond it do not constrain us).
+    ///
+    /// Read only after the label has published its full unwrapped width (the
+    /// `.measuring` pass): by then every content-hugging ancestor has expanded to
+    /// at least that width, so the only ancestors that remain narrower are genuine,
+    /// content-independent boundaries. This is the measurement that replaces the
+    /// old constraint-graph classifier — it never has to decide whether a given
+    /// `.equal` constraint means "hug" or "fixed"; it just reads which ancestor
+    /// refused to grow.
+    private func grantedWidth() -> CGFloat {
+        var minWidth = CGFloat.greatestFiniteMagnitude
+        var node: UIView? = label
+        while let view = node {
+            if view is UIScrollView { break }
+            let w = view.bounds.width
+            if w > 0.5 { minWidth = min(minWidth, w) }
+            node = view.superview
+        }
+        return minWidth == .greatestFiniteMagnitude ? label.bounds.width : minWidth
+    }
+
+    /// The width of the environment that is invariant to how THIS label wraps: the
+    /// nearest ancestor scroll view's frame, or — absent a scroll — the outermost
+    /// ancestor (the window / root view). Used as the measurement cache key so that
+    /// re-wrapping (which shrinks our immediate container) does not re-trigger the
+    /// measurement; only a genuine rotation/resize of the environment, or a text
+    /// change (which resets `lastWrapNatural`), re-opens it.
+    private func stableReferenceWidth() -> CGFloat {
+        var node: UIView? = label
+        var outermost: UIView = label
+        while let view = node {
+            if let scroll = view as? UIScrollView { return scroll.bounds.width }
+            outermost = view
+            node = view.superview
+        }
+        return outermost.bounds.width
     }
 
     private func setPreferredMaxWidth(_ width: CGFloat) {
