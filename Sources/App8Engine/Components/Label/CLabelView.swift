@@ -67,107 +67,116 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     // UILabel.intrinsicContentSize reports a single-line size unless
     // `preferredMaxLayoutWidth` is set, so multi-line labels (numberOfLines = 0,
     // text containing `\n`, or wrapping text) under-report their height and get
-    // truncated when their container is under vertical pressure. Sync the
-    // preferred width to the laid-out bounds so intrinsic stays correct.
+    // truncated when their container is under vertical pressure. We keep
+    // `preferredMaxLayoutWidth` equal to the width the container actually grants
+    // us — MEASURED via the layout engine, not guessed from the constraint graph
+    // (see `syncWrapWidth`).
     override func layoutSubviews() {
         super.layoutSubviews()
-        // Wrap at the nearest CONTENT-INDEPENDENT boundary (see
-        // `availableWrapWidth`). A center-aligned stack doesn't pin a child's
-        // cross-axis width, so a multi-line label left to its own devices sizes
-        // to its full SINGLE-LINE width and overflows its container — UIKit then
-        // renders it on one truncated line. And syncing `preferredMaxLayoutWidth`
-        // from the label's own bounds has two stable fixed points (wrapped vs.
-        // single-line overflow), so the same text renders wrapped on one launch
-        // and truncated on the next. The boundary width collapses that to one
-        // fixed point.
-        //
-        // Use the boundary DIRECTLY — never `min(label.bounds.width, boundary)`.
-        // In a content-hugging chain (a badge/chip, or a centerX stack of link
-        // rows) the label's own bounds IS the squeezed value, so taking the min
-        // would feed the collapse loop back in and wrap the text one character
-        // per line. The boundary is already the true cap.
-        let available = availableWrapWidth()
-        if available > 0.5, abs(label.preferredMaxLayoutWidth - available) > 0.5 {
-            label.preferredMaxLayoutWidth = available
-            label.invalidateIntrinsicContentSize()
-            invalidateIntrinsicContentSize()
-        }
+        syncWrapWidth()
         performAutoshrinkIfNeeded()
     }
 
-    /// The widest this label may grow before it must wrap: the narrowest
-    /// *content-independent* width among the label's own view and its ancestors.
+    // MARK: - Deterministic wrap width (measure, don't classify)
+
+    private enum WrapPhase { case idle, measuring }
+    private var wrapPhase: WrapPhase = .idle
+    private var lastWrapContainerWidth: CGFloat = -1
+    private var lastWrapNatural: CGFloat = -1
+
+    /// Keep `preferredMaxLayoutWidth` equal to the width our container is actually
+    /// willing to give us, determined by MEASUREMENT rather than by inspecting the
+    /// constraint graph.
     ///
-    /// We must NOT clamp to just any ancestor. A content-hugging container — a
-    /// badge/chip pinned on only one edge, or an intrinsic-width stack — derives
-    /// its width FROM the label. Clamping the wrap width to it feeds a collapse
-    /// loop: narrower wrap → narrower container → narrower wrap → … until the
-    /// label renders one character per line. So we skip those and clamp only to
-    /// boundaries whose width is fixed independent of their content: an explicit
-    /// width, both horizontal edges pinned to a content-independent parent, a
-    /// frame-driven root, or the window. The genuinely bounded container (a stack
-    /// pinned to the screen margins, or the device-sized root) is selected; the
-    /// hugging containers between it and the label are ignored.
+    /// Why not inspect constraints: UIKit expresses "hug your content", "chain to
+    /// your sibling" (`UIStackView`), and "size to the scrolled content"
+    /// (`UIScrollView.contentLayoutGuide`) using the very same `.equal` edge and
+    /// width constraints an author uses to pin a fixed width — and even realizes a
+    /// label's own content-driven width as a `width == k` constraint. There is no
+    /// reliable *local* way to tell an authored fixed width from a content-derived
+    /// one, so any classifier eventually clamps a label to a content-driven
+    /// ancestor and closes a collapse feedback loop (narrower label → narrower
+    /// container → narrower clamp → …) that renders text one glyph per line — e.g.
+    /// a name label in a horizontal carousel.
     ///
-    /// Returns 0 before anything has a real width (we're not laid out yet).
-    private func availableWrapWidth() -> CGFloat {
-        var width = CGFloat.greatestFiniteMagnitude
-        var node: UIView? = self
-        var isSelf = true
-        while let view = node {
-            let w = view.bounds.width
-            if w > 0.5 {
-                // `self` counts only via an explicit width of its own. A both-edges
-                // pin on self just tracks a (possibly hugging) parent — that case is
-                // handled by walking up to the parent.
-                let counts = isSelf ? hasExplicitWidthConstraint(view)
-                                    : hasContentIndependentWidth(view)
-                if counts { width = min(width, w) }
+    /// Instead we let the constraint solver answer the only question that matters:
+    /// *if this label reported its full unwrapped width, how wide would its
+    /// container let it be?* If the granted width is at least the unwrapped width,
+    /// nothing is constraining us — hug (single line, or wrap only at authored
+    /// newlines). If it is narrower, a genuine boundary (a fixed-width stack, a
+    /// vertical scroll pinned to its frame, the safe area, the window) is capping
+    /// us — wrap there. Content-hugging ancestors grant us our full width and so
+    /// never cap; this needs no knowledge of the surrounding topology.
+    ///
+    /// Driven across two layout passes so we never force a re-entrant layout:
+    /// `.measuring` publishes the unwrapped width; the next pass reads what the
+    /// container granted and commits it. We re-measure only when the container
+    /// width or the text's unwrapped width changes, so steady state is free.
+    private func syncWrapWidth() {
+        // A single-line label never soft-wraps; its intrinsic width is already
+        // correct and `preferredMaxLayoutWidth` would only truncate it.
+        guard label.numberOfLines != 1 else { return }
+        let containerWidth = superview?.bounds.width ?? 0
+
+        // Steady-state fast path: once committed (`lastWrapNatural > 0`, reset to
+        // -1 on every text change), skip the `boundingRect` measurement entirely
+        // while the container width is unchanged.
+        if wrapPhase == .idle, lastWrapNatural > 0,
+           abs(containerWidth - lastWrapContainerWidth) < 0.5 { return }
+
+        let natural = naturalUnwrappedWidth()
+        guard natural > 0.5 else { return }
+
+        if wrapPhase == .idle {
+            // Nothing that affects the answer changed → the committed width holds.
+            if abs(containerWidth - lastWrapContainerWidth) < 0.5,
+               abs(natural - lastWrapNatural) < 0.5 { return }
+            // Publish our full unwrapped width and let the container re-grant our
+            // bounds on the next pass — unless we're already reporting it, in which
+            // case `bounds.width` already reflects the grant and we can commit now.
+            if abs(label.preferredMaxLayoutWidth - natural) > 0.5 {
+                wrapPhase = .measuring
+                setPreferredMaxWidth(natural)
+                return
             }
-            if view is UIWindow { break }
-            node = view.superview
-            isSelf = false
         }
-        return width == .greatestFiniteMagnitude ? 0 : width
+        // `.measuring` (or already-at-natural): `bounds.width` is the width the
+        // container grants when we ask for our full width. Commit the wrap width.
+        let granted = label.bounds.width
+        let target = granted + 0.5 >= natural ? natural : granted
+        wrapPhase = .idle
+        lastWrapContainerWidth = containerWidth
+        lastWrapNatural = natural
+        setPreferredMaxWidth(target)
     }
 
-    /// True when `view` carries its own width constraint (a constant, or a
-    /// fraction of another view) — its width does not depend on its content.
-    private func hasExplicitWidthConstraint(_ view: UIView) -> Bool {
-        for c in view.constraints where c.isActive {
-            if (c.firstItem === view && c.firstAttribute == .width) ||
-               (c.secondItem === view && c.secondAttribute == .width) {
-                return true
-            }
-        }
-        return false
+    private func setPreferredMaxWidth(_ width: CGFloat) {
+        guard abs(label.preferredMaxLayoutWidth - width) > 0.5 else { return }
+        label.preferredMaxLayoutWidth = width
+        label.invalidateIntrinsicContentSize()
+        invalidateIntrinsicContentSize()
     }
 
-    /// True when `view`'s width is fixed independent of its content: the window,
-    /// a frame-driven (autoresizing) root, an explicit width, or both horizontal
-    /// edges pinned with an equal relation to a parent that is itself
-    /// content-independent. Inequality edge pins (`>=` / `<=`) and single-edge
-    /// pins do NOT count — those let the view hug its content.
-    private func hasContentIndependentWidth(_ view: UIView) -> Bool {
-        if view is UIWindow { return true }
-        if view.translatesAutoresizingMaskIntoConstraints { return true }
-        if hasExplicitWidthConstraint(view) { return true }
-        guard let superview = view.superview else { return false }
-        var pinnedLeading = false
-        var pinnedTrailing = false
-        // Cross-view edge constraints install on the nearest common ancestor —
-        // for a child pinned to its superview, that's the superview.
-        for c in superview.constraints where c.isActive && c.relation == .equal {
-            func note(_ item: AnyObject?, _ attr: NSLayoutConstraint.Attribute) {
-                guard item === view else { return }
-                if attr == .leading || attr == .left { pinnedLeading = true }
-                if attr == .trailing || attr == .right { pinnedTrailing = true }
-            }
-            note(c.firstItem, c.firstAttribute)
-            note(c.secondItem, c.secondAttribute)
+    /// The width this label needs to render without SOFT-wrapping — the widest of
+    /// its hard (`\n`-delimited) lines. Independent of `preferredMaxLayoutWidth`,
+    /// so it is a stable reference the measurement compares its granted width
+    /// against.
+    private func naturalUnwrappedWidth() -> CGFloat {
+        let attributed: NSAttributedString
+        if let attr = label.attributedText, attr.length > 0 {
+            attributed = attr
+        } else if let text = label.text, !text.isEmpty {
+            attributed = NSAttributedString(string: text, attributes: [.font: label.font as Any])
+        } else {
+            return 0
         }
-        guard pinnedLeading, pinnedTrailing else { return false }
-        return hasContentIndependentWidth(superview)
+        let unbounded = CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        let rect = attributed.boundingRect(
+            with: unbounded,
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            context: nil
+        )
+        return ceil(rect.width)
     }
 
     func configure(viewModel: CLabelViewModel, superview: UIView? = nil, animated: Bool = true) {
@@ -332,15 +341,16 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
                 autoshrinkSource = nil
             }
         }
-        // Seed preferredMaxLayoutWidth so multi-line intrinsic reports correct
-        // height before the first layout pass establishes bounds. `layoutSubviews`
-        // refines it to the actual width once we have one. Prefer the bounded
-        // ancestor's width (the device-sized screen container) when we're already
-        // installed — on Mac Catalyst `UIScreen.main.bounds.width` is the whole
-        // display, which would seed a single-line/overflow layout that then sticks.
+        // The text (hence its unwrapped width) changed — force `syncWrapWidth` to
+        // re-measure on the next layout pass rather than trust its cache.
+        lastWrapNatural = -1
+        // Seed preferredMaxLayoutWidth so a multi-line label reports a sensible
+        // height before the first layout pass establishes bounds; `syncWrapWidth`
+        // measures the real granted width once we're laid out. A generous seed (the
+        // display width) can only over-report height for a frame or two — never
+        // collapse — which the measurement then corrects.
         if label.bounds.width <= 0, label.preferredMaxLayoutWidth <= 0 {
-            let seed = availableWrapWidth()
-            label.preferredMaxLayoutWidth = seed > 0.5 ? seed : UIScreen.main.bounds.width
+            label.preferredMaxLayoutWidth = UIScreen.main.bounds.width
         }
         invalidateIntrinsicContentSize()
         // If we already know our width (e.g. mid-streaming update), apply the
