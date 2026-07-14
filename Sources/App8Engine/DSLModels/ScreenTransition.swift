@@ -19,7 +19,18 @@ extension DSL.Model {
     /// named entry in the app-level `transitions` registry. Pointer resolution
     /// to the inline form happens at decode time (mirrors the animation pointer
     /// pattern).
-    enum ScreenTransition: Decodable, Sendable {
+    ///
+    /// `indirect` is load-bearing, not cosmetic. The `Inline` case embeds many
+    /// sub-models by value (Participant ×2, Animation, ModalPresentation,
+    /// InteractiveConfig, …), making this enum ~1 KB when stored inline. It is
+    /// inlined into `Component.Content` in several places — `Action.transition`
+    /// (which appears twice in every `NavigationBar` via left/right actions),
+    /// `ComponentTransition`, and the screen-default transition — and every
+    /// component's view model copies its whole `Content` by value on init.
+    /// Boxing the payload keeps `Content` small (~5.2 KB → ~1.3 KB) so a deep
+    /// screen no longer exhausts the main-thread stack during render in
+    /// `-Onone` (debug) builds. See the fix PR for the full analysis.
+    indirect enum ScreenTransition: Decodable, Sendable {
         case inline(Inline)
         case pointer(String)
 
@@ -567,7 +578,11 @@ extension DSL.Model {
     /// Rule: an object containing `"key"` ⇒ element context; anything else (bare
     /// string preset, `{ id }` pointer, or a preset/`from`/`to` object) ⇒ screen
     /// transition. A component's own `id` is never involved in either case.
-    enum ComponentTransition: Decodable, Sendable {
+    /// `indirect` for the same reason as `ScreenTransition`: this is stored
+    /// inline in `Component.Content.transition` on every component, so boxing
+    /// its payload removes ~1 KB from each `Content` value and the per-init
+    /// stack copies that made deep screens overflow the stack.
+    indirect enum ComponentTransition: Decodable, Sendable {
         case screen(ScreenTransition)
         case element(ScreenTransition.ElementTransition)
 
