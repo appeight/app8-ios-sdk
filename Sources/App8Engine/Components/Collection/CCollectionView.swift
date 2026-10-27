@@ -759,7 +759,13 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] newSections in
                 guard let self else { return }
-                guard !self.sectionsStructurallyEqual(self.sections, newSections) else { return }
+                guard !self.sectionsStructurallyEqual(self.sections, newSections) else {
+                    // Same shape, new item data (e.g. a cart line's quantity):
+                    // push it into the live cells instead of a full reload.
+                    self.sections = newSections
+                    self.refreshVisibleItemData()
+                    return
+                }
                 let oldSections = self.sections
                 self.sections = newSections
 
@@ -874,6 +880,17 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             guard ni == newIds.count else { return nil }
         }
         return deletions
+    }
+
+    /// Re-binds `item` in every visible cell to its current data. Off-screen
+    /// cached cells pick theirs up on reuse (`cellForItemAt`).
+    private func refreshVisibleItemData() {
+        guard let viewModel else { return }
+        for indexPath in collectionView.indexPathsForVisibleItems {
+            guard let item = sections[safe: indexPath.section]?.items[safe: indexPath.item],
+                  let cellVM = viewModel.getCachedViewModel(section: indexPath.section, item: indexPath.item) else { continue }
+            viewModel.updateItemVariable(in: cellVM, with: item)
+        }
     }
 
     /// Compare sections by structure (count, keys, item counts) to avoid redundant reloadData().
