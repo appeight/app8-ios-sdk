@@ -27,7 +27,9 @@ extension DSL.Model.Component.Collection {
         let sectionDefinitions: [SectionDefinition]?  // Multi-source sections, each bound to a different variable
 
         // Layout
-        let layout: Layout?
+        /// `var`: also read from `content.layout` when it carries a collection
+        /// `type` (see `CollectionContent.init(from:)`).
+        var layout: Layout?
 
         // Templates
         let templateName: String?   // Single template reference: "userCard"
@@ -184,7 +186,7 @@ struct CollectionContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulC
     typealias Style = DSL.Model.Style.Collection
     typealias StateType = DSL.Model.State<Properties, Style>
 
-    let properties: Properties
+    var properties: Properties
     var style: Style?
     let layout: DSL.Model.Layout?
     let actions: [DSL.Model.ActionTrigger: [DSL.Model.Action]]?
@@ -228,6 +230,15 @@ struct CollectionContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulC
         properties = try c.decode(Properties.self, forKey: .properties)
         style = try c.decodeIfPresent(Style.self, forKey: .style)
         layout = try c.decodeIfPresent(DSL.Model.Layout.self, forKey: .layout)
+        // The collection layout (`type: vertical|horizontal|grid`, spacing, item
+        // size…) belongs in `properties.layout`; `content.layout` positions the
+        // collection. Accept the collection layout at `content.layout` too — a
+        // positioning layout has no `type`, so the two never clash.
+        if properties.layout == nil,
+           let collectionLayout = try? c.decodeIfPresent(DSL.Model.Component.Collection.Layout.self, forKey: .layout),
+           collectionLayout.type != nil {
+            properties.layout = collectionLayout
+        }
         navigationBar = try c.decodeIfPresent(DSL.Model.NavigationBar.self, forKey: .navigationBar)
 
         if let rawAnalytics = try c.decodeIfPresent([String: DSL.Model.AnalyticsBinding].self, forKey: .analytics) {
@@ -272,7 +283,7 @@ struct CollectionContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulC
         }
 
         // Collection-specific
-        template = try c.decodeIfPresent(DSL.Model.Component.`Any`.self, forKey: .template)
+        template = try Self.decodeTemplate(c, forKey: .template, userInfo: decoder.userInfo)
         templates = try c.decodeIfPresent([String: DSL.Model.Component.Collection.TemplateRef].self, forKey: .templates)
         emptyState = try c.decodeIfPresent(DSL.Model.Component.`Any`.self, forKey: .emptyState)
         loadingState = try c.decodeIfPresent(DSL.Model.Component.`Any`.self, forKey: .loadingState)
@@ -283,6 +294,23 @@ struct CollectionContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulC
         if let children = try c.decodeIfPresent(SafeArrayDecodable<DSL.Model.Component.`Any`>.self, forKey: .children) {
             _children = children
         }
+    }
+
+    /// Decodes an inline item template, supplying an `id` when the author left
+    /// it out (every component needs one; a template's is only a cell reuse key).
+    private static func decodeTemplate(
+        _ c: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys,
+        userInfo: [CodingUserInfoKey: Any]
+    ) throws -> DSL.Model.Component.`Any`? {
+        guard let raw = try c.decodeIfPresent(JSONValue.self, forKey: key) else { return nil }
+        guard case .object(var object) = raw, object["id"] == nil else {
+            return try c.decodeIfPresent(DSL.Model.Component.`Any`.self, forKey: key)
+        }
+        object["id"] = .string("template")
+        let decoder = JSONDecoder()
+        if let logger = userInfo[.app8Logger] as? A8Log { decoder.userInfo[.app8Logger] = logger }
+        return try decoder.decode(DSL.Model.Component.`Any`.self, from: JSONEncoder().encode(JSONValue.object(object)))
     }
 
     // MARK: - Style Resolution

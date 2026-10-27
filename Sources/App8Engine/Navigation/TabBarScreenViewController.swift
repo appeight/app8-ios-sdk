@@ -1,4 +1,5 @@
 import UIKit
+import Combine
 
 /// View controller that manages a tab bar with multiple screens, each with its own navigation stack.
 @MainActor
@@ -13,6 +14,9 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     private var tabNavigationControllers: [String: UINavigationController] = [:]
 
     private var tabIds: [String] = []
+
+    /// Re-resolves tab `badge` expressions when an app variable changes.
+    private var badgeSubscription: AnyCancellable?
 
     // MARK: - UIGestureRecognizerDelegate
 
@@ -68,6 +72,12 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         }
         subscribeToNavigationRequests()
         configureTabBarAppearance()
+        if #available(iOS 18.0, *) {
+            // A DSL tab bar is always the classic bottom bar, also on the iPad
+            // idiom (Mac Catalyst hosts) where the default is the floating top
+            // bar / sidebar that hides the bottom bar.
+            mode = .tabBar
+        }
     }
 
     private func configureTabBarAppearance() {
@@ -112,10 +122,32 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         }
 
         self.viewControllers = viewControllers
+        bindBadges()
 
         if let initialTab = tabBarContent.initialTab,
            let index = tabIds.firstIndex(of: initialTab) {
             selectedIndex = index
+        }
+    }
+
+    // MARK: - Badges
+
+    private func bindBadges() {
+        guard tabBarContent.tabs.contains(where: { $0.badge != nil }) else { return }
+        updateBadges()
+        badgeSubscription = appService.appVariableStore.anyVariableChanged
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updateBadges() }
+    }
+
+    private func updateBadges() {
+        let resolver = PropertyResolver()
+        let variables = VariableContext(store: appService.appVariableStore)
+        for tab in tabBarContent.tabs {
+            guard let raw = tab.badge, let nav = tabNavigationControllers[tab.id] else { continue }
+            let value = (try? resolver.resolveToString(raw, context: variables)) ?? raw
+            let badge = value.isEmpty || value == "0" ? nil : value
+            if nav.tabBarItem.badgeValue != badge { nav.tabBarItem.badgeValue = badge }
         }
     }
 

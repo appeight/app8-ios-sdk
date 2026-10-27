@@ -28,6 +28,7 @@ See [navigation.md — Navigation Bar](../navigation.md#navigation-bar) for full
 | `hidden` | boolean | Hide the navigation bar |
 | `leftAction` | BarAction | Leading bar button item |
 | `rightAction` | BarAction | Trailing bar button item |
+| `search` | SearchBar | System search field — see [navigation.md — Search](../navigation.md#search) |
 
 **BarAction structure:**
 ```json

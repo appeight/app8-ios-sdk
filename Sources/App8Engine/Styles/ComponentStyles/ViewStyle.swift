@@ -7,7 +7,14 @@ extension DSL.Model.Style {
         var material: Material? { get }
         var alpha: CGFloat? { get }
         var transform: View.Transform? { get }
+        var blendMode: View.BlendMode? { get }
     }
+}
+
+extension DSL.Model.Style.BaseStyleProtocol {
+    /// Only view and image styles carry a blend mode; every other style
+    /// composites normally.
+    var blendMode: DSL.Model.Style.View.BlendMode? { nil }
 }
 
 extension DSL.Model.Style {
@@ -18,6 +25,7 @@ extension DSL.Model.Style {
         @Wrapped var material: Material?
         private(set) var alpha: CGFloat?
         private(set) var transform: Transform?
+        private(set) var blendMode: BlendMode?
 
         static func decode<CodingKeys: CodingKey>(fromContainer container: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) throws -> Self {
             if container.contains(key) {
@@ -57,6 +65,52 @@ extension DSL.Model.Style {
                     t = t.rotated(by: rotation * .pi / 180)  // Convert degrees to radians
                 }
                 return t
+            }
+        }
+
+        /// How the view composites with what's rendered beneath it (the
+        /// Figma / CSS `mix-blend-mode` set). Applied as the layer's
+        /// `compositingFilter`; `normal` clears it.
+        enum BlendMode: String, SafeEnumCodable, Sendable {
+            case normal
+            case multiply
+            case screen
+            case overlay
+            case darken
+            case lighten
+            case colorDodge
+            case colorBurn
+            case softLight
+            case hardLight
+            case difference
+            case exclusion
+            case hue
+            case saturation
+            case color
+            case luminosity
+
+            static var unknownCase: Self { .normal }
+
+            /// Core Image compositing filter name, nil for `normal`.
+            var compositingFilter: String? {
+                switch self {
+                case .normal: return nil
+                case .multiply: return "multiplyBlendMode"
+                case .screen: return "screenBlendMode"
+                case .overlay: return "overlayBlendMode"
+                case .darken: return "darkenBlendMode"
+                case .lighten: return "lightenBlendMode"
+                case .colorDodge: return "colorDodgeBlendMode"
+                case .colorBurn: return "colorBurnBlendMode"
+                case .softLight: return "softLightBlendMode"
+                case .hardLight: return "hardLightBlendMode"
+                case .difference: return "differenceBlendMode"
+                case .exclusion: return "exclusionBlendMode"
+                case .hue: return "hueBlendMode"
+                case .saturation: return "saturationBlendMode"
+                case .color: return "colorBlendMode"
+                case .luminosity: return "luminosityBlendMode"
+                }
             }
         }
 

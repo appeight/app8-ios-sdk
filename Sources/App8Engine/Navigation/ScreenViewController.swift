@@ -20,6 +20,12 @@ final class ScreenViewController: BaseViewController {
     /// Rendered left-aligned titleView, attached directly to the nav bar in viewWillAppear
     /// to avoid UIBarButtonItem's automatic pill/capsule decoration.
     private var leftNavTitleView: UIView?
+    /// Runs DSL actions in the screen's scope (navigation-bar search `onSubmit`).
+    private let actionHandler: ((DSL.Model.Action) -> Void)?
+    /// `navigationBar.search` field; delegate callbacks sync `bindVariable`.
+    private var searchController: UISearchController?
+    /// Width of a `fillsBar` search field; tracks the bar width and focus.
+    private var searchWidthConstraint: NSLayoutConstraint?
 
     /// Holds the current rendered component view — a stable swap target for
     /// streaming structural updates.
@@ -57,6 +63,7 @@ final class ScreenViewController: BaseViewController {
         additionalSafeAreaInsets: UIEdgeInsets? = nil,
         titleViewService: App8Service? = nil,
         titleViewVariableStore: VariableStoreProtocol? = nil,
+        actionHandler: ((DSL.Model.Action) -> Void)? = nil,
         context: App8Context
     ) {
         self.screenId = screenId
@@ -66,6 +73,7 @@ final class ScreenViewController: BaseViewController {
         self.additionalSafeAreaInsetsConfig = additionalSafeAreaInsets
         self.titleViewService = titleViewService
         self.titleViewVariableStore = titleViewVariableStore
+        self.actionHandler = actionHandler
         super.init(context: context)
         self.hidesBottomBarWhenPushed = hidesTabBar
     }
@@ -90,6 +98,8 @@ final class ScreenViewController: BaseViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         attachLeftTitleViewIfNeeded()
+        installSearchFillIfNeeded()
+        navigationController?.navigationBar.tintColor = navigationBarConfig?.tintColor.flatMap(UIColor.init(withHexString:))
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -270,6 +280,140 @@ final class ScreenViewController: BaseViewController {
         if !rightActions.isEmpty {
             navigationItem.rightBarButtonItems = rightActions.reversed().map { makeBarButton(from: $0) }
         }
+
+        if let search = config.search {
+            configureSearch(search)
+        }
+    }
+
+    // MARK: - Navigation Bar Search
+
+    private func configureSearch(_ config: DSL.Model.SearchBar) {
+        let controller = UISearchController(searchResultsController: nil)
+        controller.obscuresBackgroundDuringPresentation = false
+        controller.searchResultsUpdater = self
+        controller.searchBar.delegate = self
+        if let placeholder = config.placeholder {
+            controller.searchBar.placeholder = resolveString(placeholder)
+        }
+        if let hex = config.tintColor, let color = UIColor(withHexString: hex) {
+            controller.searchBar.tintColor = color
+        }
+        if let name = config.bindVariable,
+           let text = titleViewVariableStore?.getValue(name: name) as? String {
+            controller.searchBar.text = text
+        }
+
+        navigationItem.searchController = controller
+        navigationItem.hidesSearchBarWhenScrolling = config.hidesWhenScrolling ?? false
+        navigationItem.preferredSearchBarPlacement = searchBarPlacement(config.placement ?? .automatic)
+        definesPresentationContext = true
+        searchController = controller
+
+    }
+
+    /// `navigationBar.search.fillsBar`: an integrated field is compact and
+    /// trailing; placed as the leading item with an explicit width it spans the
+    /// bar. Runs from `viewWillAppear`, not `viewDidLoad`: the view loads inside
+    /// the engine's async render, and the bar re-layout this triggers can spin
+    /// the run loop while that task is current.
+    private func installSearchFillIfNeeded() {
+        guard #available(iOS 26.0, *), searchWidthConstraint == nil,
+              let config = navigationBarConfig?.search, config.fillsBar == true,
+              config.placement == .integrated, let controller = searchController,
+              navigationItem.leftBarButtonItem == nil else { return }
+        controller.delegate = self
+        // As a bar item the field leads the bar. UIKit only allows that on the
+        // phone (elsewhere, e.g. Mac Catalyst, it throws "only supported in
+        // UIToolbar"); there the widened field stays trailing-aligned.
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            navigationItem.leftBarButtonItems = [navigationItem.searchBarPlacementBarButtonItem]
+        }
+        let width = controller.searchBar.widthAnchor.constraint(equalToConstant: 0)
+        width.isActive = true
+        searchWidthConstraint = width
+        updateSearchWidth()
+    }
+
+    /// iPhone (iOS 26, measured on iPhone 17): the widest field UIKit keeps in
+    /// the bar (any wider and it collapses into a search button), and the width
+    /// that leaves room for the ✕ shown beside the field while focused.
+    /// Elsewhere (iPad idiom, e.g. Mac Catalyst previews) the field stays a
+    /// trailing item, spans to the bar's margins, and has no outside ✕.
+    private static var searchFillInset: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .phone ? 44 : Self.searchFillPadInset
+    }
+    private static var searchFillFocusedInset: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .phone ? 72 : Self.searchFillPadInset
+    }
+    /// Widest the iPad-idiom bar keeps the field (measured in Stage, Catalyst).
+    private static let searchFillPadInset: CGFloat = 28
+
+    /// Bar width + focus the field was last sized for. Layout passes re-enter
+    /// `viewDidLayoutSubviews`; only a real change may touch the constraint.
+    private var searchWidthKey: (CGFloat, Bool)?
+
+    private func updateSearchWidth() {
+        guard let constraint = searchWidthConstraint,
+              let bar = navigationController?.navigationBar, bar.bounds.width > 0 else { return }
+        let focused = searchController?.isActive == true
+        if let key = searchWidthKey, key.0 == bar.bounds.width, key.1 == focused { return }
+        searchWidthKey = (bar.bounds.width, focused)
+        let inset = focused ? Self.searchFillFocusedInset : Self.searchFillInset
+        constraint.constant = max(0, bar.bounds.width - inset)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateSearchWidth()
+        applyTopEdgeEffect()
+    }
+
+    /// `navigationBar.topEdgeEffect`: styles the iOS 26 scroll-edge effect of
+    /// every scroll view on the screen. Re-run on layout so scroll views the DSL
+    /// renders later (collections, async content) pick it up too.
+    private func applyTopEdgeEffect() {
+        guard let effect = navigationBarConfig?.topEdgeEffect, effect != .automatic else { return }
+        guard #available(iOS 26.0, *) else { return }
+        func apply(in view: UIView) {
+            if let scrollView = view as? UIScrollView {
+                let edge = scrollView.topEdgeEffect
+                switch effect {
+                case .hidden:
+                    if !edge.isHidden { edge.isHidden = true }
+                case .soft:
+                    if edge.style != .soft { edge.style = .soft }
+                case .hard:
+                    if edge.style != .hard { edge.style = .hard }
+                case .automatic:
+                    break
+                }
+            }
+            view.subviews.forEach(apply(in:))
+        }
+        apply(in: view)
+    }
+
+    private func searchBarPlacement(_ placement: DSL.Model.SearchBar.Placement) -> UINavigationItem.SearchBarPlacement {
+        switch placement {
+        case .automatic: return .automatic
+        case .stacked: return .stacked
+        case .inline: return .inline
+        case .integrated:
+            if #available(iOS 26.0, *) { return .integrated }
+            return .inline
+        case .integratedButton:
+            if #available(iOS 26.0, *) { return .integratedButton }
+            return .inline
+        case .integratedCentered:
+            if #available(iOS 26.0, *) { return .integratedCentered }
+            return .inline
+        }
+    }
+
+    private func resolveString(_ raw: String) -> String {
+        guard raw.contains("{{"), let store = titleViewVariableStore else { return raw }
+        return (try? PropertyResolver().resolveToString(raw, context: VariableContext(store: store))) ?? raw
     }
 
     private func makeBarButton(from barAction: DSL.Model.BarAction, compact: Bool = false) -> UIBarButtonItem {
@@ -339,5 +483,34 @@ final class ScreenViewController: BaseViewController {
         default:
             context.logger.warning("Unsupported bar action type: \(action.type)")
         }
+    }
+}
+
+// MARK: - UISearchResultsUpdating, UISearchBarDelegate
+
+extension ScreenViewController: UISearchResultsUpdating, UISearchBarDelegate, UISearchControllerDelegate {
+
+    func willPresentSearchController(_ searchController: UISearchController) {
+        DispatchQueue.main.async { [weak self] in self?.updateSearchWidth() }
+    }
+
+    func willDismissSearchController(_ searchController: UISearchController) {
+        DispatchQueue.main.async { [weak self] in self?.updateSearchWidth() }
+    }
+
+    func updateSearchResults(for searchController: UISearchController) {
+        guard let name = navigationBarConfig?.search?.bindVariable,
+              let store = titleViewVariableStore else { return }
+        let text = searchController.searchBar.text ?? ""
+        guard (store.getValue(name: name) as? String) != text else { return }
+        do {
+            try store.setValue(name: name, value: text)
+        } catch {
+            context.logger.warning("navigationBar.search: can't set '\(name)': \(error)")
+        }
+    }
+
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        navigationBarConfig?.search?.onSubmit?.forEach { actionHandler?($0) }
     }
 }

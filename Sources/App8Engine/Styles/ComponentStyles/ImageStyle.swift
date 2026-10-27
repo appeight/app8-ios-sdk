@@ -7,6 +7,7 @@ extension DSL.Model.Style {
         @Wrapped var material: Material?
         let alpha: CGFloat?
         let transform: View.Transform?
+        let blendMode: View.BlendMode?
         @Wrapped var tintColor: Color.Themed?
         let renderingMode: RenderingMode?
         let corner: Corner?

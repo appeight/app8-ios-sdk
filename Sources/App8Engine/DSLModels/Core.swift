@@ -136,6 +136,9 @@ extension DSL.Model {
         let icon: String
         /// Screen ID to render in this tab
         let screen: String
+        /// System badge on the tab item, usually an expression over app
+        /// variables (`"{{length(cart)}}"`). Empty, `0` or nil hides it.
+        let badge: String?
     }
 
     /// Content for tab bar screens
@@ -172,6 +175,68 @@ extension DSL.Model {
         let hidden: Bool?
         /// Title text color (hex string)
         let titleColor: String?
+        /// Bar button tint (back chevron, bar actions) as hex. Applied while
+        /// this screen is on top; nil restores the system tint.
+        let tintColor: String?
+        /// iOS 26 scroll-edge effect under the bar (the blur + tint over content
+        /// scrolling behind it): `automatic` (default), `soft`, `hard`, `hidden`.
+        let topEdgeEffect: EdgeEffect?
+
+        enum EdgeEffect: String, SafeEnumCodable, Sendable {
+            case automatic, soft, hard, hidden
+            static let unknownCase: EdgeEffect = .automatic
+        }
+        /// System search field (`UISearchController`) attached to the navigation bar.
+        let search: SearchBar?
+    }
+
+    /// Native navigation-bar search (`navigationItem.searchController`). The
+    /// system owns the field, its glass, the dictation mic, and the cancel (✕)
+    /// button that appears while the field is focused.
+    struct SearchBar: Decodable, Sendable {
+        /// Placeholder text (supports `{{i18n(...)}}` / variables).
+        let placeholder: String?
+        /// Screen variable kept in sync with the field text.
+        let bindVariable: String?
+        /// Where the field sits: `automatic`, `stacked` (below the title),
+        /// `inline` (in the title row), `integrated` (iOS 26: in the bar itself),
+        /// `integratedButton` (iOS 26: a search button that expands),
+        /// `integratedCentered` (iOS 26). Defaults to `automatic`.
+        let placement: Placement?
+        /// Hide the field when the content scrolls. Defaults to `false`.
+        let hidesWhenScrolling: Bool?
+        /// Field tint (caret, cancel button) as hex.
+        let tintColor: String?
+        /// iOS 26 `integrated` placement only: stretch the field across the bar
+        /// (leading-aligned) instead of the compact trailing field. Defaults to `false`.
+        let fillsBar: Bool?
+        /// Actions run when the user taps the keyboard's search key.
+        let onSubmit: [Action]?
+
+        enum Placement: String, SafeEnumCodable, Sendable {
+            case automatic, stacked, inline, integrated, integratedButton, integratedCentered
+            static let unknownCase: Placement = .automatic
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case placeholder, bindVariable, placement, hidesWhenScrolling, tintColor, fillsBar, onSubmit
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            placeholder = try c.decodeIfPresent(String.self, forKey: .placeholder)
+            bindVariable = try c.decodeIfPresent(String.self, forKey: .bindVariable)
+            placement = try c.decodeIfPresent(Placement.self, forKey: .placement)
+            hidesWhenScrolling = try c.decodeIfPresent(Bool.self, forKey: .hidesWhenScrolling)
+            tintColor = try c.decodeIfPresent(String.self, forKey: .tintColor)
+            fillsBar = try c.decodeIfPresent(Bool.self, forKey: .fillsBar)
+            // A single action or an array, like every other trigger.
+            if let list = try? c.decodeIfPresent([Action].self, forKey: .onSubmit) {
+                onSubmit = list
+            } else {
+                onSubmit = (try? c.decodeIfPresent(Action.self, forKey: .onSubmit)).flatMap { $0.map { [$0] } }
+            }
+        }
     }
 
     /// Action for navigation bar buttons

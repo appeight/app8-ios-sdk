@@ -37,6 +37,16 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
     /// Length of the original (un-duplicated) content along the scroll axis;
     /// the offset wraps modulo this value when `infinite` is true.
     private var autoScrollOriginalLength: CGFloat = 0
+    /// Fractional marquee position along the scroll axis, owned by the view.
+    /// `UIScrollView` snaps `contentOffset` to the pixel grid (0.5pt at 2x),
+    /// so a sub-pixel advance read back from it is lost — e.g. 30pt/s at
+    /// 120Hz is 0.25pt/frame, which rounds straight back to the previous
+    /// value and the marquee never moves. Accumulate here and only write.
+    private var autoScrollPosition: CGFloat = 0
+    /// Main-axis offset last written to the scroll view. If the live offset
+    /// drifts from it by more than the pixel-rounding slack, something else
+    /// (a drag, a programmatic scroll) moved the content — resync from it.
+    private var autoScrollLastWrittenOffset: CGFloat = 0
     private var autoScrollSnapshot: UIView?
     /// Whether marquee setup has run for the current configuration; resets on `configureContent`.
     private var autoScrollDidInstall: Bool = false
@@ -368,6 +378,11 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         link.add(to: .main, forMode: .common)
         autoScrollDisplayLink = link
         autoScrollLastTimestamp = nil
+        // Seed the fractional position from wherever the content currently is
+        // (0 on first start, the preserved offset on a resume).
+        let direction = viewModel?.component.properties.direction ?? .vertical
+        autoScrollPosition = direction == .horizontal ? scrollView.contentOffset.x : scrollView.contentOffset.y
+        autoScrollLastWrittenOffset = autoScrollPosition
     }
 
     private func stopAutoScrollDisplayLink() {
@@ -384,6 +399,8 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         marqueeContainer = nil
         marqueeContainerEndConstraint = nil
         autoScrollOriginalLength = 0
+        autoScrollPosition = 0
+        autoScrollLastWrittenOffset = 0
     }
 
     /// Per-frame tick. Advances `contentOffset` by `speed * deltaTime`; when
@@ -423,26 +440,29 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
             ? (infinite ? containerLength + loopGap : containerLength)
             : autoScrollOriginalLength
 
+        // Never advance from the scroll view's own offset: it is pixel-snapped,
+        // so a sub-pixel step would round back to where it started (see
+        // `autoScrollPosition`). Only resync when the live offset has moved
+        // away from what we last wrote — i.e. something external scrolled it.
         var offset = scrollView.contentOffset
+        let live = direction == .horizontal ? offset.x : offset.y
+        if abs(live - autoScrollLastWrittenOffset) > 1 {
+            autoScrollPosition = live
+        }
+
+        autoScrollPosition += advance
+        if infinite, length > 0 {
+            if autoScrollPosition >= length {
+                autoScrollPosition -= length
+            } else if autoScrollPosition < 0 {
+                autoScrollPosition += length
+            }
+        }
+        autoScrollLastWrittenOffset = autoScrollPosition
+
         switch direction {
-        case .horizontal:
-            offset.x += advance
-            if infinite, length > 0 {
-                if offset.x >= length {
-                    offset.x -= length
-                } else if offset.x < 0 {
-                    offset.x += length
-                }
-            }
-        case .vertical:
-            offset.y += advance
-            if infinite, length > 0 {
-                if offset.y >= length {
-                    offset.y -= length
-                } else if offset.y < 0 {
-                    offset.y += length
-                }
-            }
+        case .horizontal: offset.x = autoScrollPosition
+        case .vertical: offset.y = autoScrollPosition
         }
         scrollView.contentOffset = offset
     }

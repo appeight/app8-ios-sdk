@@ -26,7 +26,7 @@ class CVideoViewModel: CBaseViewModel<DSL.Model.Component.Video.C> {
             guard let self else { return }
             switch action.type {
             case .updateVariable, .incrementVariable, .updateMultipleVariables,
-                 .resetVariables, .toggleArrayValue, .appendToArray:
+                 .resetVariables, .toggleArrayValue, .appendToArray, .incrementArrayItem:
                 do {
                     try handler.execute(action: action, store: self.variableStore, context: context)
                 } catch {

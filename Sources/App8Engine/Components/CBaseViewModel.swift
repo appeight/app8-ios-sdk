@@ -263,9 +263,9 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     }
 
     /// Resolve a string property that may contain {{expressions}}
-    func resolveProperty(_ value: String) -> Any {
+    func resolveProperty(_ value: String, context: VariableContext? = nil) -> Any {
         do {
-            return try propertyResolver.resolve(value, context: getVariableContext())
+            return try propertyResolver.resolve(value, context: context ?? getVariableContext())
         } catch {
             service.context.logger.error("Failed to resolve property '\(value)': \(error)")
             return value
@@ -688,10 +688,11 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         return DSL.Model.ScreenTransition.resolve(inline, animationResolver: animationResolver)
     }
 
-    /// Execute an action directly (for event triggers)
-    func executeAction(_ action: DSL.Model.Action) {
+    /// Execute an action directly (for event triggers). `context` overrides
+    /// the store navigation params resolve against (e.g. a tapped cell's).
+    func executeAction(_ action: DSL.Model.Action, context: VariableContext? = nil) {
         switch action.type {
-        case .updateVariable, .incrementVariable, .updateMultipleVariables, .resetVariables, .toggleArrayValue, .appendToArray:
+        case .updateVariable, .incrementVariable, .updateMultipleVariables, .resetVariables, .toggleArrayValue, .appendToArray, .incrementArrayItem:
             executeVariableAction(action)
 
         case .setState:
@@ -714,7 +715,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 if let params = action.params {
                     for (key, value) in params {
                         if let stringValue = value.value as? String {
-                            resolvedParams[key] = resolveProperty(stringValue)
+                            resolvedParams[key] = resolveProperty(stringValue, context: context)
                         } else {
                             resolvedParams[key] = value.value
                         }

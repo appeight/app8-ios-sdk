@@ -37,6 +37,9 @@ class BaseViewController: UIViewController, BaseViewControllerProtocol {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Dismisses the keyboard on any tap without consuming it: cancelling
+        // touches would swallow every cell selection (`onItemTap`) underneath.
+        tapGR.cancelsTouchesInView = false
         view.addGestureRecognizer(tapGR)
         tapGR.publisher(for: \.state)
             .filter { $0 == .ended }

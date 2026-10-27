@@ -16,6 +16,18 @@ final class App8Service: A8.DataSourceHolder {
     /// App-level variable store — persists across screens.
     @MainActor private(set) lazy var appVariableStore = VariableStore(context: context)
 
+    /// Defines `app.json` `variables` in the app scope. Ones already defined
+    /// keep their value, so an app config reload doesn't wipe live state.
+    @MainActor func defineAppVariables(_ definitions: [String: VariableDefinition]) {
+        for (name, definition) in definitions where !appVariableStore.hasVariable(name: name) {
+            do {
+                try appVariableStore.defineVariable(name: name, definition: definition)
+            } catch {
+                context.logger.error("Failed to define app variable '\(name)': \(error)")
+            }
+        }
+    }
+
     @MainActor private(set) lazy var imageLoader: ImageLoader = {
         let l = ImageLoader()
         l.logger = context.logger
@@ -242,6 +254,7 @@ extension App8Service: ComponentRenderer, ComponentService {
             additionalSafeAreaInsets: additionalSafeAreaInsets,
             titleViewService: self,
             titleViewVariableStore: viewModel.variableStore,
+            actionHandler: { [weak viewModel] action in viewModel?.executeAction(action) },
             context: context
         )
 

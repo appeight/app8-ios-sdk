@@ -67,11 +67,21 @@ final class FlowCoordinator {
         return flowVC
     }
 
+    /// Flow a `completeFlow` is loading, so a duplicate request is ignored.
+    private var pendingFlowId: String?
+
     /// Transition to a new flow (one-way, cannot return).
     func completeFlow(destination: String) async throws {
         guard let flow = findFlow(id: destination) else {
             throw NavigationError.flowNotFound(destination)
         }
+        // Navigation requests arrive on a process-wide bus, so the same
+        // `completeFlow` can come in several times (e.g. a launch timer firing in
+        // every rendered copy of the screen). Switching again to the flow that is
+        // current or already loading would stack duplicate flows.
+        guard destination != currentFlowId, destination != pendingFlowId else { return }
+        pendingFlowId = destination
+        defer { if pendingFlowId == destination { pendingFlowId = nil } }
 
         let newFlowVC = try await createFlowViewController(for: flow)
 

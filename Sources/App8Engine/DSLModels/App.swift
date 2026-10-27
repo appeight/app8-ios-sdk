@@ -17,6 +17,9 @@ extension DSL.Model {
         /// App-wide default transition. Lowest-priority fallback when neither the
         /// navigation action nor the target screen declares one.
         let defaultTransition: ScreenTransition?
+        /// App-scope variables, visible from every screen (`component → screen →
+        /// app` lookup). They live as long as the app instance: a cart, a session.
+        let variables: [String: VariableDefinition]?
 
         var initialScreenId: String? {
             guard let navigation else { return nil }

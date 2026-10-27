@@ -141,6 +141,7 @@ extension CViewProtocol where Self: UIView {
         useSpring: Bool = false
     ) {
         contentMode = style?.contentMode?.ui ?? .scaleToFill
+        layer.compositingFilter = style?.blendMode?.compositingFilter
         contentView.backgroundColor = .clear
         backgroundColor = .clear
 

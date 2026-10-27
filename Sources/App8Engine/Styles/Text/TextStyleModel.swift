@@ -99,6 +99,31 @@ extension DSL.Model.Style {
 
         enum Alignment: Int, Codable {
             case left, center, right, justified, natural
+
+            /// Authors write the documented names (`"center"`); the raw
+            /// `NSTextAlignment` integer is still accepted.
+            init(from decoder: Decoder) throws {
+                let container = try decoder.singleValueContainer()
+                if let name = try? container.decode(String.self) {
+                    switch name {
+                    case "left": self = .left
+                    case "center": self = .center
+                    case "right": self = .right
+                    case "justified": self = .justified
+                    case "natural": self = .natural
+                    default:
+                        throw DecodingError.dataCorruptedError(
+                            in: container, debugDescription: "Unknown text alignment '\(name)'")
+                    }
+                    return
+                }
+                let raw = try container.decode(Int.self)
+                guard let value = Alignment(rawValue: raw) else {
+                    throw DecodingError.dataCorruptedError(
+                        in: container, debugDescription: "Unknown text alignment \(raw)")
+                }
+                self = value
+            }
         }
 
         /// Author-facing line-break modes mapped to `NSLineBreakMode`.
