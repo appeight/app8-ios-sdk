@@ -21,7 +21,7 @@ public final class ExpressionEvaluator {
         "uppercase", "lowercase", "trim", "replace", "split",
         "substring", "startsWith", "endsWith",
         // Array manipulation
-        "sort", "reverse", "join", "concat", "slice"
+        "sort", "reverse", "join", "concat", "slice", "sum"
     ])
 
     public init() {}
@@ -479,6 +479,14 @@ public final class ExpressionEvaluator {
             let arr = try evaluate(arguments[0], context: context) as? [Any] ?? []
             let sep = try evaluate(arguments[1], context: context) as? String ?? ""
             return arr.map { stringify($0) }.joined(separator: sep)
+
+        case "sum":
+            guard arguments.count == 1 else {
+                throw ExpressionError.parseError("sum() expects 1 argument (array of numbers)")
+            }
+            let arr = try evaluate(arguments[0], context: context) as? [Any] ?? []
+            let total = arr.compactMap { toNumber($0) }.reduce(0, +)
+            return total.truncatingRemainder(dividingBy: 1) == 0 && abs(total) < Double(Int.max) ? Int(total) as Any : total as Any
 
         case "concat":
             guard arguments.count >= 2 else {

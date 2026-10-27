@@ -175,10 +175,16 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         }
 
         // Horizontal scrolling is handled by orthogonal section behavior, not the
-        // collection view itself, so disable its main-axis scrolling.
+        // collection view itself, so disable its main-axis scrolling — except a
+        // full-width paged carousel, which scrolls the collection view natively.
         if isHorizontal {
+            let nativePaging = usesNativeHorizontalPaging
             collectionView.alwaysBounceVertical = false
-            collectionView.isScrollEnabled = false
+            collectionView.isScrollEnabled = nativePaging
+            collectionView.isPagingEnabled = nativePaging
+            // A pager scrolls sideways only; safe-area insets would shift its
+            // full-height pages down (e.g. a gallery under the status bar).
+            if nativePaging { collectionView.contentInsetAdjustmentBehavior = .never }
         } else {
             let scrollEnabled = viewModel?.component.properties.layout?.scrollEnabled ?? true
             collectionView.isScrollEnabled = scrollEnabled
@@ -371,6 +377,20 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         return config
     }
 
+    /// A top-level horizontal collection of full-width pages (`pagingStyle:
+    /// paging`, no item width): a photo-gallery pager. It scrolls the collection
+    /// view itself with `isPagingEnabled`, like UIKit's own pagers, instead of
+    /// an orthogonal section — whose private scroll view rounds any offset set
+    /// from outside its own pan to a page and loads cells only for that page,
+    /// so a host-driven drag (Mac pointer drag, programmatic scroll) broke.
+    private var usesNativeHorizontalPaging: Bool {
+        guard let config = viewModel?.component.properties.layout, config.type == .horizontal else { return false }
+        return config.pagingStyle == .paging
+            && config.itemWidth == nil
+            && config.estimatedItemWidth == nil
+            && (config.rows ?? 1) <= 1
+    }
+
     private func createHorizontalLayout(config: DSL.Model.Component.Collection.Layout) -> UICollectionViewCompositionalLayout {
         let itemHeight = config.itemHeight ?? 100
 
@@ -400,7 +420,8 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         let group = NSCollectionLayoutGroup.horizontal(layoutSize: groupSize, subitems: [item])
 
         let section = NSCollectionLayoutSection(group: group)
-        section.orthogonalScrollingBehavior = orthogonalBehavior(for: config)
+        let nativePaging = usesNativeHorizontalPaging
+        section.orthogonalScrollingBehavior = nativePaging ? .none : orthogonalBehavior(for: config)
         section.interGroupSpacing = config.itemSpacing ?? 0
 
         // Apply left/right/bottom to section insets (top handled by UICollectionView.contentInset)
@@ -413,13 +434,19 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             )
         }
 
-        if config.currentPageVariable != nil {
+        if config.currentPageVariable != nil, !nativePaging {
             section.visibleItemsInvalidationHandler = { [weak self] items, offset, environment in
                 self?.handlePageChange(offset: offset, containerWidth: environment.container.effectiveContentSize.width)
             }
         }
 
-        return UICollectionViewCompositionalLayout(section: section)
+        guard nativePaging else { return UICollectionViewCompositionalLayout(section: section) }
+        let layoutConfig = UICollectionViewCompositionalLayoutConfiguration()
+        layoutConfig.scrollDirection = .horizontal
+        // Pages fill the collection's bounds, not its safe area.
+        layoutConfig.contentInsetsReference = .none
+        section.contentInsetsReference = .none
+        return UICollectionViewCompositionalLayout(section: section, configuration: layoutConfig)
     }
 
     /// Handles page change detection for horizontal paging collections
@@ -469,19 +496,16 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         }
 
         let item = NSCollectionLayoutItem(layoutSize: itemSize)
-        let spacing = (config.itemSpacing ?? 0) / 2
-        item.contentInsets = NSDirectionalEdgeInsets(
-            top: 0,
-            leading: spacing,
-            bottom: 0,
-            trailing: spacing
-        )
 
         let groupSize = NSCollectionLayoutSize(
             widthDimension: .fractionalWidth(1.0),
             heightDimension: itemSize.heightDimension
         )
+        // `count` sizes the items to fill the row with the spacing BETWEEN them
+        // only, so the outer columns sit flush with the collection's edges
+        // (per-item half-spacing insets left them inset by itemSpacing / 2).
         let group = NSCollectionLayoutGroup.horizontal(layoutSize: groupSize, repeatingSubitem: item, count: columns)
+        group.interItemSpacing = .fixed(config.itemSpacing ?? 0)
 
         let section = NSCollectionLayoutSection(group: group)
         section.interGroupSpacing = config.lineSpacing ?? 0
@@ -1091,6 +1115,10 @@ extension CCollectionView: UICollectionViewDelegate {
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // Native pager: the page index comes from the collection view's own offset.
+        if usesNativeHorizontalPaging {
+            handlePageChange(offset: scrollView.contentOffset, containerWidth: scrollView.bounds.width)
+        }
         // Offset is adjusted for contentInset so it reads 0 at the rest position.
         if let outputVar = viewModel?.component.properties.scrollOffsetVariable {
             let isHorizontal = viewModel?.component.properties.layout?.type == .horizontal

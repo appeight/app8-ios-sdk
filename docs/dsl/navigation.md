@@ -304,6 +304,44 @@ Configure the navigation bar for each screen.
 | `leftAction` | BarAction | Left bar button (ignored when `titleAlignment: "left"`) |
 | `rightAction` | BarAction | Single right bar button (kept for backward compatibility) |
 | `rightActions` | BarAction[] | Multiple right bar buttons — takes priority over `rightAction` |
+| `tintColor` | Color | Back chevron and bar-button tint while this screen is on top (system tint when omitted) |
+| `topEdgeEffect` | string | iOS 26 scroll-edge effect under the bar: `automatic` (default), `soft`, `hard`, or `hidden` (e.g. an edge-to-edge hero image under a transparent bar) |
+| `search` | SearchBar | System search field in the bar — see [Search](#search) |
+
+### Search
+
+`navigationBar.search` attaches the system search field (`UISearchController`) to the
+bar. The system draws the field, its glass, the dictation mic, and the cancel (✕)
+button that appears only while the field is focused. Never build a search bar from a
+`view` + `textField` — use this.
+
+```json
+{
+  "navigationBar": {
+    "search": {
+      "placeholder": "Search or ask a question",
+      "bindVariable": "searchQuery",
+      "placement": "integrated",
+      "fillsBar": true,
+      "tintColor": "#214E38",
+      "onSubmit": { "type": "navigation", "nextScreen": "searchResults", "params": { "q": "{{searchQuery}}" } }
+    }
+  }
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `placeholder` | string | | Placeholder text (expressions allowed) |
+| `bindVariable` | string | | Screen variable kept in sync with the field text as the user types |
+| `placement` | string | `automatic` | `automatic`, `stacked` (own row under the title), `inline` (title row), `integrated` (iOS 26: the field fills the bar), `integratedButton` (iOS 26: a search button that expands), `integratedCentered` (iOS 26). iOS 26 values fall back to `inline` on older systems |
+| `hidesWhenScrolling` | boolean | `false` | Collapse the field as the content scrolls |
+| `tintColor` | Color | | Caret and cancel-button tint |
+| `fillsBar` | boolean | `false` | With `placement: "integrated"` (iOS 26): stretch the field across the bar from the leading edge instead of the compact trailing field. While focused it shortens to make room for the ✕ |
+| `onSubmit` | Action \| Action[] | | Runs when the user taps the keyboard's search key |
+
+A screen with only `search` (no `title`) shows just the field. Do not set `hidden: true`
+— that hides the field too.
 
 ### Bar Action
 
@@ -481,6 +519,7 @@ Tab-based navigation using TabBarScreen.
 | `label` | string | Tab label text |
 | `icon` | string | SF Symbol name |
 | `screen` | string | Screen ID to display |
+| `badge` | string | System badge on the tab item; usually an expression over app variables, e.g. `"{{sum(map(cart, item.quantity))}}"`. Empty or `0` hides it |
 
 ### TabBarScreen Properties
 

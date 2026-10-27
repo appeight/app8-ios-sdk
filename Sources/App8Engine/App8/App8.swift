@@ -215,6 +215,9 @@ final class A8: App8.DebugInstance {
                 do {
                     let model = try self.decoder.decode(DSL.Model.App.self, from: appData)
                     self.app = model
+                    if let variables = model.variables {
+                        await self.appService?.defineAppVariables(variables)
+                    }
                     // Pointer-only entries would self-reference and are skipped (inlineOrNil → nil).
                     let registry: [String: DSL.Model.Animation.Inline] = (model.animations ?? [])
                         .reduce(into: [:]) { acc, entry in
@@ -668,7 +671,11 @@ extension A8 {
             }
         }
 
-        let missingParams = analysis.requiredParams.filter { !finalParams.keys.contains($0.name) }
+        // App-scope variables aren't params: defaulting one here would shadow it.
+        let appVariables = Set(app?.variables?.keys.map { $0 } ?? [])
+        let missingParams = analysis.requiredParams.filter {
+            !finalParams.keys.contains($0.name) && !appVariables.contains($0.name)
+        }
 
         if !missingParams.isEmpty {
             switch options.missingParamStrategy {

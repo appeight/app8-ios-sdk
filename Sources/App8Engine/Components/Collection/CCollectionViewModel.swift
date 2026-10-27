@@ -394,29 +394,34 @@ final class CCollectionViewModel: CBaseViewModel<CollectionContent> {
     // MARK: - Selection
 
     func handleSelection(at indexPath: IndexPath) {
+        let section = currentSections[indexPath.section]
+        let item = section.items[indexPath.item]
+
+        // `onItemTap` fires on every tap, with or without `selection`. Route
+        // through dispatchTrigger so author-declared analytics fire before the
+        // actions run. Actions resolve against the cell-scoped store so
+        // `{{item.foo}}` (incl. navigation params) reads the tapped row.
+        let cellStore = createCellVariableStore(for: item)
+        let cellContext = VariableContext(store: cellStore)
+        let handler = VariableActionHandler()
+        dispatchTrigger(.onItemTap) { action in
+            switch action.type {
+            case .updateVariable, .incrementVariable, .updateMultipleVariables, .resetVariables, .toggleArrayValue, .appendToArray, .incrementArrayItem:
+                do {
+                    try handler.execute(action: action, store: cellStore, context: cellContext)
+                } catch {
+                    service.context.logger.error("Failed to execute onItemTap action: \(error)")
+                }
+            default:
+                executeAction(action, context: cellContext)
+            }
+        }
+
         guard let selection = component.properties.selection,
               selection.mode ?? .none != .none else {
             return
         }
-
-        let section = currentSections[indexPath.section]
-        let item = section.items[indexPath.item]
-
         let itemId = valueAtKeyPath(item.data.value, keyPath: "id")
-
-        // Route through dispatchTrigger so author-declared analytics fire
-        // before the actions run. Each action handler still uses the cell-
-        // scoped store so `{{item.foo}}` resolves against the tapped row.
-        let cellStore = createCellVariableStore(for: item)
-        let handler = VariableActionHandler()
-        dispatchTrigger(.onItemTap) { action in
-            do {
-                try handler.execute(action: action, store: cellStore, context: VariableContext(store: cellStore))
-            } catch {
-                service.context.logger.error("Failed to execute onItemTap action: \(error)")
-            }
-        }
-
         if let binding = selection.binding {
             handleSelectionChange(itemId: itemId, binding: binding, mode: selection.mode ?? .single)
         }

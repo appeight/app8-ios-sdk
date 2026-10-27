@@ -22,6 +22,7 @@ General-purpose container for grouping and layout.
 | `alpha` | number | Opacity (0.0-1.0) |
 | `contentMode` | ContentMode | Content alignment |
 | `transform` | Transform | View transform |
+| `blendMode` | BlendMode | How the view composites with content beneath it (`normal`, `multiply`, `screen`, `overlay`, `darken`, `lighten`, `colorDodge`, `colorBurn`, `softLight`, `hardLight`, `difference`, `exclusion`, `hue`, `saturation`, `color`, `luminosity`). Same as Figma / CSS `mix-blend-mode`. |
 
 ## ContentMode Values
 

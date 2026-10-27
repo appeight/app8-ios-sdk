@@ -134,22 +134,26 @@ extension DSL.Model.Layout {
                 case "self":
                     self = .selfView
                 default:
-                    if let siblingId = Self.safeAreaSiblingId(in: targetString) {
+                    if let siblingId = Self.wrappedId(in: targetString, keyword: "safearea") {
                         self = .safeArea(siblingId)
+                    } else if let siblingId = Self.wrappedId(in: targetString, keyword: "sibling") {
+                        // `sibling(<id>)` is the documented form; a bare id works too.
+                        self = .sibling(siblingId)
                     } else {
                         self = .sibling(targetString)
                     }
                 }
             }
 
-            /// Parses the `safeArea(<id>)` form. The `safeArea` keyword is matched
-            /// case-insensitively; the inner id is returned verbatim because
-            /// sibling ids are case-sensitive. Returns `nil` for any other string.
-            private static func safeAreaSiblingId(in raw: String) -> String? {
+            /// Parses the `<keyword>(<id>)` form (`safeArea(header)`,
+            /// `sibling(title)`). The keyword is matched case-insensitively; the
+            /// inner id is returned verbatim because sibling ids are case-sensitive.
+            /// Returns `nil` for any other string.
+            private static func wrappedId(in raw: String, keyword: String) -> String? {
                 let trimmed = raw.trimmingCharacters(in: .whitespaces)
-                guard trimmed.lowercased().hasPrefix("safearea("),
+                guard trimmed.lowercased().hasPrefix(keyword + "("),
                       trimmed.hasSuffix(")") else { return nil }
-                let start = trimmed.index(trimmed.startIndex, offsetBy: "safearea(".count)
+                let start = trimmed.index(trimmed.startIndex, offsetBy: keyword.count + 1)
                 let end = trimmed.index(before: trimmed.endIndex)
                 let id = trimmed[start..<end].trimmingCharacters(in: .whitespaces)
                 return id.isEmpty ? nil : id

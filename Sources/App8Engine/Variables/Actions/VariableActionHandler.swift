@@ -34,6 +34,9 @@ public final class VariableActionHandler {
         case .appendToArray:
             try handleAppendToArray(action: action, store: store, context: context)
 
+        case .incrementArrayItem:
+            try handleIncrementArrayItem(action: action, store: store, context: context)
+
         case .updateMultipleVariables:
             try handleUpdateMultipleVariables(action: action, store: store, context: context)
 
@@ -184,6 +187,48 @@ public final class VariableActionHandler {
         try store.setValue(name: variableName, value: newArray)
     }
 
+    /// Adds `by` (default 1) to `field` (default "quantity") of the object whose
+    /// `matchBy` key equals the value's. `value` is either the full object (its
+    /// `matchBy` key identifies it, and it's appended with `field = by` when
+    /// missing and `by > 0`) or just the key. An item whose field drops to 0 or
+    /// below is removed — so one action covers add, +, − and remove.
+    private func handleIncrementArrayItem(action: DSL.Model.Action, store: VariableStoreProtocol, context: VariableContext) throws {
+        guard let variableName = action.variableName else {
+            throw VariableError.undefinedVariable("No variable name specified in incrementArrayItem action")
+        }
+        guard let matchKey = action.matchBy else {
+            throw VariableError.undefinedVariable("No matchBy specified in incrementArrayItem action for '\(variableName)'")
+        }
+        guard let value = action.value else {
+            throw VariableError.undefinedVariable("No value specified in incrementArrayItem action for '\(variableName)'")
+        }
+        let field = action.field ?? "quantity"
+        let by = action.by ?? 1
+        let resolved = try resolveValue(value.value, context: context)
+        let object = resolved as? [String: Any]
+        guard let key = object.map({ $0[matchKey] }) ?? resolved else { return }
+
+        var array = store.getValue(name: variableName) as? [Any] ?? []
+        if let index = array.firstIndex(where: { ($0 as? [String: Any])?[matchKey].map { isEqual($0, key) } ?? false }),
+           var item = array[index] as? [String: Any] {
+            let current = (item[field] as? NSNumber)?.doubleValue ?? 0
+            let next = current + by
+            if next <= 0 {
+                array.remove(at: index)
+            } else {
+                item[field] = next.truncatingRemainder(dividingBy: 1) == 0 ? Int(next) as Any : next as Any
+                array[index] = item
+            }
+        } else if var item = object, by > 0 {
+            guard array.count < EngineLimits.maxArrayVariableCount else { return }
+            item[field] = by.truncatingRemainder(dividingBy: 1) == 0 ? Int(by) as Any : by as Any
+            array.append(item)
+        } else {
+            return
+        }
+        try store.setValue(name: variableName, value: array)
+    }
+
     private func handleUpdateMultipleVariables(action: DSL.Model.Action, store: VariableStoreProtocol, context: VariableContext) throws {
         guard let updates = action.updates else {
             return
@@ -201,10 +246,18 @@ public final class VariableActionHandler {
 
     // MARK: - Helpers
 
+    /// Resolves `{{…}}` in a value — also inside object / array values, so an
+    /// action can build an object from expressions (e.g. a cart line item).
     private func resolveValue(_ value: Any, context: VariableContext) throws -> Any {
         if let stringValue = value as? String,
            stringValue.contains("{{") && stringValue.contains("}}") {
             return try propertyResolver.resolve(stringValue, context: context)
+        }
+        if let dict = value as? [String: Any] {
+            return try dict.mapValues { try resolveValue($0, context: context) }
+        }
+        if let array = value as? [Any] {
+            return try array.map { try resolveValue($0, context: context) }
         }
         return value
     }

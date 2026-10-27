@@ -22,6 +22,7 @@ Image display component.
 | `corner` | Corner | Corner radius |
 | `material` | Material | Background material |
 | `alpha` | number | Opacity |
+| `blendMode` | BlendMode | How the view composites with content beneath it (`normal`, `multiply`, `screen`, `overlay`, `darken`, `lighten`, `colorDodge`, `colorBurn`, `softLight`, `hardLight`, `difference`, `exclusion`, `hue`, `saturation`, `color`, `luminosity`). Same as Figma / CSS `mix-blend-mode`. |
 
 ## ContentMode Values
 

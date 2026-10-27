@@ -59,7 +59,9 @@ Variables exist in three scopes, searched from innermost to outermost.
 
 ### App Scope
 
-Defined in `app.variables`. Available everywhere.
+Defined in `app.variables` (in a standalone `app.json`: a top-level `variables`
+object). Available everywhere, and kept for the app instance's lifetime — e.g. a
+shopping cart that a product screen fills and a cart tab reads.
 
 ```json
 {
@@ -279,6 +281,7 @@ without hard-coding pixel sizes. Notes:
 | `slice(array, start, end)` | Sub-array `[start, end)` | `{{slice(items, 0, 3)}}` |
 | `concat(a, b, …)` | Concatenate two or more arrays | `{{concat(pinned, others)}}` |
 | `join(array, separator)` | Join elements into a string | `{{join(tags, ', ')}}` |
+| `sum(array)` | Sum of the numeric elements | `{{sum(map(cart, item.unitPrice * item.quantity))}}` |
 
 ```json
 "count": "{{items.length}}"

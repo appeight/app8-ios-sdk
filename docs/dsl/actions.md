@@ -229,6 +229,32 @@ Append a value to the end of an array variable (no de-duplication).
 | `variableName` | string | Array variable |
 | `value` | any/expression | Value to append |
 
+### Increment Array Item
+
+Adjust a numeric field of the object in an array matched by `matchBy` — one
+action for a cart's add, +, − and remove-at-zero.
+
+```json
+{
+  "type": "incrementArrayItem",
+  "variableName": "cart",
+  "matchBy": "key",
+  "value": { "key": "{{product.handle}}", "title": "{{product.title}}", "unitPrice": "{{product.priceValue}}" },
+  "by": 1
+}
+```
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `variableName` | string | | Array variable |
+| `matchBy` | string | | Object key that identifies an item |
+| `value` | object / any | | The full object (its `matchBy` key matches; appended with `field = by` when missing and `by > 0`) or just the key value |
+| `field` | string | `"quantity"` | Numeric field to adjust |
+| `by` | number | `1` | Amount to add (negative to decrement). An item whose field drops to `0` or below is removed |
+
+Object `value`s may contain `{{expressions}}` at any depth; they resolve when the
+action runs.
+
 ### Update Multiple Variables
 
 ```json

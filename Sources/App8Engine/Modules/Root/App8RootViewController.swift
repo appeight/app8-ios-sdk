@@ -31,7 +31,9 @@ class App8RootViewController: UIViewController {
         super.viewDidAppear(animated)
         // Also set on the window so every view resolves the correct trait collection,
         // even before being added to the VC hierarchy (e.g. during init, glass effects).
-        if let defaultUserInterfaceStyle {
+        // Only when this root owns the window: an embedding host (e.g. Stage's
+        // canvas) keeps its own appearance.
+        if let defaultUserInterfaceStyle, view.window?.rootViewController === self {
             view.window?.overrideUserInterfaceStyle = defaultUserInterfaceStyle
         }
     }
@@ -64,6 +66,9 @@ class App8RootViewController: UIViewController {
             embedFlow(newFlowVC)
             return
         }
+        // The new flow is current from now on, so a transition that starts before
+        // this one's fade ends replaces it instead of orphaning it on screen.
+        currentFlowViewController = newFlowVC
 
         addChild(newFlowVC)
         newFlowVC.view.frame = view.bounds
@@ -76,12 +81,14 @@ class App8RootViewController: UIViewController {
             newFlowVC.view.alpha = 1
             oldFlowVC.view.alpha = 0
         }) { _ in
-            oldFlowVC.willMove(toParent: nil)
-            oldFlowVC.view.removeFromSuperview()
-            oldFlowVC.removeFromParent()
-
+            // Drop every flow but the current one (also any left by an
+            // overlapping transition).
+            for child in self.children where child !== self.currentFlowViewController {
+                child.willMove(toParent: nil)
+                child.view.removeFromSuperview()
+                child.removeFromParent()
+            }
             newFlowVC.didMove(toParent: self)
-            self.currentFlowViewController = newFlowVC
         }
     }
 }

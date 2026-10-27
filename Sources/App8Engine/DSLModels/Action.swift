@@ -56,7 +56,8 @@ extension DSL.Model {
         var variableName: String?              // Variable name for single-variable actions
         var value: AnyCodableValue?            // Value (can contain expressions as strings)
         var by: Double?                        // Increment/decrement amount
-        var matchBy: String?                   // For toggleArrayValue: key to match when array contains objects (e.g. "id")
+        var matchBy: String?                   // For toggleArrayValue / incrementArrayItem: key to match when array contains objects (e.g. "id")
+        var field: String?                     // For incrementArrayItem: numeric field to adjust (default "quantity")
         var updates: [String: AnyCodableValue]? // For updateMultipleVariables
         var scope: VariableScope?              // Target scope for resetVariables
 
@@ -121,6 +122,7 @@ extension DSL.Model {
             case incrementVariable        // Add numeric amount to variable
             case toggleArrayValue         // Add/remove value from array
             case appendToArray            // Append value to end of array variable
+            case incrementArrayItem       // Add `by` to a numeric field of the object matched by `matchBy`; inserts / removes it
             case updateMultipleVariables  // Batch update multiple variables
             case resetVariables           // Reset variables to initial values
 
