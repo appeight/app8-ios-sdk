@@ -184,6 +184,9 @@ final class ExpressionParserTests: XCTestCase {
 
         case .ternary:
             return ".ternary"
+
+        case .arrayLiteral:
+            return ".arrayLiteral"
         }
     }
 }

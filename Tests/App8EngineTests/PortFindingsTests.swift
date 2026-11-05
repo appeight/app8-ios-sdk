@@ -203,4 +203,39 @@ final class PortFindingsTests: XCTestCase {
         try store.setValue(name: "a", value: 4)
         XCTAssertEqual(store.getValue(name: "double") as? Int, 8)
     }
+
+    // MARK: - #5 / #6 expressions
+
+    private func eval(_ expression: String, _ vars: [String: (VariableType, Any)] = [:]) throws -> Any? {
+        let store = VariableStore()
+        for (name, (type, value)) in vars {
+            try store.defineVariable(name: name, definition: VariableDefinition(type: type, initialValue: value))
+        }
+        let node = try ExpressionParser().parse(expression)
+        return try ExpressionEvaluator().evaluate(node, context: VariableContext(store: store))
+    }
+
+    func testArrayLiteralKeepsNonLiteralElements() throws {
+        let value = try eval("{{[1, x, 3]}}", ["x": (.number, 2)]) as? [Any]
+        XCTAssertEqual(value?.count, 3)
+        XCTAssertEqual(value?.compactMap { $0 as? Int }, [1, 2, 3])
+        let nested = try eval("{{[x + 1, [x, 'a'], name]}}", ["x": (.number, 2), "name": (.string, "n")]) as? [Any]
+        XCTAssertEqual(nested?.count, 3)
+        XCTAssertEqual(nested?[0] as? Int, 3)
+        XCTAssertEqual((nested?[1] as? [Any])?.count, 2)
+        XCTAssertEqual(nested?[2] as? String, "n")
+    }
+
+    func testArrayLiteralDependenciesAreTracked() throws {
+        let node = try ExpressionParser().parse("{{[1, x, y.z]}}")
+        XCTAssertEqual(DependencyExtractor().extractDependencies(from: node), ["x", "y"])
+    }
+
+    func testComputedArrayLiteralRecomputes() throws {
+        let store = VariableStore()
+        try store.defineVariable(name: "x", definition: VariableDefinition(type: .number, initialValue: 2))
+        try store.defineVariable(name: "list", definition: VariableDefinition(type: .array, computed: "{{[1, x]}}"))
+        try store.setValue(name: "x", value: 7)
+        XCTAssertEqual((store.getValue(name: "list") as? [Any])?.compactMap { $0 as? Int }, [1, 7])
+    }
 }

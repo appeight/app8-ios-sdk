@@ -57,3 +57,15 @@ Each section is one iOS commit. Port the behavior exactly; tests referenced are 
 - Invariant to port: after `setMultipleValues` returns or throws, a later
   `setValue` always recomputes dependents.
 - Tests: `PortFindingsTests.testSetMultipleValues*`.
+
+## 5. Array literals keep non-literal elements
+
+- Parser: `[a, b, …]` where every element is a literal → literal array (as
+  before). Otherwise → new node `arrayLiteral(elements: [Node])` keeping **all**
+  element nodes in order (old code silently dropped non-literals:
+  `[1, x, 3]` → `[1, 3]`).
+- Evaluator: evaluate each element in order; a `nil` result becomes `NSNull`
+  (null) so indices are preserved. Nested arrays work recursively.
+- Dependency extraction walks every element (so `{{[1, x]}}` as a computed
+  variable recomputes when `x` changes).
+- Tests: `PortFindingsTests.testArrayLiteral*`, `testComputedArrayLiteralRecomputes`.

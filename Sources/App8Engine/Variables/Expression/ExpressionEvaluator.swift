@@ -120,6 +120,10 @@ public final class ExpressionEvaluator {
             let conditionValue = try evaluate(condition, context: context)
             let isTrue = toBool(conditionValue)
             return try evaluate(isTrue ? trueValue : falseValue, context: context)
+
+        case .arrayLiteral(let elements):
+            // nil elements become NSNull so positions are preserved.
+            return try elements.map { try evaluate($0, context: context) ?? NSNull() }
         }
     }
 
