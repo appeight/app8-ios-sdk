@@ -41,6 +41,13 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     private var isSelfSizing = false             // true when scrollEnabled == false
     private var selfSizingHeightConstraint: NSLayoutConstraint?
     private var cellsSelfSizeWidth = false       // true when horizontal + estimatedItemWidth
+    /// Offsets of scrollables nested in this collection's cells (e.g. horizontal shelves
+    /// in a vertical list), so they survive cell reuse.
+    private var nestedScrollCache = NestedScrollOffsetCache()
+    /// Token of the latest offset restore requested by the parent collection; the
+    /// deferred re-apply runs only if it is still current. Cleared when the user drags.
+    private var pendingRestoreToken: Int?
+    private var restoreTokenCounter = 0
 
     // MARK: - Setup
 
@@ -759,6 +766,10 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] newSections in
                 guard let self else { return }
+                // Different items → saved nested offsets no longer belong to them.
+                if Self.itemScrollKeys(self.sections) != Self.itemScrollKeys(newSections) {
+                    self.nestedScrollCache.reset()
+                }
                 guard !self.sectionsStructurallyEqual(self.sections, newSections) else {
                     // Same shape, new item data (e.g. a cart line's quantity):
                     // push it into the live cells instead of a full reload.
@@ -840,6 +851,57 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             return "id:" + String(describing: id)
         }
         return "val:" + String(describing: item.data.value)
+    }
+
+    /// Stable identity of an item for nested-scroll memory: section key + the item's `id`
+    /// when it has one, else its index path.
+    static func itemScrollKey(_ item: CCollectionViewModel.ItemWrapper, sectionKey: String, indexPath: IndexPath) -> String {
+        if let dict = item.data.value as? [String: Any], let id = dict["id"] {
+            return sectionKey + "/id:" + String(describing: id)
+        }
+        return sectionKey + "/#\(indexPath.section).\(indexPath.item)"
+    }
+
+    static func itemScrollKeys(_ sections: [CCollectionViewModel.Section]) -> [String] {
+        sections.enumerated().flatMap { sIdx, section in
+            section.items.enumerated().map { iIdx, item in
+                itemScrollKey(item, sectionKey: section.key, indexPath: IndexPath(item: iIdx, section: sIdx))
+            }
+        }
+    }
+
+    /// Restore the offsets of scrollables nested in `cell` for the item it now shows.
+    private func restoreNestedScrollState(in cell: CCollectionCell, itemKey: String) {
+        cell.scrollStateItemKey = itemKey
+        cell.scrollStateGeneration = nestedScrollCache.generation
+        for nested in NestedScrollOffsetCache.restorables(in: cell.contentView) {
+            guard let nestedId = nested.nestedScrollStateId else { continue }
+            nested.restoreNestedScrollOffset(nestedScrollCache.offset(itemKey: itemKey, nestedId: nestedId))
+        }
+    }
+
+    /// Capture the offsets of scrollables nested in `cell` before it is reused.
+    private func saveNestedScrollState(from cell: CCollectionCell) {
+        guard let itemKey = cell.scrollStateItemKey else { return }
+        for nested in NestedScrollOffsetCache.restorables(in: cell.contentView) {
+            guard let nestedId = nested.nestedScrollStateId,
+                  let offset = nested.nestedScrollOffset else { continue }
+            nestedScrollCache.save(offset, itemKey: itemKey, nestedId: nestedId, generation: cell.scrollStateGeneration)
+        }
+    }
+
+    /// The surface that actually scrolls: a horizontal shelf scrolls inside the
+    /// compositional layout's orthogonal section scroller, not the collection view.
+    private var primaryScrollView: UIScrollView? {
+        let isHorizontal = viewModel?.component.properties.layout?.type == .horizontal
+        guard isHorizontal, !usesNativeHorizontalPaging else { return collectionView }
+        // UIKit embeds one scroll view per orthogonal section as a direct subview.
+        return collectionView.subviews.lazy.compactMap { $0 as? UIScrollView }.first
+    }
+
+    private func applyRestoredOffset(_ offset: CGPoint?) {
+        guard let scrollView = primaryScrollView else { return }
+        scrollView.app8SetClampedContentOffset(offset ?? scrollView.app8RestOffset)
     }
 
     /// Compute deleted index paths between old and new sections for the delete-only case.
@@ -1068,6 +1130,11 @@ extension CCollectionView: UICollectionViewDataSource {
             cell.contentView.transform = CGAffineTransform(scaleX: 1, y: -1)
         }
 
+        restoreNestedScrollState(
+            in: cell,
+            itemKey: Self.itemScrollKey(item, sectionKey: sections[indexPath.section].key, indexPath: indexPath)
+        )
+
         return cell
     }
 
@@ -1131,6 +1198,20 @@ extension CCollectionView: UICollectionViewDelegate {
         viewModel?.handleSelection(at: indexPath)
     }
 
+    func collectionView(
+        _ collectionView: UICollectionView,
+        didEndDisplaying cell: UICollectionViewCell,
+        forItemAt indexPath: IndexPath
+    ) {
+        guard let cell = cell as? CCollectionCell else { return }
+        saveNestedScrollState(from: cell)
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        // The user took over; don't snap back to a restored offset.
+        pendingRestoreToken = nil
+    }
+
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         // Native pager: the page index comes from the collection view's own offset.
         if usesNativeHorizontalPaging {
@@ -1154,6 +1235,31 @@ extension CCollectionView: UICollectionViewDelegate {
 
         if scrollPosition > contentHeight - threshold {
             viewModel?.handleLoadMore()
+        }
+    }
+}
+
+// MARK: - NestedScrollStateRestorable
+
+extension CCollectionView: NestedScrollStateRestorable {
+
+    var nestedScrollStateId: String? { layoutModeId }
+
+    var nestedScrollOffset: CGPoint? { primaryScrollView?.contentOffset }
+
+    func restoreNestedScrollOffset(_ offset: CGPoint?) {
+        // Apply now (same-shape data: the layout is already valid), then once more
+        // after the reparent-triggered sections delivery, which `bindSections`
+        // receives on a later main-queue turn and may reload / resize the content.
+        restoreTokenCounter += 1
+        let token = restoreTokenCounter
+        pendingRestoreToken = token
+        applyRestoredOffset(offset)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.pendingRestoreToken == token else { return }
+            self.pendingRestoreToken = nil
+            self.collectionView.layoutIfNeeded()
+            self.applyRestoredOffset(offset)
         }
     }
 }

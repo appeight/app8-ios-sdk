@@ -17,6 +17,12 @@ final class CCollectionCell: UICollectionViewCell {
     /// Whether this cell should self-size its width (horizontal collections with estimatedItemWidth)
     var selfSizesWidth = false
 
+    /// Identity of the outer item this cell was last configured for, used to save
+    /// nested scroll offsets under the right key when the cell ends display.
+    var scrollStateItemKey: String?
+    /// `NestedScrollOffsetCache.generation` at configure time.
+    var scrollStateGeneration = 0
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         // Allow shadows from MaterialView to render beyond cell bounds.

@@ -572,3 +572,27 @@ extension CScrollViewView: UIScrollViewDelegate {
         try? viewModel?.variableStore.setValue(name: outputVar, value: offset)
     }
 }
+
+// MARK: - NestedScrollStateRestorable
+
+extension CScrollViewView: NestedScrollStateRestorable {
+
+    /// Opt out for auto-scrolling marquees: they drive their own offset.
+    var nestedScrollStateId: String? {
+        guard let viewModel, viewModel.component.properties.autoScroll == nil else { return nil }
+        return viewModel.componentPath.split(separator: ".").last.map(String.init)
+    }
+
+    var nestedScrollOffset: CGPoint? { scrollView.contentOffset }
+
+    func restoreNestedScrollOffset(_ offset: CGPoint?) {
+        let apply = { [weak self] in
+            guard let self else { return }
+            self.scrollView.layoutIfNeeded()
+            self.scrollView.app8SetClampedContentOffset(offset ?? self.scrollView.app8RestOffset)
+        }
+        apply()
+        // Reparented content (labels, images) may resize on the next pass.
+        DispatchQueue.main.async(execute: apply)
+    }
+}
