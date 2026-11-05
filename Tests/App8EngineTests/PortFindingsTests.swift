@@ -73,4 +73,38 @@ final class PortFindingsTests: XCTestCase {
         let stored = try pick(localDate(2026, 3, 4, 14, 30), harness: harness)
         XCTAssertEqual(stored, "2026-03-04")
     }
+
+    // MARK: - #2 textView fires onTextChange (with $value) like textField
+
+    func testTextViewFiresOnTextChange() throws {
+        let harness = RenderHarness()
+        try harness.render("""
+        {
+          "type": "view", "id": "root",
+          "content": {
+            "properties": {},
+            "variables": {
+              "note": { "type": "string", "initialValue": "" },
+              "last": { "type": "string", "initialValue": "" }
+            },
+            "layout": { "width": 390, "height": 400 },
+            "children": [
+              { "type": "textView", "id": "tv",
+                "content": {
+                  "properties": { "bindVariable": "note" },
+                  "layout": { "top": 0, "leading": 0, "width": 300, "height": 100 },
+                  "actions": { "onTextChange": { "type": "updateVariable", "variableName": "last", "value": "{{$value}}" } }
+                } }
+            ]
+          }
+        }
+        """)
+        let textView = try XCTUnwrap(harness.find(UITextView.self))
+        textView.text = "hello"
+        textView.delegate?.textViewDidChange?(textView)
+        harness.drain()
+        let rootVM = try XCTUnwrap(harness.viewModel("root", as: CViewModel.self))
+        XCTAssertEqual(rootVM.variableStore.getValue(name: "last") as? String, "hello")
+        XCTAssertEqual(rootVM.variableStore.getValue(name: "note") as? String, "hello")
+    }
 }

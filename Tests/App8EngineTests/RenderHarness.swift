@@ -15,12 +15,17 @@ final class RenderHarness {
     let window: UIWindow
     let superview: UIView
 
+    /// View models hold `unowned` service refs and some views touch them in
+    /// `removeFromSuperview`; keep services alive past view teardown.
+    private static var retainedServices: [App8Service] = []
+
     init(size: CGSize = CGSize(width: 390, height: 844)) {
         service = App8Service(publicDataSource: HarnessStubDataSource(), context: App8Context())
         window = UIWindow(frame: CGRect(origin: .zero, size: size))
         window.makeKeyAndVisible()
         superview = UIView(frame: CGRect(origin: .zero, size: size))
         window.addSubview(superview)
+        Self.retainedServices.append(service)
     }
 
     @discardableResult

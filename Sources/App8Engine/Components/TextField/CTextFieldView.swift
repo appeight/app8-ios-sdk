@@ -167,16 +167,7 @@ class CTextFieldView: App8BaseView<DSL.Model.Component.TextField.C>, CViewProtoc
         viewModel.textChanged.send(text)
 
         // Fire onTextChange with a $value overlay so the action sees the new text.
-        // Routed through dispatchTrigger so author-declared analytics fire too.
-        let context = VariableContext(store: viewModel.variableStore).overlaying("$value", value: text)
-        let handler = VariableActionHandler()
-        viewModel.dispatchTrigger(.onTextChange) { action in
-            do {
-                try handler.execute(action: action, store: viewModel.variableStore, context: context)
-            } catch {
-                viewModel.service.context.logger.error("Failed to execute onTextChange action: \(error)")
-            }
-        }
+        viewModel.dispatchTextChange(text)
 
         // Auto-advance to the next field once maxLength is reached.
         if let maxLength = viewModel.currentProperties.maxLength,
