@@ -97,22 +97,23 @@ struct DSLDocumentationTests {
 
     // MARK: - Helpers
 
+    /// The DSL spec lives in appeight/app8-dsl (shared with the Android SDK).
+    /// Lookup order: `APP8_DSL_DOCS`, a sibling `app8-dsl/docs` checkout
+    /// (CI checks out the tag in `dsl.lock` there), then the legacy local copy.
     private static func resolveDocsDirectory() -> String? {
-        let testFilePath = #filePath
-        let testFileURL = URL(fileURLWithPath: testFilePath)
-
-        // Navigate: Tests/App8EngineTests/DSLDocumentationTests.swift -> docs/dsl/
-        let packageRoot = testFileURL
+        let fm = FileManager.default
+        if let env = ProcessInfo.processInfo.environment["APP8_DSL_DOCS"], fm.fileExists(atPath: env) {
+            return env
+        }
+        let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // Remove filename
             .deletingLastPathComponent()  // Remove App8EngineTests
             .deletingLastPathComponent()  // Remove Tests
-
-        let docsDirectory = packageRoot
-            .appendingPathComponent("docs")
-            .appendingPathComponent("dsl")
-
-        let path = docsDirectory.path
-        return FileManager.default.fileExists(atPath: path) ? path : nil
+        let candidates = [
+            packageRoot.deletingLastPathComponent().appendingPathComponent("app8-dsl/docs"),
+            packageRoot.appendingPathComponent("docs/dsl"),
+        ]
+        return candidates.map(\.path).first { fm.fileExists(atPath: $0) }
     }
 
     private static func discoverMarkdownFiles(in directory: String) throws -> [String] {

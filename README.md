@@ -145,7 +145,12 @@ A minimal screen:
 
 The full DSL reference — components (inputs, lists, feedback), styles, layout,
 variables, actions, navigation, collections, animations, forms, localization,
-and host integration — lives in [`docs/dsl/`](docs/dsl/index.md).
+and host integration — lives in [appeight/app8-dsl](https://github.com/appeight/app8-dsl),
+shared with the Android SDK ([appeight/app8-android-sdk](https://github.com/appeight/app8-android-sdk)).
+What differs between iOS and Android is in its
+[`docs/platforms.md`](https://github.com/appeight/app8-dsl/blob/main/docs/platforms.md).
+`dsl.lock` names the app8-dsl version this SDK implements; both SDKs release
+under the same version. `docs/dsl/` here is a legacy copy and will be removed.
 
 ## Building and testing
 
