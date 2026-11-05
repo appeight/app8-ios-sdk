@@ -15,6 +15,10 @@ public final class Variable {
     public let isComputed: Bool
     public let expression: String?
     public private(set) var dependencies: Set<String> = []
+    /// Value captured when the variable was defined (after evaluating an
+    /// expression / datasource / injected-param initial value). Restored by
+    /// the `resetVariables` action.
+    public private(set) var initialValue: Any?
 
     /// Publisher for value changes
     private let valueSubject = PassthroughSubject<(oldValue: Any?, newValue: Any?), Never>()
@@ -55,6 +59,19 @@ public final class Variable {
         guard !Self.valuesEqual(oldValue, newValue) else { return }
         self.value = newValue
         valueSubject.send((oldValue: oldValue, newValue: newValue))
+    }
+
+    /// Snapshot the current value as the reset target. Called by the stores
+    /// once the definition-time value is final.
+    func captureInitialValue() {
+        initialValue = value
+    }
+
+    /// Restore the captured initial value (no-op for computed variables;
+    /// their store recomputes them).
+    func restoreInitialValue() {
+        guard !isComputed else { return }
+        setValueUnchecked(initialValue)
     }
 
     /// Set value for computed variables (internal use)

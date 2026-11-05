@@ -184,9 +184,10 @@ class VariableActionHandlerTests: XCTestCase {
 
         try actionHandler.execute(action: action, store: variableStore, context: context)
 
-        // resetVariables currently clears all variables rather than restoring initial values.
-        XCTAssertNil(variableStore.getValue(name: "counter"))
-        XCTAssertNil(variableStore.getValue(name: "message"))
+        // resetVariables restores initial values; variables stay defined.
+        XCTAssertEqual(variableStore.getValue(name: "counter") as? Int, 0)
+        XCTAssertEqual(variableStore.getValue(name: "message") as? String, "Hello")
+        XCTAssertTrue(variableStore.hasVariable(name: "counter"))
     }
 
     // MARK: - Error Cases

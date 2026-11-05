@@ -554,8 +554,8 @@ private struct ParserState {
                 return .literal(.array(literalValues))
             }
 
-            // Otherwise return as-is (will be evaluated at runtime)
-            return .literal(.array(literalValues))
+            // Otherwise keep every element node; evaluated at runtime.
+            return .arrayLiteral(elements)
         }
 
         throw ExpressionError.unexpectedToken(position: current().position)

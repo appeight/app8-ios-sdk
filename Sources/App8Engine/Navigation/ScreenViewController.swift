@@ -323,12 +323,11 @@ final class ScreenViewController: BaseViewController {
               config.placement == .integrated, let controller = searchController,
               navigationItem.leftBarButtonItem == nil else { return }
         controller.delegate = self
-        // As a bar item the field leads the bar. UIKit only allows that on the
-        // phone (elsewhere, e.g. Mac Catalyst, it throws "only supported in
-        // UIToolbar"); there the widened field stays trailing-aligned.
-        if UIDevice.current.userInterfaceIdiom == .phone {
-            navigationItem.leftBarButtonItems = [navigationItem.searchBarPlacementBarButtonItem]
-        }
+        // Never move `searchBarPlacementBarButtonItem` into the navigation bar's
+        // left items: UIKit raises NSInvalidArgumentException ("only supported
+        // in UIToolbar") — observed on iPhone with iOS 26.2 — which crashed any
+        // screen using `fillsBar` (facetheory shop/cart/account). The field
+        // stays in its integrated (trailing) slot and is widened in place.
         let width = controller.searchBar.widthAnchor.constraint(equalToConstant: 0)
         width.isActive = true
         searchWidthConstraint = width

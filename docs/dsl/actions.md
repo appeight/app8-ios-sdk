@@ -283,18 +283,22 @@ Reset variables to initial values.
 }
 ```
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `scope` | Scope | Which variables to reset |
+Restores each variable to its **initial value** — the value it had right after definition (an `initialValue` expression, datasource or navigation param is restored to what it resolved to then). Variables are never removed; computed variables recompute.
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `scope` | Scope | `screen` | Which variables to reset |
 
 ### Scope Values
 
+Scopes are relative to the component running the action.
+
 | Value | Description |
 |-------|-------------|
-| `component` | Component's local variables |
-| `screen` | Current screen's variables |
+| `component` | That component's own local variables |
+| `screen` | Its own, every enclosing component's and the screen's variables (everything except app-level) |
 | `app` | App-level variables |
-| `all` | All variables |
+| `all` | All of the above |
 
 ---
 

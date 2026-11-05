@@ -377,6 +377,22 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         for action in actions { execute(action) }
     }
 
+    /// Fire `onTextChange` for a text input (textField / textView) with a
+    /// `$value` overlay holding the new text, routed through `dispatchTrigger`
+    /// so author-declared analytics fire too.
+    func dispatchTextChange(_ text: String) {
+        let context = VariableContext(store: variableStore).overlaying("$value", value: text)
+        let handler = VariableActionHandler()
+        handler.logger = service.context.logger
+        dispatchTrigger(.onTextChange) { [self] action in
+            do {
+                try handler.execute(action: action, store: variableStore, context: context)
+            } catch {
+                service.context.logger.error("Failed to execute onTextChange action: \(error)")
+            }
+        }
+    }
+
     /// Fire row-anchored tap analytics on behalf of a TableView row. Rows
     /// aren't full Component view models, so `fireTriggerAnalytics` (which
     /// attributes to the *enclosing* component) wouldn't tag events with the
