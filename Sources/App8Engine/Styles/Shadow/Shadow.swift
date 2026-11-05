@@ -63,6 +63,18 @@ extension DSL.Model.Style {
                 }
             }
             
+            /// `opacity` (default 1.0) and `isHollow` (default false) are optional,
+            /// as documented in styles.md. Previously both were required and a
+            /// layer omitting either was silently dropped by `@SafeArrayDecodable`.
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                color = try c.decode(Color.Themed.self, forKey: .color)
+                radius = try c.decode(CGFloat.self, forKey: .radius)
+                offset = try c.decode(Offset.self, forKey: .offset)
+                opacity = try c.decodeIfPresent(CGFloat.self, forKey: .opacity) ?? 1
+                isHollow = try c.decodeIfPresent(Bool.self, forKey: .isHollow) ?? false
+            }
+
             init(_ color: UIColor, _ radius: CGFloat, _ offset: CGSize = .zero, _ opacity: CGFloat = 1, isHollow: Bool = true) {
                 self.color = .init(color)
                 self.radius = radius

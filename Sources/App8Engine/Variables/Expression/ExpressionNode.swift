@@ -15,6 +15,9 @@ public indirect enum ExpressionNode: Sendable {
     case memberAccess(object: ExpressionNode, member: String)
     case arrayAccess(array: ExpressionNode, index: ExpressionNode)
     case ternary(condition: ExpressionNode, trueValue: ExpressionNode, falseValue: ExpressionNode)
+    /// Array literal with at least one non-literal element (e.g. `[1, x, 3]`),
+    /// evaluated element-wise at runtime. All-literal arrays stay `.literal(.array)`.
+    case arrayLiteral([ExpressionNode])
 }
 
 /// Wrapper for literal values to make ExpressionNode Sendable

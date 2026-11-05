@@ -71,6 +71,7 @@ public final class VariableStore: VariableStoreProtocol {
             }
             .store(in: &cancellables)
 
+        variable.captureInitialValue()
         variables[name] = variable
     }
 
@@ -93,22 +94,32 @@ public final class VariableStore: VariableStoreProtocol {
     }
 
     public func setMultipleValues(_ updates: [String: Any?]) throws {
-        var changedVariables: Set<String> = []
-
-        // Update all variables without triggering dependency updates, then resolve in order
-        isUpdating = true
-
-        for (name, value) in updates {
-            guard let variable = variables[name] else {
-                throw VariableError.undefinedVariable(name)
-            }
-            try variable.setValue(value)
-            changedVariables.insert(name)
+        // Validate names up front so an unknown variable rejects the whole batch
+        // before anything is written.
+        if let missing = updates.keys.first(where: { variables[$0] == nil }) {
+            throw VariableError.undefinedVariable(missing)
         }
 
-        try updateDependentVariablesForMultiple(changedVariables: changedVariables)
+        var changedVariables: Set<String> = []
 
+        // Write without triggering per-variable dependency updates, then resolve
+        // dependents once. If a write throws midway, leave batch mode and still
+        // recompute dependents of what was already written before rethrowing,
+        // so the store is never stuck with `isUpdating == true`.
+        isUpdating = true
+
+        do {
+            for (name, value) in updates {
+                try variables[name]!.setValue(value)
+                changedVariables.insert(name)
+            }
+        } catch {
+            isUpdating = false
+            try? updateDependentVariablesForMultiple(changedVariables: changedVariables)
+            throw error
+        }
         isUpdating = false
+        try updateDependentVariablesForMultiple(changedVariables: changedVariables)
     }
 
     public func hasVariable(name: String) -> Bool {
@@ -147,6 +158,18 @@ public final class VariableStore: VariableStoreProtocol {
         variables.removeAll()
         dependencyGraph.reset()
         cancellables.removeAll()
+    }
+
+    public func resetToInitialValues() {
+        let names = variables.filter { !$0.value.isComputed }.map(\.key)
+        isUpdating = true
+        for name in names { variables[name]?.restoreInitialValue() }
+        isUpdating = false
+        do {
+            try updateDependentVariablesForMultiple(changedVariables: Set(names))
+        } catch {
+            logger?.error("resetToInitialValues: failed to recompute dependents: \(error)")
+        }
     }
 
     // MARK: - Computed Variable Updates

@@ -13,6 +13,22 @@ extension DSL.Model.Style {
             Outline(lineWidth: 0, position: .inside, fill: .none)
         }
 
+        private enum CodingKeys: String, CodingKey { case lineWidth, position, fill }
+
+        init(lineWidth: Float, position: Position, fill: Fill) {
+            self.lineWidth = lineWidth
+            self.position = position
+            self.fill = fill
+        }
+
+        /// `position` is optional and defaults to `inside` (styles.md).
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            lineWidth = try c.decode(Float.self, forKey: .lineWidth)
+            position = try c.decodeIfPresent(Position.self, forKey: .position) ?? .inside
+            fill = try c.decode(Fill.self, forKey: .fill)
+        }
+
         mutating func resolveStylePointers(resolver: (String) -> (any DSL.Model.Style.Entity)?) {
             fill.resolveStylePointers(resolver: resolver)
         }

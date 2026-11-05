@@ -93,31 +93,32 @@ struct DSLExampleValidator {
         }
     }
 
-    // Valid component types
-    private static let componentTypes: Set<String> = [
-        "view", "button", "label", "icon", "image", "textField", "textView",
-        "collection", "scroll", "scrollView", "stack", "stackView", "spacer", "pager",
-        "screen", "tabBarScreen", "map", "shape"
+    // Valid component types: every engine `CType.Key` plus doc-only aliases.
+    // Derived from the engine so this table can't lag new component types.
+    private static func isComponentType(_ type: String) -> Bool {
+        DSL.Model.Component.CType.Key(rawValue: type) != nil || componentTypeAliases.contains(type)
+    }
+
+    private static let componentTypeAliases: Set<String> = [
+        "scroll", "stack", "spacer", "pager"
     ]
 
-    // Valid action types — mirrors DSL.Model.Action.`Type`
-    private static let actionTypes: Set<String> = [
-        "navigation", "dismiss", "completeFlow", "selectTab",
-        "updateVariable", "incrementVariable", "toggleArrayValue",
-        "appendToArray", "updateMultipleVariables", "resetVariables",
-        "setState", "focus", "focusNext", "focusPrevious",
-        "dismissKeyboard", "executeFunction",
-        "showAlert", "haptic", "openURL"
-    ]
+    // Valid action types: whatever `DSL.Model.Action.Type` decodes. Derived
+    // from the engine enum so new actions (e.g. `incrementArrayItem`, `emit`,
+    // `complete`) never fail the docs test because this table lagged.
+    private static func isActionType(_ type: String) -> Bool {
+        let decoded: DSL.Model.Action.`Type`? = .init(rawValue: type)
+        return decoded != nil
+    }
 
     private static func validateWithInferredType(data: Data, json: [String: Any]) -> ValidationResult {
         let decoder = JSONDecoder()
 
         // Pattern: Has "type" key → Could be Component or Action
         if let typeValue = json["type"] as? String {
-            if actionTypes.contains(typeValue) {
+            if isActionType(typeValue) {
                 return validateActionStructure(json: json)
-            } else if componentTypes.contains(typeValue) {
+            } else if isComponentType(typeValue) {
                 return validateComponentStructure(json: json)
             } else {
                 return .failed(error: ValidationError("Unknown type: '\(typeValue)'"))
@@ -307,7 +308,7 @@ struct DSLExampleValidator {
             return .failed(error: ValidationError("Component missing 'type' field"))
         }
 
-        guard componentTypes.contains(typeValue) else {
+        guard isComponentType(typeValue) else {
             return .failed(error: ValidationError("Unknown component type: '\(typeValue)'"))
         }
 
@@ -362,7 +363,7 @@ struct DSLExampleValidator {
             return .failed(error: ValidationError("Action missing 'type' field"))
         }
 
-        guard actionTypes.contains(actionType) else {
+        guard isActionType(actionType) else {
             return .failed(error: ValidationError("Unknown action type: '\(actionType)'"))
         }
 

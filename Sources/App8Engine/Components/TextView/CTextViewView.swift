@@ -178,6 +178,9 @@ class CTextViewView: App8BaseView<DSL.Model.Component.TextView.C>, CViewProtocol
 
         viewModel.textChanged.send(text)
 
+        // Fire onTextChange with a $value overlay (same contract as textField).
+        viewModel.dispatchTextChange(text)
+
         if viewModel.currentProperties.autoGrow == true {
             updateHeightForAutoGrow()
         }

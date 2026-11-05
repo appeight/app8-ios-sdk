@@ -148,6 +148,7 @@ public final class ScopedVariableStore: VariableStoreProtocol {
             }
             .store(in: &cancellables)
 
+        variable.captureInitialValue()
         localVariables[name] = variable
     }
 
@@ -179,15 +180,13 @@ public final class ScopedVariableStore: VariableStoreProtocol {
     }
 
     public func setMultipleValues(_ updates: [String: Any?]) throws {
-        var localChanges: Set<String> = []
+        // Validate names up front so an unknown variable rejects the whole batch
+        // before anything is written (locally or in the parent).
+        var localUpdates: [String: Any?] = [:]
         var parentUpdates: [String: Any?] = [:]
-
-        isUpdating = true
-
         for (name, value) in updates {
-            if let variable = localVariables[name] {
-                try variable.setValue(value)
-                localChanges.insert(name)
+            if localVariables[name] != nil {
+                localUpdates[name] = value
             } else if parent?.hasVariable(name: name) == true {
                 parentUpdates[name] = value
             } else {
@@ -195,13 +194,29 @@ public final class ScopedVariableStore: VariableStoreProtocol {
             }
         }
 
-        if !parentUpdates.isEmpty {
-            try parent?.setMultipleValues(parentUpdates)
+        var localChanges: Set<String> = []
+
+        // Write without triggering per-variable dependency updates, then resolve
+        // dependents once. If a write throws midway, leave batch mode and still
+        // recompute dependents of what was already written before rethrowing,
+        // so the store is never stuck with `isUpdating == true`.
+        isUpdating = true
+
+        do {
+            for (name, value) in localUpdates {
+                try localVariables[name]!.setValue(value)
+                localChanges.insert(name)
+            }
+            if !parentUpdates.isEmpty {
+                try parent?.setMultipleValues(parentUpdates)
+            }
+        } catch {
+            isUpdating = false
+            try? updateDependentVariablesForMultiple(changedVariables: localChanges)
+            throw error
         }
-
-        try updateDependentVariablesForMultiple(changedVariables: localChanges)
-
         isUpdating = false
+        try updateDependentVariablesForMultiple(changedVariables: localChanges)
     }
 
     public func hasVariable(name: String) -> Bool {
@@ -256,6 +271,18 @@ public final class ScopedVariableStore: VariableStoreProtocol {
         localVariables.removeAll()
         dependencyGraph.reset()
         cancellables.removeAll()
+    }
+
+    public func resetToInitialValues() {
+        let names = localVariables.filter { !$0.value.isComputed }.map(\.key)
+        isUpdating = true
+        for name in names { localVariables[name]?.restoreInitialValue() }
+        isUpdating = false
+        do {
+            try updateDependentVariablesForMultiple(changedVariables: Set(names))
+        } catch {
+            logger?.error("resetToInitialValues: failed to recompute dependents: \(error)")
+        }
     }
 
     // MARK: - Computed Variable Updates

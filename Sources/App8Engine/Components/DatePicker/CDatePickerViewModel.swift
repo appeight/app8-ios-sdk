@@ -25,7 +25,19 @@ class CDatePickerViewModel: CBaseViewModel<DSL.Model.Component.DatePicker.C> {
 
     private static let shortDate: DateFormatter = {
         let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    /// Local wall-clock time with the device's UTC offset, e.g.
+    /// `2026-03-04T14:30:00+01:00`. Used for `time` / `dateAndTime` so the
+    /// picked time survives the round-trip (and `formatTime` can read it).
+    private static let localDateTime: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ssXXXXX"
         return f
     }()
 
@@ -42,9 +54,17 @@ class CDatePickerViewModel: CBaseViewModel<DSL.Model.Component.DatePicker.C> {
         Self.iso8601.date(from: string) ?? Self.shortDate.date(from: string)
     }
 
-    /// Format a date to ISO8601 string for storage
+    /// Format a date for storage in the bound variable.
+    /// - `date` mode: `yyyy-MM-dd` (local calendar date).
+    /// - `time` / `dateAndTime` / `countdownTimer`: ISO8601 local date-time with
+    ///   offset (`yyyy-MM-dd'T'HH:mm:ssXXXXX`) so the time is not lost.
     func formatDate(_ date: Date) -> String {
-        Self.shortDate.string(from: date)
+        switch currentProperties.datePickerMode ?? .date {
+        case .date:
+            return Self.shortDate.string(from: date)
+        case .time, .dateAndTime, .countdownTimer:
+            return Self.localDateTime.string(from: date)
+        }
     }
 
     private func initializeValue() {

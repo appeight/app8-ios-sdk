@@ -89,7 +89,7 @@ class CStackViewView: App8BaseView<DSL.Model.Component.StackView.C>, CViewProtoc
             dynamicBackgroundView.layer.cornerCurve = .continuous
             dynamicBackgroundView.clipsToBounds = true
             // Don't set self.clipsToBounds — allows MaterialView shadow to render
-            // beyond bounds. Children are clipped by contentView.layer.masksToBounds.
+            // beyond bounds. Children are clipped by contentView (applyCornerClipping).
         }
     }
 
@@ -111,6 +111,18 @@ class CStackViewView: App8BaseView<DSL.Model.Component.StackView.C>, CViewProtoc
         stackView.alignment = viewModel.stackAlignment
         stackView.distribution = viewModel.stackDistribution
         stackView.spacing = viewModel.currentProperties.spacing ?? 0
+        applyCornerClipping(viewModel.cornerRadius)
+    }
+
+    /// `properties.cornerRadius` rounds the stack AND clips its arranged
+    /// children (docs: "clips children to rounded bounds"). Applied to
+    /// `contentView` rather than `self` so MaterialView shadows on `self`
+    /// can still render outside the bounds. Independent of `backgroundColor`.
+    private func applyCornerClipping(_ radius: CGFloat?) {
+        let radius = max(0, radius ?? 0)
+        contentView.layer.cornerRadius = radius
+        contentView.layer.cornerCurve = .continuous
+        contentView.layer.masksToBounds = radius > 0
     }
 
     override func applyStyle(
