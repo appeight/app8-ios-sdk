@@ -91,3 +91,18 @@ Each section is one iOS commit. Port the behavior exactly; tests referenced are 
   `datePicker`, `toggle`, `slider`, `picker`, `video`, `tableView`, `shimmer`).
 - If Android has an equivalent docs/conformance validator with a hard-coded
   type list, derive it from the engine enums the same way.
+
+## 8. stackView `cornerRadius` rounds and clips children
+
+- `properties.cornerRadius` (> 0) on a stackView now clips the arranged
+  children to the rounded rect (continuous corner curve), matching the docs
+  ("clips children to rounded bounds"). Before, only the optional
+  `backgroundColor` layer was rounded, so a child with its own background (e.g.
+  the header in `TestExamples/screens/StackViewProfileCard`) painted square
+  corners over it.
+- Applies whether or not `backgroundColor` is set; radius ≤ 0/absent → no clip.
+- iOS clips an inner content container, not the component root, so a material
+  `shadow` on the stack still renders outside the bounds. Android: clip the
+  children container (e.g. `Modifier.clip(RoundedCornerShape(r))` on the inner
+  layout), keep shadow on the outer node.
+- Tests: `PortFindingsTests.testStackViewCornerRadius*`.

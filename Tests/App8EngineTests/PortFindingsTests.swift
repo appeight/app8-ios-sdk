@@ -246,4 +246,38 @@ final class PortFindingsTests: XCTestCase {
         XCTAssertEqual(try eval("{{toString(5)}}") as? String, "5")
         XCTAssertEqual(try eval("{{toString('s')}}") as? String, "s")
     }
+
+    // MARK: - #8 stackView cornerRadius rounds and clips children
+
+    func testStackViewCornerRadiusClipsChildren() throws {
+        let harness = RenderHarness()
+        try harness.render("""
+        {
+          "type": "stackView", "id": "card",
+          "content": {
+            "properties": { "axis": "vertical", "backgroundColor": "#1C1C1E", "cornerRadius": 16 },
+            "layout": { "width": 320, "top": 0, "leading": 0 },
+            "children": [
+              { "type": "view", "id": "header",
+                "content": { "properties": { "backgroundColor": "#2C2C2E" }, "layout": { "height": 88 } } }
+            ]
+          }
+        }
+        """)
+        let stack = try XCTUnwrap(harness.find(CStackViewView.self))
+        XCTAssertEqual(stack.contentView.layer.cornerRadius, 16)
+        XCTAssertTrue(stack.contentView.layer.masksToBounds, "children must be clipped to the rounded bounds")
+    }
+
+    func testStackViewCornerRadiusWithoutBackgroundStillClips() throws {
+        let harness = RenderHarness()
+        try harness.render("""
+        { "type": "stackView", "id": "card",
+          "content": { "properties": { "cornerRadius": 12 }, "layout": { "width": 100, "top": 0, "leading": 0 },
+            "children": [ { "type": "view", "id": "c", "content": { "properties": { "backgroundColor": "#FF0000" }, "layout": { "height": 40 } } } ] } }
+        """)
+        let stack = try XCTUnwrap(harness.find(CStackViewView.self))
+        XCTAssertEqual(stack.contentView.layer.cornerRadius, 12)
+        XCTAssertTrue(stack.contentView.layer.masksToBounds)
+    }
 }
