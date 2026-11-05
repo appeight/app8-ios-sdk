@@ -280,4 +280,33 @@ final class PortFindingsTests: XCTestCase {
         XCTAssertEqual(stack.contentView.layer.cornerRadius, 12)
         XCTAssertTrue(stack.contentView.layer.masksToBounds)
     }
+
+    // MARK: - Spec drift: shadow opacity / isHollow, outline position optional
+
+    func testShadowLayerOptionalFieldsUseDocumentedDefaults() throws {
+        let json = ##"[{ "color": "#00000040", "radius": 8, "offset": { "x": 0, "y": 4 } }]"##
+        let layers = try JSONDecoder().decode([DSL.Model.Style.Shadow.Layer].self, from: Data(json.utf8))
+        XCTAssertEqual(layers.first?.opacity, 1)
+        XCTAssertEqual(layers.first?.isHollow, false)
+    }
+
+    func testShadowLayerExplicitFieldsStillWin() throws {
+        let json = ##"[{ "color": "#000000", "radius": 8, "offset": { "x": 0, "y": 4 }, "opacity": 0.2, "isHollow": true }]"##
+        let layer = try XCTUnwrap(try JSONDecoder().decode([DSL.Model.Style.Shadow.Layer].self, from: Data(json.utf8)).first)
+        XCTAssertEqual(layer.opacity, 0.2, accuracy: 0.0001)
+        XCTAssertTrue(layer.isHollow)
+    }
+
+    func testShadowWithoutOptionalFieldsIsNotDropped() throws {
+        let json = ##"{ "layers": [{ "color": "#000000", "radius": 4, "offset": { "x": 0, "y": 1 } }] }"##
+        let shadow = try JSONDecoder().decode(DSL.Model.Style.Shadow.self, from: Data(json.utf8))
+        XCTAssertEqual(shadow.layers.count, 1)
+    }
+
+    func testOutlinePositionDefaultsToInside() throws {
+        let json = ##"{ "lineWidth": 2, "fill": { "solid": "#000000" } }"##
+        let outline = try JSONDecoder().decode(DSL.Model.Style.Outline.self, from: Data(json.utf8))
+        XCTAssertEqual(outline.position, .inside)
+        XCTAssertEqual(outline.lineWidth, 2)
+    }
 }

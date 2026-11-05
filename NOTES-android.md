@@ -106,3 +106,34 @@ Each section is one iOS commit. Port the behavior exactly; tests referenced are 
   children container (e.g. `Modifier.clip(RoundedCornerShape(r))` on the inner
   layout), keep shadow on the outer node.
 - Tests: `PortFindingsTests.testStackViewCornerRadius*`.
+
+## 9. `prominentGlass` title colour — no iOS change (not fixed)
+
+- No behavior change shipped. Investigation: on iOS 26.2 the configuration
+  already ends with a white `baseForegroundColor`/title-attributes colour when
+  forced, and `titleLabel.textColor` reads white, yet UIKit's prominent-glass
+  compositing still draws the title light cyan on a blue tint. Overriding
+  `baseForegroundColor`, the title-attributes transformer and `tintColor` all
+  had no visible effect, so the iOS fix needs a different approach (e.g. not
+  using `.prominentGlass()` for tinted buttons, or a custom title view).
+- Android: keep the current white default for `prominentGlass`; it is the
+  intended look.
+
+## 10. Spec drift: shadow `opacity` / `isHollow`, outline `position` optional
+
+Decision: make the decoders lenient with the **documented** defaults (styles.md
+unchanged). Safe because a scan of every DSL JSON under ~/dev/app8 (TestExamples,
+conformance envelopes, shoppu, a2ui, …) found 202 shadow layers, all specifying
+both `isHollow` (144 true / 58 false) and `opacity`, and 254 outlines, only one
+lacking `position` (StringConcat `whiteOutline`, which also lacks `fill` and
+still fails). So no existing app changes rendering.
+
+- Shadow layer: `opacity` optional, default `1.0`; `isHollow` optional,
+  default `false` (non-hollow: the shadow layer gets a background of the shadow
+  colour). `color`, `radius`, `offset` remain required. Before, a layer missing
+  either field failed to decode and was silently dropped from `layers`.
+- Outline: `position` optional, default `inside`. `lineWidth`, `fill` required.
+- Programmatic (non-JSON) Swift initialisers keep `isHollow: true` as their
+  parameter default — irrelevant for the DSL.
+- Tests: `PortFindingsTests.testShadowLayer*`, `testShadowWithoutOptionalFieldsIsNotDropped`,
+  `testOutlinePositionDefaultsToInside`.
