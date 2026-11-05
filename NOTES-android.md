@@ -81,3 +81,13 @@ Each section is one iOS commit. Port the behavior exactly; tests referenced are 
   current `"Optional(" + describe + ")"` must be replaced.
 - Fallback for anything non-JSON-encodable: platform description.
 - Test: `PortFindingsTests.testToStringOfCollectionsIsJSON`.
+
+## 7. Docs example test: type tables derived from the engine (test-only)
+
+- No runtime change. The iOS docs test now accepts any action type the engine's
+  `Action.Type` enum decodes (previously a hand table missing `complete`,
+  `incrementArrayItem`, `emit`) and any component `CType.Key` plus the doc
+  aliases `scroll`, `stack`, `spacer`, `pager` (previously missing e.g.
+  `datePicker`, `toggle`, `slider`, `picker`, `video`, `tableView`, `shimmer`).
+- If Android has an equivalent docs/conformance validator with a hard-coded
+  type list, derive it from the engine enums the same way.
