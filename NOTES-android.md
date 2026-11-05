@@ -137,3 +137,20 @@ still fails). So no existing app changes rendering.
   parameter default — irrelevant for the DSL.
 - Tests: `PortFindingsTests.testShadowLayer*`, `testShadowWithoutOptionalFieldsIsNotDropped`,
   `testOutlinePositionDefaultsToInside`.
+
+## 11. facetheory shop "hang" = crash in `navigationBar.search.fillsBar`
+
+- Root cause (iOS only): the iOS preview host never wrote its ready sentinel
+  because the app **crashed**: `fillsBar` + `placement: integrated` put
+  `navigationItem.searchBarPlacementBarButtonItem` into `leftBarButtonItems`
+  in `viewWillAppear`; UIKit raises NSInvalidArgumentException ("only supported
+  in UIToolbar") on iPhone/iOS 26.2. Nested collections / datasources were not
+  involved (the screen renders in ~0.6 s once fixed).
+- Fix: never relocate the search item; it stays in its integrated slot and is
+  widened in place by the existing width constraint (bar width − 44pt, − 72pt
+  while focused on phone). Visual result: field spans the bar from the leading
+  margin (verified render of demo__facetheory-shop).
+- Android: no equivalent UIKit constraint. Contract to keep: `fillsBar: true`
+  with `integrated` → search field spans the bar width (minus trailing room for
+  the ✕ while focused). Affects facetheory shop/cart/account.
+- Tests: `SearchFillsBarTests` (tab-hosted and plain screen).
