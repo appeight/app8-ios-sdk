@@ -44,8 +44,13 @@ public protocol VariableStoreProtocol: AnyObject {
     /// Get parent store (for $parent access in nested scopes)
     func getParentStore() -> VariableStoreProtocol?
 
-    /// Reset the store
+    /// Remove every variable from the store (teardown / screen replacement).
     func reset()
+
+    /// Restore every local (non-computed) variable to the value it had right
+    /// after definition, then recompute local computed dependents. Variables
+    /// are kept; parent stores are untouched.
+    func resetToInitialValues()
 }
 
 public extension VariableStoreProtocol {

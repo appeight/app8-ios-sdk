@@ -24,3 +24,22 @@ Each section is one iOS commit. Port the behavior exactly; tests referenced are 
 - Fires on each change (not debounced), after the two-way binding is notified.
 - Shared helper on iOS: `CBaseViewModel.dispatchTextChange(_:)`.
 - Test: `PortFindingsTests.testTextViewFiresOnTextChange`.
+
+## 3. `resetVariables` restores initial values (never deletes)
+
+- Each variable snapshots its "initial value" at definition time, *after*
+  resolution (evaluated `{{…}}` initialValue, resolved datasource, injected
+  navigation param, or type default). Computed variables have no snapshot.
+- `resetVariables` sets every non-computed variable in the target stores back to
+  that snapshot (emitting change notifications), then recomputes computed
+  dependents. Variables are never removed (old behavior: `store.reset()` deleted
+  all variables of the acting component's store).
+- Scope resolution from the acting component's store chain
+  `[own, parent, …, root]` (root = store without parent = app store):
+  - `component` → `[own]`
+  - `screen` (**default when `scope` is omitted**) → chain minus root
+    (if the chain has a single store, that store)
+  - `app` → `[root]`
+  - `all` → whole chain
+  Reset root-first (outermost first).
+- Tests: `PortFindingsTests.testResetVariables*`, `VariableActionHandlerTests.testResetVariables`.

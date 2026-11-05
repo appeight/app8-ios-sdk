@@ -148,6 +148,7 @@ public final class ScopedVariableStore: VariableStoreProtocol {
             }
             .store(in: &cancellables)
 
+        variable.captureInitialValue()
         localVariables[name] = variable
     }
 
@@ -256,6 +257,18 @@ public final class ScopedVariableStore: VariableStoreProtocol {
         localVariables.removeAll()
         dependencyGraph.reset()
         cancellables.removeAll()
+    }
+
+    public func resetToInitialValues() {
+        let names = localVariables.filter { !$0.value.isComputed }.map(\.key)
+        isUpdating = true
+        for name in names { localVariables[name]?.restoreInitialValue() }
+        isUpdating = false
+        do {
+            try updateDependentVariablesForMultiple(changedVariables: Set(names))
+        } catch {
+            logger?.error("resetToInitialValues: failed to recompute dependents: \(error)")
+        }
     }
 
     // MARK: - Computed Variable Updates

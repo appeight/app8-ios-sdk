@@ -107,4 +107,70 @@ final class PortFindingsTests: XCTestCase {
         XCTAssertEqual(rootVM.variableStore.getValue(name: "last") as? String, "hello")
         XCTAssertEqual(rootVM.variableStore.getValue(name: "note") as? String, "hello")
     }
+
+    // MARK: - #3 resetVariables restores initial values per scope
+
+    private func resetAction(_ scope: String?) throws -> DSL.Model.Action {
+        let json = scope.map { #"{"type":"resetVariables","scope":"\#($0)"}"# } ?? #"{"type":"resetVariables"}"#
+        return try JSONDecoder().decode(DSL.Model.Action.self, from: Data(json.utf8))
+    }
+
+    /// app (VariableStore) <- screen (Scoped) <- component (Scoped)
+    private func makeChain() throws -> (VariableStore, ScopedVariableStore, ScopedVariableStore) {
+        let app = VariableStore()
+        try app.defineVariable(name: "cart", definition: VariableDefinition(type: .number, initialValue: 1))
+        let screen = ScopedVariableStore(parent: app)
+        try screen.defineVariable(name: "email", definition: VariableDefinition(type: .string, initialValue: "a@b.c"))
+        try screen.defineVariable(name: "greeting", definition: VariableDefinition(type: .string, initialValue: "{{'hi ' + email}}"))
+        try screen.defineVariable(name: "emailLength", definition: VariableDefinition(type: .number, computed: "{{email.length}}"))
+        let component = ScopedVariableStore(parent: screen)
+        try component.defineVariable(name: "draft", definition: VariableDefinition(type: .string, initialValue: "x"))
+        try app.setValue(name: "cart", value: 5)
+        try screen.setValue(name: "email", value: "changed@example.com")
+        try screen.setValue(name: "greeting", value: "yo")
+        try component.setValue(name: "draft", value: "y")
+        return (app, screen, component)
+    }
+
+    private func runReset(_ scope: String?, on store: VariableStoreProtocol) throws {
+        try VariableActionHandler().execute(action: resetAction(scope), store: store, context: VariableContext(store: store))
+    }
+
+    func testResetVariablesScreenScopeRestoresInitialValues() throws {
+        let (app, screen, component) = try makeChain()
+        try runReset("screen", on: component)
+        XCTAssertEqual(component.getValue(name: "draft") as? String, "x")
+        XCTAssertEqual(screen.getValue(name: "email") as? String, "a@b.c")
+        XCTAssertEqual(screen.getValue(name: "greeting") as? String, "hi a@b.c", "expression initialValue restores its evaluated value")
+        XCTAssertEqual(screen.getValue(name: "emailLength") as? Int, 5, "computed dependents recompute")
+        XCTAssertEqual(app.getValue(name: "cart") as? Int, 5, "screen scope leaves app variables alone")
+    }
+
+    func testResetVariablesDefaultScopeIsScreen() throws {
+        let (app, screen, _) = try makeChain()
+        try runReset(nil, on: screen)
+        XCTAssertEqual(screen.getValue(name: "email") as? String, "a@b.c")
+        XCTAssertEqual(app.getValue(name: "cart") as? Int, 5)
+    }
+
+    func testResetVariablesComponentScope() throws {
+        let (_, screen, component) = try makeChain()
+        try runReset("component", on: component)
+        XCTAssertEqual(component.getValue(name: "draft") as? String, "x")
+        XCTAssertEqual(screen.getValue(name: "email") as? String, "changed@example.com")
+    }
+
+    func testResetVariablesAppAndAllScopes() throws {
+        var (app, screen, component) = try makeChain()
+        try runReset("app", on: component)
+        XCTAssertEqual(app.getValue(name: "cart") as? Int, 1)
+        XCTAssertEqual(screen.getValue(name: "email") as? String, "changed@example.com")
+
+        (app, screen, component) = try makeChain()
+        try runReset("all", on: component)
+        XCTAssertEqual(app.getValue(name: "cart") as? Int, 1)
+        XCTAssertEqual(screen.getValue(name: "email") as? String, "a@b.c")
+        XCTAssertEqual(component.getValue(name: "draft") as? String, "x")
+        XCTAssertTrue(component.hasVariable(name: "draft"), "reset never deletes variables")
+    }
 }

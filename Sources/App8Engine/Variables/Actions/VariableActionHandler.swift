@@ -240,8 +240,35 @@ public final class VariableActionHandler {
         }
     }
 
+    /// Restores variables to their initial values (it never deletes them).
+    ///
+    /// Scopes are resolved structurally from the acting component's store chain
+    /// `[own store, parent, …, root]` (root = the store without a parent, i.e.
+    /// the app store):
+    /// - `component`: the acting component's own store only.
+    /// - `screen` (default): every store in the chain except the app root
+    ///   (if the chain is a single store, that store).
+    /// - `app`: the root store only.
+    /// - `all`: the whole chain.
+    /// Stores are reset root-first so computed variables see fresh parents.
     private func handleResetVariables(action: DSL.Model.Action, store: VariableStoreProtocol) {
-        store.reset()
+        var chain: [VariableStoreProtocol] = []
+        var cursor: VariableStoreProtocol? = store
+        while let current = cursor, !chain.contains(where: { $0 === current }) {
+            chain.append(current)
+            cursor = current.getParentStore()
+        }
+
+        let targets: [VariableStoreProtocol]
+        switch action.scope ?? .screen {
+        case .component: targets = [store]
+        case .app:       targets = [chain[chain.count - 1]]
+        case .all:       targets = chain
+        case .screen:    targets = chain.count > 1 ? Array(chain.dropLast()) : chain
+        }
+        for target in targets.reversed() {
+            target.resetToInitialValues()
+        }
     }
 
     // MARK: - Helpers
