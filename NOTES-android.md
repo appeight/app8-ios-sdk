@@ -43,3 +43,17 @@ Each section is one iOS commit. Port the behavior exactly; tests referenced are 
   - `all` → whole chain
   Reset root-first (outermost first).
 - Tests: `PortFindingsTests.testResetVariables*`, `VariableActionHandlerTests.testResetVariables`.
+
+## 4. `setMultipleValues` can't wedge the store in batch mode
+
+- Unknown variable names are validated **before** any write: the whole batch is
+  rejected (`undefinedVariable`) and nothing is applied. In scoped stores the
+  check covers local + parent-chain names before writing either.
+- If a write still throws midway (e.g. type mismatch), the store leaves batch
+  mode (`isUpdating = false`), recomputes dependents of the variables already
+  written (errors swallowed), then rethrows.
+- On success, batch mode is cleared *before* dependents are recomputed, so a
+  throwing computed expression also can't leave the flag set.
+- Invariant to port: after `setMultipleValues` returns or throws, a later
+  `setValue` always recomputes dependents.
+- Tests: `PortFindingsTests.testSetMultipleValues*`.

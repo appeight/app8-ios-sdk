@@ -180,15 +180,13 @@ public final class ScopedVariableStore: VariableStoreProtocol {
     }
 
     public func setMultipleValues(_ updates: [String: Any?]) throws {
-        var localChanges: Set<String> = []
+        // Validate names up front so an unknown variable rejects the whole batch
+        // before anything is written (locally or in the parent).
+        var localUpdates: [String: Any?] = [:]
         var parentUpdates: [String: Any?] = [:]
-
-        isUpdating = true
-
         for (name, value) in updates {
-            if let variable = localVariables[name] {
-                try variable.setValue(value)
-                localChanges.insert(name)
+            if localVariables[name] != nil {
+                localUpdates[name] = value
             } else if parent?.hasVariable(name: name) == true {
                 parentUpdates[name] = value
             } else {
@@ -196,13 +194,29 @@ public final class ScopedVariableStore: VariableStoreProtocol {
             }
         }
 
-        if !parentUpdates.isEmpty {
-            try parent?.setMultipleValues(parentUpdates)
+        var localChanges: Set<String> = []
+
+        // Write without triggering per-variable dependency updates, then resolve
+        // dependents once. If a write throws midway, leave batch mode and still
+        // recompute dependents of what was already written before rethrowing,
+        // so the store is never stuck with `isUpdating == true`.
+        isUpdating = true
+
+        do {
+            for (name, value) in localUpdates {
+                try localVariables[name]!.setValue(value)
+                localChanges.insert(name)
+            }
+            if !parentUpdates.isEmpty {
+                try parent?.setMultipleValues(parentUpdates)
+            }
+        } catch {
+            isUpdating = false
+            try? updateDependentVariablesForMultiple(changedVariables: localChanges)
+            throw error
         }
-
-        try updateDependentVariablesForMultiple(changedVariables: localChanges)
-
         isUpdating = false
+        try updateDependentVariablesForMultiple(changedVariables: localChanges)
     }
 
     public func hasVariable(name: String) -> Bool {

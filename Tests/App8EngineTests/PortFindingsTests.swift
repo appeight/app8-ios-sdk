@@ -173,4 +173,34 @@ final class PortFindingsTests: XCTestCase {
         XCTAssertEqual(component.getValue(name: "draft") as? String, "x")
         XCTAssertTrue(component.hasVariable(name: "draft"), "reset never deletes variables")
     }
+
+    // MARK: - #4 setMultipleValues failure must not leave the store "updating"
+
+    private func assertStoreRecoversAfterFailedBatch(_ store: VariableStoreProtocol) throws {
+        try store.defineVariable(name: "a", definition: VariableDefinition(type: .number, initialValue: 1))
+        try store.defineVariable(name: "double", definition: VariableDefinition(type: .number, computed: "{{a * 2}}"))
+        XCTAssertThrowsError(try store.setMultipleValues(["a": 3, "missing": 1]))
+        // Failed batch is atomic: nothing applied.
+        XCTAssertEqual(store.getValue(name: "a") as? Int, 1)
+        // Later single writes still recompute dependents.
+        try store.setValue(name: "a", value: 10)
+        XCTAssertEqual(store.getValue(name: "double") as? Int, 20)
+    }
+
+    func testSetMultipleValuesFailureDoesNotWedgeVariableStore() throws {
+        try assertStoreRecoversAfterFailedBatch(VariableStore())
+    }
+
+    func testSetMultipleValuesFailureDoesNotWedgeScopedStore() throws {
+        try assertStoreRecoversAfterFailedBatch(ScopedVariableStore(parent: VariableStore()))
+    }
+
+    func testSetMultipleValuesTypeMismatchStillRecomputesAndRecovers() throws {
+        let store = VariableStore()
+        try store.defineVariable(name: "a", definition: VariableDefinition(type: .number, initialValue: 1))
+        try store.defineVariable(name: "double", definition: VariableDefinition(type: .number, computed: "{{a * 2}}"))
+        XCTAssertThrowsError(try store.setMultipleValues(["a": "not a number"]))
+        try store.setValue(name: "a", value: 4)
+        XCTAssertEqual(store.getValue(name: "double") as? Int, 8)
+    }
 }
