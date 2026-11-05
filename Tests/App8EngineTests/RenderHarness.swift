@@ -12,19 +12,26 @@ import UIKit
 @MainActor
 final class RenderHarness {
     let service: App8Service
-    let window: UIWindow
+    /// `nil` when created with `inWindow: false` — Mac Catalyst logic tests have
+    /// no NSApplication, so a `UIWindow` can't be created there.
+    let window: UIWindow?
     let superview: UIView
 
     /// View models hold `unowned` service refs and some views touch them in
     /// `removeFromSuperview`; keep services alive past view teardown.
     private static var retainedServices: [App8Service] = []
 
-    init(size: CGSize = CGSize(width: 390, height: 844)) {
+    init(size: CGSize = CGSize(width: 390, height: 844), inWindow: Bool = true) {
         service = App8Service(publicDataSource: HarnessStubDataSource(), context: App8Context())
-        window = UIWindow(frame: CGRect(origin: .zero, size: size))
-        window.makeKeyAndVisible()
         superview = UIView(frame: CGRect(origin: .zero, size: size))
-        window.addSubview(superview)
+        if inWindow {
+            let window = UIWindow(frame: CGRect(origin: .zero, size: size))
+            window.makeKeyAndVisible()
+            window.addSubview(superview)
+            self.window = window
+        } else {
+            window = nil
+        }
         Self.retainedServices.append(service)
     }
 
