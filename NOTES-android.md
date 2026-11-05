@@ -69,3 +69,15 @@ Each section is one iOS commit. Port the behavior exactly; tests referenced are 
 - Dependency extraction walks every element (so `{{[1, x]}}` as a computed
   variable recomputes when `x` changes).
 - Tests: `PortFindingsTests.testArrayLiteral*`, `testComputedArrayLiteralRecomputes`.
+
+## 6. `toString()` of arrays / objects returns compact JSON
+
+- `toString(x)`: string → itself; bool → `true`/`false`; Int → digits; Double →
+  unchanged (Swift `String(Double)`, e.g. `2.5`, `2.0`); nil/null → `""`.
+- **Arrays and objects** → compact JSON, keys sorted, no spaces, slashes not
+  escaped (JS `JSON.stringify` shape with sorted keys): `toString([1,'a',true])`
+  → `[1,"a",true]`; `{b:1,a:"x"}` → `{"a":"x","b":1}`. Nested nil → `null`,
+  booleans stay `true`/`false`. (Old: `Optional([1, "a", true])`.) Android's
+  current `"Optional(" + describe + ")"` must be replaced.
+- Fallback for anything non-JSON-encodable: platform description.
+- Test: `PortFindingsTests.testToStringOfCollectionsIsJSON`.

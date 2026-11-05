@@ -238,4 +238,12 @@ final class PortFindingsTests: XCTestCase {
         try store.setValue(name: "x", value: 7)
         XCTAssertEqual((store.getValue(name: "list") as? [Any])?.compactMap { $0 as? Int }, [1, 7])
     }
+
+    func testToStringOfCollectionsIsJSON() throws {
+        XCTAssertEqual(try eval("{{toString(list)}}", ["list": (.array, [1, "a", true])]) as? String, #"[1,"a",true]"#)
+        XCTAssertEqual(try eval("{{toString(obj)}}", ["obj": (.object, ["b": 1, "a": "x"])]) as? String, #"{"a":"x","b":1}"#)
+        XCTAssertEqual(try eval("{{toString([1, 2])}}") as? String, "[1,2]")
+        XCTAssertEqual(try eval("{{toString(5)}}") as? String, "5")
+        XCTAssertEqual(try eval("{{toString('s')}}") as? String, "s")
+    }
 }

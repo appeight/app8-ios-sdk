@@ -328,7 +328,7 @@ Combine with other functions:
 |----------|-------------|---------|
 | `parseInt(string)` | Parse integer | `{{parseInt(input)}}` |
 | `parseFloat(string)` | Parse float | `{{parseFloat(input)}}` |
-| `toString(value)` | Convert to string | `{{toString(count)}}` |
+| `toString(value)` | Convert to string. Arrays/objects become compact JSON with sorted keys (`[1,"a"]`, `{"a":1}`) | `{{toString(count)}}` |
 | `isArray(value)` | Check if array | `{{isArray(data)}}` |
 
 ### Object Functions

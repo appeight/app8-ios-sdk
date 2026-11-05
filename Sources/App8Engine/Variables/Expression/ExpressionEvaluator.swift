@@ -914,10 +914,41 @@ public final class ExpressionEvaluator {
         if let num = value as? Double {
             return String(num)
         }
-        if value == nil || value is NSNull {
+        guard let value, !(value is NSNull) else {
             return ""
         }
+        // Arrays / objects → compact JSON with sorted keys (JS `JSON.stringify`
+        // shape), e.g. `[1,"a",true]`, `{"a":"x","b":1}`. Never Swift's
+        // `Optional([...])` / `["k": v]` debug descriptions.
+        if value is [Any] || value is [String: Any],
+           let json = Self.compactJSON(value) {
+            return json
+        }
         return String(describing: value)
+    }
+
+    /// Compact, key-sorted JSON for collection values; nil when the value
+    /// holds something JSONSerialization can't encode.
+    static func compactJSON(_ value: Any) -> String? {
+        let sanitized = jsonSafe(value)
+        guard JSONSerialization.isValidJSONObject(sanitized),
+              let data = try? JSONSerialization.data(
+                withJSONObject: sanitized,
+                options: [.sortedKeys, .withoutEscapingSlashes, .fragmentsAllowed]
+              ) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// Bool must stay Bool (not 1/0) and nested optionals collapse to null.
+    private static func jsonSafe(_ value: Any) -> Any {
+        if let array = value as? [Any] { return array.map(jsonSafe) }
+        if let dict = value as? [String: Any] { return dict.mapValues(jsonSafe) }
+        let mirror = Mirror(reflecting: value)
+        if mirror.displayStyle == .optional {
+            guard let wrapped = mirror.children.first?.value else { return NSNull() }
+            return jsonSafe(wrapped)
+        }
+        return value
     }
 
     private func parseDate(_ value: Any?) -> Date? {
