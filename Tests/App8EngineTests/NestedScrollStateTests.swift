@@ -134,9 +134,9 @@ final class NestedScrollStateTests: XCTestCase {
 
     // MARK: - End to end: shelves in a reused vertical list (Facetheory shop shape)
 
-    private func shopJSON() -> String {
+    private func shopJSON(productCount: (Int) -> Int = { _ in 10 }) -> String {
         let sections = (0..<20).map { s -> String in
-            let products = (0..<10).map { p in #"{"id":"p\#(s)-\#(p)","name":"P\#(p)"}"# }.joined(separator: ",")
+            let products = (0..<productCount(s)).map { p in #"{"id":"p\#(s)-\#(p)","name":"P\#(p)"}"# }.joined(separator: ",")
             return #"{"id":"s\#(s)","title":"Section \#(s)","products":[\#(products)]}"#
         }.joined(separator: ",")
         return """
@@ -227,5 +227,41 @@ final class NestedScrollStateTests: XCTestCase {
 
         let restored = try XCTUnwrap(shelfScroller(in: outer, item: 0))
         XCTAssertEqual(restored.contentOffset.x, 300, accuracy: 0.5, "shelf offset must be restored for its section")
+    }
+
+    /// Facetheory/Slick Gorilla shape: hero sections carry no products, product
+    /// sections differ in count. A reused outer cell is reparented to another
+    /// section's store, and its nested `data: {{item.products}}` collection must
+    /// re-resolve, or it keeps the previous section's items (blank after a hero).
+    func testNestedDataCollectionFollowsOuterCellReuse() throws {
+        let productCount: (Int) -> Int = { $0 % 3 == 1 ? 0 : 8 + $0 % 4 }
+        let harness = RenderHarness(size: CGSize(width: 390, height: 400), inWindow: false)
+        try harness.render(shopJSON(productCount: productCount))
+        harness.drain()
+
+        let outer = try XCTUnwrap(Self.firstCollectionView(in: harness.superview))
+        outer.layoutIfNeeded()
+        harness.drain()
+
+        func assertVisibleShelves(_ context: String) {
+            for indexPath in outer.indexPathsForVisibleItems {
+                guard let cell = outer.cellForItem(at: indexPath),
+                      let shelf = Self.firstCollectionView(in: cell.contentView) else { continue }
+                XCTAssertEqual(shelf.numberOfItems(inSection: 0), productCount(indexPath.item),
+                               "\(context): item \(indexPath.item) shelf shows another section's products")
+            }
+        }
+
+        let maxY = outer.contentSize.height - outer.bounds.height
+        var y: CGFloat = 0
+        func scroll(to newY: CGFloat) {
+            y = newY
+            outer.setContentOffset(CGPoint(x: 0, y: y), animated: false)
+            outer.layoutIfNeeded()
+            harness.drain(0.02)
+            assertVisibleShelves("y=\(Int(y))")
+        }
+        while y < maxY { scroll(to: min(maxY, y + 150)) }
+        while y > 0 { scroll(to: max(0, y - 150)) }
     }
 }
