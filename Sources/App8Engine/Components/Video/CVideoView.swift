@@ -207,7 +207,7 @@ class CVideoView: App8BaseView<DSL.Model.Component.Video.C>, CViewProtocol {
         let assetId = remoteAsset.id
         Task { [weak self] in
             let ext = Self.videoExtension(for: resolvedName ?? effectiveUrl)
-            let tempURL = Self.tempVideoURL(key: key, ext: ext)
+            let tempURL = Self.tempVideoURL(key: key, ext: ext, dataSource: dataSource)
 
             // Reuse the temp file if this asset was already materialized this session.
             if FileManager.default.fileExists(atPath: tempURL.path) {
@@ -245,12 +245,14 @@ class CVideoView: App8BaseView<DSL.Model.Component.Video.C>, CViewProtocol {
     }
 
     /// A stable per-asset temp file path, so repeated loads of the same asset
-    /// reuse one file instead of accumulating copies.
-    private static func tempVideoURL(key: String, ext: String) -> URL {
+    /// reuse one file instead of accumulating copies. The path is scoped to the
+    /// data source: two apps can both name a video "launch-reel", and one must
+    /// never play the other's file.
+    private static func tempVideoURL(key: String, ext: String, dataSource: any A8.DataSourceProtocol) -> URL {
         let safe = String(key.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
         let name = safe.isEmpty ? "video" : String(safe.suffix(96))
-        return URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("app8-video-\(name).\(ext)")
+        let directory = VideoTempFiles.directory(for: dataSource)
+        return directory.appendingPathComponent("\(name).\(ext)")
     }
 
     /// Best-effort container extension for AVPlayer's type hint; defaults to mp4.

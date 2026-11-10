@@ -189,6 +189,10 @@ final class CCollectionViewModel: CBaseViewModel<CollectionContent> {
 
     /// Check if a variable change might affect the current data expression
     private func expressionMightDependOn(_ variableName: String) -> Bool {
+        // Empty name is the reparent signal (a reused cell's store moved to a new
+        // parent): `item` may now be different, so always re-resolve. Without this,
+        // a nested `data: {{item.x}}` collection keeps the previous cell's items.
+        guard !variableName.isEmpty else { return true }
         guard let expression = lastDataExpression else { return false }
         return expression.contains(variableName)
     }
