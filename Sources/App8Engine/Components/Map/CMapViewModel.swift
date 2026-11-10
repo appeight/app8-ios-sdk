@@ -571,6 +571,8 @@ final class CMapViewModel: CBaseViewModel<MapContent> {
     }
 
     private func expressionMightDependOn(_ expression: String, variableName: String) -> Bool {
+        // Empty name is the reparent signal: always re-resolve.
+        guard !variableName.isEmpty else { return true }
         return expression.contains(variableName)
     }
 
