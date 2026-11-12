@@ -119,6 +119,8 @@ extension DSL.Model.Style {
         func attributes() -> [NSAttributedString.Key: Any] {
             let paragraph = NSMutableParagraphStyle()
             paragraph.alignment = alignment
+            // Avoid a lone word on the last line (orphan).
+            paragraph.lineBreakStrategy = .pushOut
             switch lineHeight {
             case .multiplier(let multiplier):
                 paragraph.lineHeightMultiple = multiplier
