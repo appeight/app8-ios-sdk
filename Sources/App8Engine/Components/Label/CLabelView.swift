@@ -62,6 +62,8 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
 
         contentView.addSubview(label)
         label.cMakeEqualToSuperview()
+        // Avoid a lone word on the last line (orphan), as system text does.
+        label.lineBreakStrategy = .pushOut
     }
 
     // UILabel.intrinsicContentSize reports a single-line size unless
@@ -507,6 +509,9 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
 
         if let lineHeight = textModel.lineHeight {
             let paragraphStyle = NSMutableParagraphStyle()
+            // An explicit paragraph style resets the label's line break
+            // strategy to none; keep the orphan-avoiding .pushOut.
+            paragraphStyle.lineBreakStrategy = .pushOut
             switch lineHeight.type {
             case .fixed:
                 paragraphStyle.minimumLineHeight = lineHeight.value
