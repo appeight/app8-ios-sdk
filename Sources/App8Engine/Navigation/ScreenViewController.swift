@@ -99,6 +99,7 @@ final class ScreenViewController: BaseViewController {
         super.viewWillAppear(animated)
         attachLeftTitleViewIfNeeded()
         installSearchFillIfNeeded()
+        applySearchFillTopGap(animated: animated)
         navigationController?.navigationBar.tintColor = navigationBarConfig?.tintColor.flatMap(UIColor.init(withHexString:))
     }
 
@@ -334,13 +335,39 @@ final class ScreenViewController: BaseViewController {
         updateSearchWidth()
     }
 
+    /// A `fillsBar` screen's bar sits this far below the status bar, so the
+    /// field floats free of it. The bar is 10pt taller than the field, so the
+    /// content starts at safe area + 10 + field + 10. Other screens in the same
+    /// navigation controller put the bar back.
+    private static let searchFillTopGap: CGFloat = 10
+
+    private var usesSearchFill: Bool {
+        guard #available(iOS 26.0, *), let config = navigationBarConfig?.search else { return false }
+        return config.fillsBar == true && config.placement == .integrated && navigationBarConfig?.hidden != true
+    }
+
+    private func applySearchFillTopGap(animated: Bool) {
+        guard let nav = navigationController else { return }
+        let top = usesSearchFill ? Self.searchFillTopGap : 0
+        guard nav.additionalSafeAreaInsets.top != top else { return }
+        let apply = {
+            nav.additionalSafeAreaInsets.top = top
+            nav.view.layoutIfNeeded()
+        }
+        if animated, let coordinator = transitionCoordinator {
+            coordinator.animate(alongsideTransition: { _ in apply() })
+        } else {
+            apply()
+        }
+    }
+
     /// iPhone (iOS 26, measured on iPhone 17): the widest field UIKit keeps in
     /// the bar (any wider and it collapses into a search button), and the width
     /// that leaves room for the ✕ shown beside the field while focused.
     /// Elsewhere (iPad idiom, e.g. Mac Catalyst previews) the field stays a
     /// trailing item, spans to the bar's margins, and has no outside ✕.
     private static var searchFillInset: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .phone ? 44 : Self.searchFillPadInset
+        UIDevice.current.userInterfaceIdiom == .phone ? 32 : Self.searchFillPadInset
     }
     private static var searchFillFocusedInset: CGFloat {
         UIDevice.current.userInterfaceIdiom == .phone ? 72 : Self.searchFillPadInset
