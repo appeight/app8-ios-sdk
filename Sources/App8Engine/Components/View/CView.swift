@@ -660,3 +660,15 @@ extension CView: UIGestureRecognizerDelegate {
         return true
     }
 }
+
+// MARK: - ReuseRefreshable
+
+extension CView: ReuseRefreshable {
+    /// Collection cell reuse: apply the new item's `isHidden` and dimension
+    /// expressions now instead of on the next main-queue hop, so the cell is
+    /// measured at the new item's size.
+    func refreshForReusedItem() {
+        updateIsHidden()
+        updateDynamicDimensions()
+    }
+}

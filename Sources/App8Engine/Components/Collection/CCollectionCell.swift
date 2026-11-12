@@ -72,6 +72,7 @@ final class CCollectionCell: UICollectionViewCell {
         // all views update via their existing variable-store subscriptions.
         if let rootStore = rootViewVariableStore, renderedView != nil {
             rootStore.reparent(to: viewModel.variableStore)
+            refreshRenderedViewForNewItem()
             currentViewModel = viewModel
             return
         }
@@ -123,6 +124,7 @@ final class CCollectionCell: UICollectionViewCell {
         // Fast path: reparent existing VM tree to the new cellStore
         if let rootStore = rootViewVariableStore, renderedView != nil {
             rootStore.reparent(to: variableStore)
+            refreshRenderedViewForNewItem()
             let wrapper = CellVariableStoreWrapper(store: variableStore, path: "")
             currentViewModel = wrapper
             onViewModelCreated?(wrapper)
@@ -168,6 +170,23 @@ final class CCollectionCell: UICollectionViewCell {
         let wrapper = CellVariableStoreWrapper(store: variableStore, path: "")
         currentViewModel = wrapper
         onViewModelCreated?(wrapper)
+    }
+
+    /// After a reparent, views re-resolve their expressions on a later main-queue
+    /// hop (`variablesChanged.receive(on: .main)`). The collection measures the cell
+    /// (`preferredLayoutAttributesFitting`) before that hop, so size-affecting
+    /// expressions (`layout.height`/`width`, `isHidden`) would still hold the
+    /// previous item's values and the cell would keep its old height. Apply those
+    /// synchronously, now, so the cell is measured with the new item.
+    private func refreshRenderedViewForNewItem() {
+        guard let view = renderedView else { return }
+        Self.refreshForReuse(view)
+        setNeedsLayout()
+    }
+
+    private static func refreshForReuse(_ view: UIView) {
+        (view as? ReuseRefreshable)?.refreshForReusedItem()
+        for subview in view.subviews { refreshForReuse(subview) }
     }
 
     private func setupConstraints() {
@@ -223,6 +242,15 @@ final class CCollectionCell: UICollectionViewCell {
             propagateContentHugging(in: subview)
         }
     }
+}
+
+// MARK: - ReuseRefreshable
+
+/// A view whose size or visibility comes from expressions, refreshed synchronously
+/// when a collection cell is reused for another item (see `CCollectionCell`).
+@MainActor
+protocol ReuseRefreshable: AnyObject {
+    func refreshForReusedItem()
 }
 
 // MARK: - CellVariableStoreWrapper
