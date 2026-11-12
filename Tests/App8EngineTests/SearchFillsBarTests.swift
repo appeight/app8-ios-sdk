@@ -81,4 +81,38 @@ final class SearchFillsBarTests: XCTestCase {
         ] as [String: Any]]
         try await Self.startAndSettle(try BundleDataSource(envelope: env))
     }
+
+    /// Facetheory shop: the fillsBar field is centred with equal side gaps,
+    /// floats 10pt below the status bar, and content starts 10pt below it.
+    func testFillsBarSearchGeometry() async throws {
+        guard #available(iOS 26.0, *), UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iOS 26 iPhone layout") }
+        let env: [String: Any] = ["bundle": [
+            "app": ["title": "T", "navigation": ["startFlow": "f", "flows": [["id": "f", "startScreen": "tabs"]]]],
+            "styles": [], "components": [],
+            "screens": [
+                "tabs": ["type": "tabBarScreen", "id": "tabs", "content": [
+                    "tabs": [["id": "shop", "label": "Shop", "icon": "magnifyingglass", "screen": "shop"]],
+                    "initialTab": "shop"] as [String: Any]],
+                "shop": Self.searchScreen()
+            ] as [String: Any]
+        ] as [String: Any]]
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        window.makeKeyAndVisible()
+        let instance = App8.instance(dataSource: try BundleDataSource(envelope: env))
+        window.rootViewController = try await instance.startApp()
+        window.layoutIfNeeded()
+        for _ in 0..<8 { try await Task.sleep(nanoseconds: 100_000_000) }
+        defer { window.rootViewController = nil }
+
+        func all(_ v: UIView) -> [UIView] { [v] + v.subviews.flatMap(all) }
+        let views = all(window)
+        let field = try XCTUnwrap(views.compactMap { $0 as? UISearchTextField }.first)
+        let screen = try XCTUnwrap(views.compactMap { $0.next as? ScreenViewController }.first)
+        let frame = field.convert(field.bounds, to: window)
+        let safeTop = window.safeAreaInsets.top
+
+        XCTAssertEqual(frame.minX, window.bounds.width - frame.maxX, accuracy: 0.5, "side gaps \(frame)")
+        XCTAssertEqual(frame.minY, safeTop + 10, accuracy: 0.5, "top gap \(frame)")
+        XCTAssertEqual(screen.view.safeAreaInsets.top, frame.maxY + 10, accuracy: 0.5, "content top")
+    }
 }
