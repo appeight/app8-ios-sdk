@@ -17,6 +17,8 @@ final class ScreenViewController: BaseViewController {
     private let additionalSafeAreaInsetsConfig: UIEdgeInsets?
     private weak var titleViewService: App8Service?
     private var titleViewVariableStore: VariableStoreProtocol?
+    /// The screen root's variable scope (native zoom re-evaluates `sourceKey` here).
+    var screenVariableStore: VariableStoreProtocol? { titleViewVariableStore }
     /// Rendered left-aligned titleView, attached directly to the nav bar in viewWillAppear
     /// to avoid UIBarButtonItem's automatic pill/capsule decoration.
     private var leftNavTitleView: UIView?

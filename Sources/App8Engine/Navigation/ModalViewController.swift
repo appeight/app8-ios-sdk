@@ -16,6 +16,9 @@ final class ModalViewController: UIViewController {
     /// (`transitioningDelegate` is weak). Set by the presenter.
     var transitionManager: App8TransitionManager?
 
+    /// Called once the modal finished dismissing, however it was dismissed.
+    var onDidDismiss: (() -> Void)?
+
     /// Owns delegate duties for the modal's own navigation stack (intra-modal
     /// custom push/pop transitions + context notifications).
     private let navTransitionCoordinator = App8NavTransitionCoordinator()
@@ -77,6 +80,13 @@ final class ModalViewController: UIViewController {
             navController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
         navController.didMove(toParent: self)
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isBeingDismissed || presentingViewController == nil {
+            onDidDismiss?()
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -155,6 +165,8 @@ final class ModalViewController: UIViewController {
         // Intra-modal pushes honor an action-level custom transition; otherwise
         // fall back to UIKit's native push.
         switch transition?.kind {
+        case .some(.nativeZoom):
+            NativeZoomTransition.push(screenVC, on: navController, transition: transition!, coordinator: navTransitionCoordinator, logger: context.logger)
         case .some(.custom):
             navTransitionCoordinator.register(transition, for: screenVC)
             navController.pushViewController(screenVC, animated: true)

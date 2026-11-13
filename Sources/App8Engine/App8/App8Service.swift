@@ -341,7 +341,11 @@ extension App8Service: ComponentRenderer, ComponentService {
         if let element = component.elementTransition {
             let path = parentPath.map { "\($0).\(component.id)" } ?? component.id
             let screenRoot = String(path.split(separator: ".").first ?? Substring(path))
-            componentRegistry.registerParticipant(screenRoot: screenRoot, key: element.key, view: result.view, config: element)
+            // Keys may be expressions (`"{{'card-' + item.handle}}"`): tag the
+            // view so native zoom resolves the live key, register the key as
+            // resolved now for shared-element matching.
+            let tag = TransitionKeyTag.tag(result.view, rawKey: element.key, viewModel: result.viewModel)
+            componentRegistry.registerParticipant(screenRoot: screenRoot, key: tag.keyAtRender, view: result.view, config: element)
         }
         return result
     }
