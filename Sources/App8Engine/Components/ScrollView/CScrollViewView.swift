@@ -306,6 +306,7 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         scrollView.maximumZoomScale = zoomMode ? max(props.maximumZoomScale ?? 1, scrollView.minimumZoomScale) : 1
         scrollView.bouncesZoom = true
         scrollView.passesEdgePansToPager = zoomMode
+        scrollView.claimsPullDown = props.stretchesTopChild == true && (props.direction ?? .vertical) == .vertical
         if zoomMode {
             scrollView.contentInset = .zero
             scrollView.contentInsetAdjustmentBehavior = .never
@@ -337,6 +338,7 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         scrollContentView.transform = .identity
         scrollContentView.frame = CGRect(origin: .zero, size: size)
         scrollView.contentSize = size
+        scrollView.contentOffset = .zero
         scrollContentView.layoutIfNeeded()
         if scrollView.minimumZoomScale != 1 {
             scrollView.zoomScale = max(scrollView.minimumZoomScale, min(1, scrollView.maximumZoomScale))
@@ -761,6 +763,9 @@ extension CScrollViewView: NestedScrollStateRestorable {
 final class App8ZoomingScrollView: UIScrollView {
 
     var passesEdgePansToPager = false
+    /// `stretchesTopChild`: the pull-down at the top belongs to this scroll view
+    /// (a zoom transition's interactive dismiss must not take it).
+    var claimsPullDown = false
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard passesEdgePansToPager, gestureRecognizer === panGestureRecognizer else {

@@ -7,6 +7,7 @@
 //  variable's JSON (wrapped in a one-element array so scalars are valid JSON).
 //
 
+#if canImport(UIKit)
 import Combine
 import Foundation
 import UIKit
@@ -134,3 +135,4 @@ final class VariablePersistence {
         }
     }
 }
+#endif

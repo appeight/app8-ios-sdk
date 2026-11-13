@@ -11,8 +11,8 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
 
     // MARK: - UI
 
-    private lazy var collectionView: UICollectionView = {
-        let cv = UICollectionView(frame: .zero, collectionViewLayout: createLayout())
+    private lazy var collectionView: App8CollectionView = {
+        let cv = App8CollectionView(frame: .zero, collectionViewLayout: createLayout())
         cv.backgroundColor = .clear
         cv.delegate = self
         cv.dataSource = self
@@ -196,6 +196,9 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             // A pager scrolls sideways only; safe-area insets would shift its
             // full-height pages down (e.g. a gallery under the status bar).
             if nativePaging { collectionView.contentInsetAdjustmentBehavior = .never }
+            // A vertical drag on a sideways pager belongs to what encloses it
+            // (a zoom transition's interactive dismiss, an outer scroll view).
+            collectionView.refusesVerticalPans = nativePaging
         } else {
             let scrollEnabled = viewModel?.component.properties.layout?.scrollEnabled ?? true
             collectionView.isScrollEnabled = scrollEnabled
@@ -448,6 +451,29 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         if config.currentPageVariable != nil, !nativePaging {
             section.visibleItemsInvalidationHandler = { [weak self] items, offset, environment in
                 self?.handlePageChange(offset: offset, containerWidth: environment.container.effectiveContentSize.width)
+            }
+        }
+
+        if !nativePaging, config.itemHeightFill {
+            // `itemHeight: "fill"`: items as tall as the collection's frame minus
+            // vertical insets, re-measured when the collection resizes.
+            let spacing = section.interGroupSpacing
+            let insets = section.contentInsets
+            let behavior = section.orthogonalScrollingBehavior
+            let handler = section.visibleItemsInvalidationHandler
+            let topInset = config.contentInsets?.top ?? 0
+            return UICollectionViewCompositionalLayout { _, environment in
+                let available = environment.container.contentSize.height - topInset - insets.bottom
+                let height = max(1, available)
+                let size = NSCollectionLayoutSize(widthDimension: widthDimension, heightDimension: .absolute(height))
+                let fillItem = NSCollectionLayoutItem(layoutSize: size)
+                let fillGroup = NSCollectionLayoutGroup.horizontal(layoutSize: size, subitems: [fillItem])
+                let fillSection = NSCollectionLayoutSection(group: fillGroup)
+                fillSection.orthogonalScrollingBehavior = behavior
+                fillSection.interGroupSpacing = spacing
+                fillSection.contentInsets = insets
+                fillSection.visibleItemsInvalidationHandler = handler
+                return fillSection
             }
         }
 
@@ -1348,5 +1374,22 @@ extension CCollectionView: NestedScrollStateRestorable {
             self.collectionView.layoutIfNeeded()
             self.applyRestoredOffset(offset)
         }
+    }
+}
+
+// MARK: - App8CollectionView
+
+/// A collection view that, as a horizontal pager, does not begin its pan for a
+/// mostly vertical drag, so an enclosing gesture (zoom dismiss) can take it.
+final class App8CollectionView: UICollectionView {
+    var refusesVerticalPans = false
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if refusesVerticalPans, gestureRecognizer === panGestureRecognizer,
+           contentSize.height <= bounds.height + 1 {
+            let v = panGestureRecognizer.velocity(in: self)
+            if abs(v.y) > abs(v.x) { return false }
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 }

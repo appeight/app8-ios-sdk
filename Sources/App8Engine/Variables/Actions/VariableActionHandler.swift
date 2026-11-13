@@ -60,6 +60,22 @@ public final class VariableActionHandler {
         }
 
         let resolvedValue = try resolveValue(value.value, context: context)
+        if let rawKey = action.key {
+            // Object variable: set only this key, keep the others.
+            let resolvedKey = try resolveValue(rawKey, context: context)
+            let key: String
+            if let s = resolvedKey as? String {
+                key = s
+            } else if let n = resolvedKey as? NSNumber, n.doubleValue == n.doubleValue.rounded(), abs(n.doubleValue) < 1e15 {
+                key = String(Int(n.doubleValue))
+            } else {
+                key = "\(resolvedKey)"
+            }
+            var map = (store.getValue(name: variableName) as? [String: Any]) ?? [:]
+            map[key] = resolvedValue
+            try store.setValue(name: variableName, value: map)
+            return
+        }
         try store.setValue(name: variableName, value: resolvedValue)
     }
 

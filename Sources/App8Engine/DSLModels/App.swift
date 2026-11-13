@@ -24,9 +24,9 @@ extension DSL.Model {
         let variables: [String: VariableDefinition]?
 
         /// Storage namespace for `persist: true` variables: `id`, else
-        /// `bundleId`, else `title`.
+        /// `bundleId`, else the host app's bundle identifier.
         var persistenceId: String {
-            for candidate in [id, bundleId, title] {
+            for candidate in [id, bundleId, Bundle.main.bundleIdentifier] {
                 if let c = candidate?.trimmingCharacters(in: .whitespaces), !c.isEmpty { return c }
             }
             return "default"

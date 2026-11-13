@@ -207,6 +207,10 @@ enum NativeZoomTransition {
                 if let scroll = current as? UIScrollView {
                     if scroll.zoomScale > scroll.minimumZoomScale + 0.01 { return false }
                     if horizontal, scroll.contentSize.width > scroll.bounds.width + 1 { return false }
+                    // A stretchy-top scroll view uses the pull-down at its top.
+                    if !horizontal, velocity.y > 0, let zooming = scroll as? App8ZoomingScrollView, zooming.claimsPullDown {
+                        return false
+                    }
                 }
                 view = current.superview
             }
