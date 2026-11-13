@@ -1,6 +1,12 @@
 import UIKit
 @preconcurrency import Combine
 
+/// Exposes the constraints the App8 layout engine installed on a view.
+@MainActor
+protocol App8ConstraintOwning: AnyObject {
+    var app8InstalledConstraints: [NSLayoutConstraint] { get }
+}
+
 @MainActor
 protocol App8BaseViewProtocol {
     func setup()
@@ -45,6 +51,10 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
 
     /// Constraints installed by the App8 layout engine; only these are ever removed.
     private var installedConstraints: [NSLayoutConstraint] = []
+
+    /// The constraints the App8 layout engine installed for this view (read-only),
+    /// e.g. for a stretchy-header parent that adjusts top/height constants.
+    var app8InstalledConstraints: [NSLayoutConstraint] { installedConstraints }
 
     private weak var viewRegistry: ViewRegistry?
     private var parentComponentPath: String?
@@ -751,3 +761,5 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
 
 // MARK: - Associated key for registration storage
 @MainActor private var _styleRegKey: UInt8 = 0
+
+extension App8BaseView: App8ConstraintOwning {}
