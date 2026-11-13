@@ -27,6 +27,8 @@ extension DSL.Model {
             var interaction: DSL.Model.Interaction? { get }
             /// Universal accessibility metadata. Default nil; `Content<P,S>` provides it.
             var accessibility: DSL.Model.Accessibility? { get }
+            /// Long-press context menu. Default nil; `Content<P,S>` provides it.
+            var contextMenu: DSL.Model.ContextMenu? { get }
         }
         
         protocol Entity: Protocol {
@@ -92,6 +94,7 @@ extension DSL.Model.Component.EntityContent {
     /// with its decoded stored properties.
     var interaction: DSL.Model.Interaction? { nil }
     var accessibility: DSL.Model.Accessibility? { nil }
+    var contextMenu: DSL.Model.ContextMenu? { nil }
 }
 
 extension DSL.Model.Component.Entity {
