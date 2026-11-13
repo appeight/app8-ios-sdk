@@ -331,6 +331,9 @@ extension App8Service: ComponentRenderer, ComponentService {
         // derived `isUserInteractionEnabled` default.
         if let viewModel = result.viewModel {
             CommonComponentProps.bind(view: result.view, viewModel: viewModel)
+            if component.type.isOneOf(.view, .stackView, .image, .button) {
+                ContextMenuBinder.bind(view: result.view, viewModel: viewModel)
+            }
         }
         // Register a shared-element transition participant when the component
         // declares an element context on `content.transition`. Done once here

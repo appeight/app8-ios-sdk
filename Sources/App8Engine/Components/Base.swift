@@ -13,6 +13,9 @@ extension DSL.Model.Component {
         let analytics: [M.ActionTrigger: M.AnalyticsBinding]?
         let gestures: M.Gestures?
 
+        /// Long-press preview + menu items (view, stackView, image, button).
+        let contextMenu: M.ContextMenu?
+
         /// Universal interaction overrides (isUserInteractionEnabled, clipsToBounds,
         /// zIndex). Applies to every component type — see `M.Interaction`.
         let interaction: M.Interaction?
@@ -82,6 +85,7 @@ extension DSL.Model.Component {
             case actions
             case analytics
             case gestures
+            case contextMenu
             case interaction
             case accessibility
             case defaultStateName
@@ -158,6 +162,7 @@ extension DSL.Model.Component {
                 analytics = nil
             }
             gestures         = try c.decodeIfPresent(M.Gestures.self, forKey: .gestures)
+            contextMenu      = try c.decodeIfPresent(M.ContextMenu.self, forKey: .contextMenu)
             interaction      = try c.decodeIfPresent(M.Interaction.self, forKey: .interaction)
             accessibility    = try c.decodeIfPresent(M.Accessibility.self, forKey: .accessibility)
             defaultStateName = try c.decodeIfPresent(String.self, forKey: .defaultStateName)

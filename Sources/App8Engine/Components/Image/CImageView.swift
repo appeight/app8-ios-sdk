@@ -239,3 +239,9 @@ extension CImageView: StreamingUpdatable {
         return vm
     }
 }
+
+// MARK: - ContextMenuHost
+
+extension CImageView: ContextMenuHost {
+    var contextMenuViewModel: ComponentViewModelAbstract? { viewModel }
+}

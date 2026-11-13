@@ -21,6 +21,13 @@ protocol ComponentViewModelAbstract: AnyObject {
     func resolvePropertyToBool(_ value: String) -> Bool?
     func resolvePropertyToFloat(_ value: String) -> CGFloat?
     func resolvePropertyToString(_ value: String) -> String
+
+    /// `content.contextMenu` declared on this component.
+    var contextMenuProps: DSL.Model.ContextMenu? { get }
+    /// The service that rendered this component (context-menu previews render through it).
+    var componentService: ComponentService? { get }
+    /// Runs context-menu item / preview-tap actions in this component's scope.
+    func executeContextMenuActions(_ actions: [DSL.Model.Action])
 }
 
 /// Defaults for lightweight conformers (e.g. `CellVariableStoreWrapper`) that
@@ -34,6 +41,9 @@ extension ComponentViewModelAbstract {
     func resolvePropertyToBool(_ value: String) -> Bool? { nil }
     func resolvePropertyToFloat(_ value: String) -> CGFloat? { nil }
     func resolvePropertyToString(_ value: String) -> String { value }
+    var contextMenuProps: DSL.Model.ContextMenu? { nil }
+    var componentService: ComponentService? { nil }
+    func executeContextMenuActions(_ actions: [DSL.Model.Action]) {}
 }
 
 protocol ComponentService: AnyObject, ComponentRenderer, A8.DataSourceHolder {
@@ -140,6 +150,14 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     var interactionProps: DSL.Model.Interaction? { component.interaction }
     /// Universal accessibility metadata from this component's content (nil unless declared).
     var accessibilityProps: DSL.Model.Accessibility? { component.accessibility }
+    /// `content.contextMenu` (nil unless declared).
+    var contextMenuProps: DSL.Model.ContextMenu? { component.contextMenu }
+    var componentService: ComponentService? { service }
+
+    /// Context-menu item / preview-tap actions, in this component's scope.
+    func executeContextMenuActions(_ actions: [DSL.Model.Action]) {
+        for action in actions { executeAction(action) }
+    }
 
     var animation: AnyPublisher<DSL.Model.Animation?, Never> {
         stateManager.animation

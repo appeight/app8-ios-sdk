@@ -567,7 +567,11 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         }
         // Only attach a long press recognizer if a .longPress action is configured,
         // to avoid interfering with scrolling or other gestures on views that don't need it.
-        if longPressGesture == nil, viewModel?.component.actions?[.longPress] != nil {
+        if longPressGesture == nil, viewModel?.component.actions?[.longPress] != nil,
+           viewModel?.component.contextMenu != nil {
+            // The context menu owns the long press.
+            viewModel?.service.context.logger.warning("contextMenu.longPressIgnored: '\(viewModel?.componentPath ?? "")' declares both longPress and contextMenu — contextMenu wins")
+        } else if longPressGesture == nil, viewModel?.component.actions?[.longPress] != nil {
             let lp = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPressGesture(_:)))
             lp.minimumPressDuration = 0.5
             addGestureRecognizer(lp)
@@ -671,4 +675,10 @@ extension CView: ReuseRefreshable {
         updateIsHidden()
         updateDynamicDimensions()
     }
+}
+
+// MARK: - ContextMenuHost
+
+extension CView: ContextMenuHost {
+    var contextMenuViewModel: ComponentViewModelAbstract? { viewModel }
 }

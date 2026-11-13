@@ -216,3 +216,9 @@ extension CButtonView: StreamingUpdatable {
         return vm
     }
 }
+
+// MARK: - ContextMenuHost
+
+extension CButtonView: ContextMenuHost {
+    var contextMenuViewModel: ComponentViewModelAbstract? { viewModel }
+}
