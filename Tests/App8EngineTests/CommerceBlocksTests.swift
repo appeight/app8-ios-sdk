@@ -332,6 +332,13 @@ struct NativeZoomTransitionTests {
 @Suite("updateVariable key and fill item sizes")
 struct CommerceAddendumTests {
 
+    static func firstCollectionView(in view: UIView?) -> UICollectionView? {
+        guard let view else { return nil }
+        if let cv = view as? UICollectionView { return cv }
+        for sub in view.subviews { if let found = firstCollectionView(in: sub) { return found } }
+        return nil
+    }
+
     @Test func updateVariableWithKeySetsOneKey() throws {
         let store = VariableStore()
         try store.defineVariable(name: "selectedVariants", definition: VariableDefinition(type: .object, initialValue: ["serum": "30"]))
@@ -353,26 +360,29 @@ struct CommerceAddendumTests {
         #expect(fixed.itemWidth == 280 && fixed.itemHeight == 200 && !fixed.itemHeightFill)
     }
 
-    @Test func fillPagerItemsMatchCollectionHeight() throws {
+    @Test func fillPagerItemsMatchCollectionHeight() async throws {
         let harness = RenderHarness()
         try harness.render("""
         {
           "type": "view", "id": "root",
           "content": {
-            "variables": { "pages": { "type": "array", "initialValue": ["a", "b", "c"] } },
+            "properties": {},
+            "variables": { "pages": { "type": "array", "initialValue": [{ "id": "a" }, { "id": "b" }, { "id": "c" }] } },
+            "layout": { "width": 390, "height": 700 },
             "children": [{
               "type": "collection", "id": "pager",
               "content": {
                 "properties": { "data": "{{pages}}", "layout": { "type": "horizontal", "itemWidth": "fill", "itemHeight": "fill", "pagingStyle": "paging" } },
-                "layout": { "top": 0, "leading": 0, "trailing": 0, "height": 500 },
-                "template": { "type": "view", "id": "page", "content": {} }
+                "layout": { "top": 0, "leading": 0, "width": 390, "height": 500 },
+                "template": { "id": "page", "type": "view", "content": { "layout": { "height": 10 } } }
               }
             }]
           }
         }
         """)
-        harness.drain(0.3)
-        let collection = try #require(harness.find(UICollectionView.self))
+        // Main-queue deliveries (style, sections) need the actor to yield.
+        try await Task.sleep(nanoseconds: 400_000_000)
+        let collection = try #require(Self.firstCollectionView(in: harness.superview))
         collection.layoutIfNeeded()
         let attrs = try #require(collection.collectionViewLayout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0)))
         #expect(abs(attrs.frame.height - collection.bounds.height) < 1)
