@@ -38,6 +38,9 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     private var cancellables = Set<AnyCancellable>()
     private var isViewHierarchySetup = false
     private var lastReportedPageIndex: Int = -1
+    /// Page requested by a write to `currentPageVariable` that could not be
+    /// applied yet (no layout / width). Applied in `layoutSubviews`.
+    private var pendingPageIndex: Int?
     private var isSelfSizing = false             // true when scrollEnabled == false
     private var selfSizingHeightConstraint: NSLayoutConstraint?
     private var cellsSelfSizeWidth = false       // true when horizontal + estimatedItemWidth
@@ -88,6 +91,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         configureLayout()
 
         bindSections()
+        bindCurrentPageVariable()
         bindEmptyState()
         bindLoadingState()
         bindErrorState()
@@ -453,7 +457,82 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         // Pages fill the collection's bounds, not its safe area.
         layoutConfig.contentInsetsReference = .none
         section.contentInsetsReference = .none
-        return UICollectionViewCompositionalLayout(section: section, configuration: layoutConfig)
+        // Pages are as tall as the collection (`itemHeight` until measured), re-laid
+        // out when its height changes — e.g. a gallery in a stretchy header.
+        let spacing = section.interGroupSpacing
+        let sectionInsets = section.contentInsets
+        return UICollectionViewCompositionalLayout(sectionProvider: { _, environment in
+            let containerHeight = environment.container.contentSize.height
+            let height = containerHeight > 0 ? max(1, containerHeight - sectionInsets.bottom) : itemHeight
+            let size = NSCollectionLayoutSize(widthDimension: widthDimension, heightDimension: .absolute(height))
+            let pageItem = NSCollectionLayoutItem(layoutSize: size)
+            let pageGroup = NSCollectionLayoutGroup.horizontal(layoutSize: size, subitems: [pageItem])
+            let pageSection = NSCollectionLayoutSection(group: pageGroup)
+            pageSection.interGroupSpacing = spacing
+            pageSection.contentInsets = sectionInsets
+            pageSection.contentInsetsReference = .none
+            return pageSection
+        }, configuration: layoutConfig)
+    }
+
+    // MARK: - currentPageVariable (two-way)
+
+    /// A write to `currentPageVariable` from elsewhere scrolls to that page:
+    /// animated while visible, without animation while off screen.
+    private func bindCurrentPageVariable() {
+        guard let viewModel,
+              let config = viewModel.component.properties.layout,
+              config.type == .horizontal,
+              let varName = config.currentPageVariable else { return }
+        if let initial = Self.pageIndex(viewModel.variableStore.getValue(name: varName)), initial > 0 {
+            pendingPageIndex = initial
+            lastReportedPageIndex = initial
+        }
+        viewModel.variableStore.anyVariableChanged
+            .filter { $0 == varName }
+            .compactMap { [weak viewModel] _ in Self.pageIndex(viewModel?.variableStore.getValue(name: varName)) }
+            .sink { [weak self] page in
+                guard let self, page != self.lastReportedPageIndex else { return }
+                self.lastReportedPageIndex = page
+                self.pendingPageIndex = page
+                self.applyPendingPage(animated: self.window != nil)
+            }
+            .store(in: &cancellables)
+    }
+
+    private static func pageIndex(_ value: Any?) -> Int? {
+        switch value {
+        case let i as Int: return i
+        case let d as Double where d.isFinite: return Int(d.rounded())
+        case let n as NSNumber: return n.intValue
+        case let s as String: return Int(s)
+        default: return nil
+        }
+    }
+
+    private func applyPendingPage(animated: Bool) {
+        guard let page = pendingPageIndex,
+              collectionView.bounds.width > 0,
+              collectionView.numberOfSections > 0 else { return }
+        let count = collectionView.numberOfItems(inSection: 0)
+        guard count > 0 else { return }
+        let clamped = max(0, min(page, count - 1))
+        pendingPageIndex = nil
+        if usesNativeHorizontalPaging {
+            let x = CGFloat(clamped) * collectionView.bounds.width
+            collectionView.setContentOffset(CGPoint(x: x, y: collectionView.contentOffset.y), animated: animated)
+        } else {
+            collectionView.layoutIfNeeded()
+            collectionView.scrollToItem(at: IndexPath(item: clamped, section: 0), at: .centeredHorizontally, animated: animated)
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if pendingPageIndex != nil {
+            collectionView.layoutIfNeeded()
+            applyPendingPage(animated: false)
+        }
     }
 
     /// Handles page change detection for horizontal paging collections
@@ -805,6 +884,14 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                     }
                 } else {
                     self.collectionView.reloadData()
+                }
+
+                // A page requested before the items arrived (gallery opened at page N).
+                if self.pendingPageIndex != nil {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.collectionView.layoutIfNeeded()
+                        self?.applyPendingPage(animated: false)
+                    }
                 }
 
                 // HACK: Force layout invalidation for self-sizing horizontal cells.
