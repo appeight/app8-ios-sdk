@@ -150,6 +150,27 @@ final class ContextMenuPreviewController: UIViewController {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    /// Union of the visible leaf views' frames in `container`, ignoring views
+    /// stretched to the tall measuring frame.
+    static func contentExtent(in container: UIView, tall: CGFloat) -> CGRect? {
+        var result: CGRect?
+        var stack: [UIView] = container.subviews
+        while let v = stack.popLast() {
+            if v.isHidden || v.alpha < 0.01 { continue }
+            let frame = v.convert(v.bounds, to: container)
+            if frame.height >= tall - 1 {
+                stack.append(contentsOf: v.subviews)
+                continue
+            }
+            if v.subviews.isEmpty || v is UILabel || v is UIImageView {
+                if frame.width > 0, frame.height > 0 { result = result.map { $0.union(frame) } ?? frame }
+            } else {
+                stack.append(contentsOf: v.subviews)
+            }
+        }
+        return result
+    }
+
     private func render() {
         guard let viewModel, let service = viewModel.componentService else { return }
         let screen = hostView?.window?.windowScene?.screen.bounds.size
@@ -166,51 +187,6 @@ final class ContextMenuPreviewController: UIViewController {
            let resolved = service.resolveTemplate(named: templateId) {
             component = resolved
         }
-        // Render into the free-standing container first so it can be measured
-        // on its own, then attach it.
-        renderResult = service.renderComponent(
-            component,
-            superview: container,
-            parentPath: viewModel.componentPath + ".contextMenuPreview",
-            parentVariableStore: viewModel.variableStore,
-            reuseViewModel: nil
-        )
-        // Keep the component inside the container so a root with only a width
-        // still drives the container's height.
-        if let root = renderResult?.view {
-            NSLayoutConstraint.activate([
-                root.topAnchor.constraint(greaterThanOrEqualTo: container.topAnchor),
-                root.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor),
-            ])
-        }
-
-        let height: CGFloat
-        if let fixed = preview.height {
-            height = CGFloat(fixed)
-        } else {
-            // The fitting height at the preview width: lay out at that width
-            // (multi-line labels wrap), measure, lay out at the result, measure again.
-            let widthConstraint = container.widthAnchor.constraint(equalToConstant: width)
-            widthConstraint.isActive = true
-            func fit() -> CGFloat {
-                container.systemLayoutSizeFitting(
-                    CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
-                    withHorizontalFittingPriority: .required,
-                    verticalFittingPriority: .fittingSizeLevel
-                ).height
-            }
-            container.frame = CGRect(x: 0, y: 0, width: width, height: screen.height)
-            container.layoutIfNeeded()
-            let first = fit()
-            container.frame = CGRect(x: 0, y: 0, width: width, height: first)
-            container.layoutIfNeeded()
-            let second = fit()
-            widthConstraint.isActive = false
-            var measured = max(first, second)
-            if measured <= 1 { measured = width }
-            height = min(ceil(measured), screen.height * 0.7)
-        }
-
         view.addSubview(container)
         NSLayoutConstraint.activate([
             container.topAnchor.constraint(equalTo: view.topAnchor),
@@ -218,6 +194,61 @@ final class ContextMenuPreviewController: UIViewController {
             container.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             container.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
-        preferredContentSize = CGSize(width: width, height: height)
+        renderResult = service.renderComponent(
+            component,
+            superview: container,
+            parentPath: viewModel.componentPath + ".contextMenuPreview",
+            parentVariableStore: viewModel.variableStore,
+            reuseViewModel: nil
+        )
+        // A root with only a width sits at the top; let its content grow past
+        // the container while measuring (low priority, below compression).
+        if let root = renderResult?.view {
+            let bottom = root.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor)
+            bottom.priority = UILayoutPriority(249)
+            NSLayoutConstraint.activate([
+                root.topAnchor.constraint(greaterThanOrEqualTo: container.topAnchor),
+                bottom,
+            ])
+        }
+
+        previewWidth = width
+        maxHeight = screen.height * 0.7
+        if let fixed = preview.height {
+            preferredContentSize = CGSize(width: width, height: CGFloat(fixed))
+        } else {
+            remeasure()
+            // Bound text and `isHidden` arrive on the next main-queue turns;
+            // measure again so the preview grows to its full fitting height.
+            DispatchQueue.main.async { [weak self] in self?.remeasure() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.remeasure() }
+        }
+    }
+
+    private var previewWidth: CGFloat = 0
+    private var maxHeight: CGFloat = 600
+
+    /// The height of the laid-out content at the preview width (its visible
+    /// extent plus the same margin below as above), capped at 70% of the screen.
+    private func remeasure() {
+        let width = previewWidth
+        if view.window == nil {
+            // Before presentation: lay out in a tall frame at the preview width.
+            view.frame = CGRect(x: 0, y: 0, width: width, height: max(maxHeight * 3, 2000))
+        }
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+        view.layoutIfNeeded()
+        var measured: CGFloat = 0
+        // Content may overflow the shown container (low-priority bottom), so
+        // its extent is the full content height either way.
+        if let extent = Self.contentExtent(in: container, tall: container.bounds.height) {
+            measured = extent.maxY + max(0, extent.minY)
+        }
+        if measured <= 1 { measured = width }
+        let height = min(ceil(measured), maxHeight)
+        if abs(preferredContentSize.height - height) > 0.5 || preferredContentSize.width != width {
+            preferredContentSize = CGSize(width: width, height: height)
+        }
     }
 }
