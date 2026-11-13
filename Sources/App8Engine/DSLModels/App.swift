@@ -3,6 +3,8 @@ import UIKit
 extension DSL.Model {
 
     public struct App: Decodable {
+        /// App id. Names persisted-variable storage (`app8.<id>`).
+        let id: String?
         let title: String?
         let bundleId: String?
         let defaultUserInterfaceStyle: UserInterfaceStyle?
@@ -20,6 +22,15 @@ extension DSL.Model {
         /// App-scope variables, visible from every screen (`component → screen →
         /// app` lookup). They live as long as the app instance: a cart, a session.
         let variables: [String: VariableDefinition]?
+
+        /// Storage namespace for `persist: true` variables: `id`, else
+        /// `bundleId`, else `title`.
+        var persistenceId: String {
+            for candidate in [id, bundleId, title] {
+                if let c = candidate?.trimmingCharacters(in: .whitespaces), !c.isEmpty { return c }
+            }
+            return "default"
+        }
 
         var initialScreenId: String? {
             guard let navigation else { return nil }

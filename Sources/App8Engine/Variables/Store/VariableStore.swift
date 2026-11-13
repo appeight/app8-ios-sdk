@@ -26,6 +26,10 @@ public final class VariableStore: VariableStoreProtocol {
     /// Optional logger from owning context. Nil when constructed in tests without context.
     weak var logger: A8Log?
 
+    /// Called after `resetToInitialValues` with the reset variable names
+    /// (persisted variables clear their stored value here).
+    var onResetToInitialValues: (([String]) -> Void)?
+
     public init() {}
 
     init(context: App8Context) {
@@ -170,6 +174,7 @@ public final class VariableStore: VariableStoreProtocol {
         } catch {
             logger?.error("resetToInitialValues: failed to recompute dependents: \(error)")
         }
+        onResetToInitialValues?(names)
     }
 
     // MARK: - Computed Variable Updates
