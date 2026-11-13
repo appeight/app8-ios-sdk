@@ -324,6 +324,12 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if zoomMode {
+            // The scroll view is a grandchild: lay it out now so its bounds are
+            // current (a cell's first pass would otherwise read a zero size and
+            // never size the zoom content).
+            contentView.layoutIfNeeded()
+        }
         layoutZoomContentIfNeeded()
     }
 

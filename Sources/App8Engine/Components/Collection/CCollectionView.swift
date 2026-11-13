@@ -41,6 +41,10 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     /// Page requested by a write to `currentPageVariable` that could not be
     /// applied yet (no layout / width). Applied in `layoutSubviews`.
     private var pendingPageIndex: Int?
+    /// True while an animated scroll started by a `currentPageVariable` write
+    /// runs: its in-between pages are not written back (two pagers bound to
+    /// one variable would otherwise fight).
+    private var isScrollingFromVariable = false
     private var isSelfSizing = false             // true when scrollEnabled == false
     private var selfSizingHeightConstraint: NSLayoutConstraint?
     private var cellsSelfSizeWidth = false       // true when horizontal + estimatedItemWidth
@@ -544,6 +548,13 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         guard count > 0 else { return }
         let clamped = max(0, min(page, count - 1))
         pendingPageIndex = nil
+        if animated {
+            isScrollingFromVariable = true
+            // Orthogonal sections report no scroll-animation end; time it out.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.isScrollingFromVariable = false
+            }
+        }
         if usesNativeHorizontalPaging {
             let x = CGFloat(clamped) * collectionView.bounds.width
             collectionView.setContentOffset(CGPoint(x: x, y: collectionView.contentOffset.y), animated: animated)
@@ -553,8 +564,31 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         }
     }
 
+    /// Self-sizing (`scrollEnabled: false`): the height follows the content
+    /// size whenever it changes — new data, a variable change, a width change
+    /// (e.g. a grid that was laid out while hidden).
+    private var contentSizeObservation: NSKeyValueObservation?
+
+    private func observeContentSizeIfNeeded() {
+        guard contentSizeObservation == nil else { return }
+        contentSizeObservation = collectionView.observe(\.contentSize, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.syncSelfSizingHeight() }
+        }
+    }
+
+    private func syncSelfSizingHeight() {
+        guard isSelfSizing, let constraint = selfSizingHeightConstraint else { return }
+        let actual = collectionView.contentSize.height + collectionView.contentInset.top + collectionView.contentInset.bottom
+        guard actual > 0, abs(actual - constraint.constant) > 0.5 else { return }
+        constraint.constant = actual
+        superview?.setNeedsLayout()
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
+        if isSelfSizing {
+            observeContentSizeIfNeeded()
+        }
         if pendingPageIndex != nil {
             collectionView.layoutIfNeeded()
             applyPendingPage(animated: false)
@@ -567,6 +601,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
               let varName = config.currentPageVariable,
               containerWidth > 0 else { return }
 
+        guard !isScrollingFromVariable else { return }
         let currentPage = Int(round(offset.x / containerWidth))
         guard currentPage != lastReportedPageIndex else { return }
         lastReportedPageIndex = currentPage
@@ -890,11 +925,14 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                 if self.isSelfSizing {
                     let layoutConfig = self.viewModel?.component.properties.layout
                     let itemCount = newSections.reduce(0) { $0 + $1.items.count }
-                    let estimatedItemHeight: CGFloat = layoutConfig?.estimatedItemHeight ?? 44
-                    let spacing: CGFloat = layoutConfig?.itemSpacing ?? 0
+                    let estimatedItemHeight: CGFloat = layoutConfig?.itemHeight ?? layoutConfig?.estimatedItemHeight ?? 44
+                    let isGrid = layoutConfig?.type == .grid
+                    // A grid stacks rows of `columns` items, separated by `lineSpacing`.
+                    let rows = isGrid ? Int(ceil(Double(itemCount) / Double(max(1, layoutConfig?.columns ?? 2)))) : itemCount
+                    let spacing: CGFloat = isGrid ? (layoutConfig?.lineSpacing ?? 0) : (layoutConfig?.itemSpacing ?? 0)
                     let insetsHeight: CGFloat = (layoutConfig?.contentInsets?.top ?? 0) + (layoutConfig?.contentInsets?.bottom ?? 0)
-                    let itemsHeight: CGFloat = CGFloat(itemCount) * estimatedItemHeight
-                    let gapsHeight: CGFloat = CGFloat(max(0, itemCount - 1)) * spacing
+                    let itemsHeight: CGFloat = CGFloat(rows) * estimatedItemHeight
+                    let gapsHeight: CGFloat = CGFloat(max(0, rows - 1)) * spacing
                     let estimatedHeight: CGFloat = itemsHeight + gapsHeight + insetsHeight
                     self.selfSizingHeightConstraint?.constant = estimatedHeight
                     self.superview?.setNeedsLayout()
@@ -944,12 +982,8 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                 // Refine height from actual contentSize after cells lay out.
                 if self.isSelfSizing {
                     DispatchQueue.main.async { [weak self] in
-                        guard let self else { return }
-                        let actual = self.collectionView.contentSize.height
-                        if actual > 0, actual != self.selfSizingHeightConstraint?.constant {
-                            self.selfSizingHeightConstraint?.constant = actual
-                            self.superview?.setNeedsLayout()
-                        }
+                        self?.collectionView.layoutIfNeeded()
+                        self?.syncSelfSizingHeight()
                     }
                 }
             }
@@ -1320,7 +1354,13 @@ extension CCollectionView: UICollectionViewDelegate {
         saveNestedScrollState(from: cell)
     }
 
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        isScrollingFromVariable = false
+    }
+
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        // The user took over from a variable-driven scroll.
+        isScrollingFromVariable = false
         // The user took over; don't snap back to a restored offset.
         pendingRestoreToken = nil
     }
@@ -1385,11 +1425,37 @@ final class App8CollectionView: UICollectionView {
     var refusesVerticalPans = false
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        if refusesVerticalPans, gestureRecognizer === panGestureRecognizer,
-           contentSize.height <= bounds.height + 1 {
+        if refusesVerticalPans, gestureRecognizer === panGestureRecognizer {
             let v = panGestureRecognizer.velocity(in: self)
-            if abs(v.y) > abs(v.x) { return false }
+            if contentSize.height <= bounds.height + 1, abs(v.y) > abs(v.x) { return false }
+            // A pan from the leading screen edge is the back / dismiss gesture,
+            // even over a pager (spec: native zoom, leading-edge swipe).
+            if v.x > 0, let window, isLeadingEdgeTouch(in: window), screenCanGoBack { return false }
         }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
+    }
+
+    static let edgeWidth: CGFloat = 20
+
+    private func isLeadingEdgeTouch(in window: UIWindow) -> Bool {
+        let x = panGestureRecognizer.location(in: window).x
+        let start = x - panGestureRecognizer.translation(in: window).x
+        if effectiveUserInterfaceLayoutDirection == .rightToLeft {
+            return start > window.bounds.width - Self.edgeWidth
+        }
+        return start < Self.edgeWidth
+    }
+
+    /// Whether the screen showing this view can be popped or dismissed.
+    private var screenCanGoBack: Bool {
+        var responder: UIResponder? = self
+        while let r = responder {
+            if let vc = r as? UIViewController {
+                if let nav = vc.navigationController, nav.viewControllers.count > 1, nav.topViewController === vc { return true }
+                if vc.presentingViewController != nil { return true }
+            }
+            responder = r.next
+        }
+        return false
     }
 }

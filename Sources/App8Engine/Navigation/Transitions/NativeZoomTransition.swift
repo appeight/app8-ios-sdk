@@ -200,6 +200,18 @@ enum NativeZoomTransition {
         case .any:
             guard context.willBegin else { return true }
             let horizontal = abs(velocity.x) > abs(velocity.y)
+            // A pan from the leading edge always dismisses, even over a pager.
+            if let root = zoomedView, horizontal {
+                let rtl = root.effectiveUserInterfaceLayoutDirection == .rightToLeft
+                // `location` is where the pan is recognized, a few points past
+                // its start; allow for that travel.
+                let x = context.location.x
+                let edge = App8CollectionView.edgeWidth + 24
+                if rtl ? (velocity.x < 0 && x > root.bounds.width - edge)
+                       : (velocity.x > 0 && x < edge) {
+                    return true
+                }
+            }
             guard let root = zoomedView,
                   let hit = root.hitTest(context.location, with: nil) else { return true }
             var view: UIView? = hit

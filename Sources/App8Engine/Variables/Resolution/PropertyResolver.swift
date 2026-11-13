@@ -137,6 +137,14 @@ public final class PropertyResolver {
             return string
         }
 
+        // An `NSNumber` from JSON bridges to `Bool` for 0 / 1; only a real
+        // boolean prints as true / false.
+        if let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() {
+            let d = number.doubleValue
+            if d.isFinite, d.truncatingRemainder(dividingBy: 1) == 0, abs(d) < 9e15 { return String(Int(d)) }
+            return String(d)
+        }
+
         if let bool = value as? Bool {
             return bool ? "true" : "false"
         }

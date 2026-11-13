@@ -78,7 +78,23 @@ final class VariablePersistence {
             defaults.removeObject(forKey: Self.keyPrefix + name)
             return nil
         }
-        return value
+        return Self.native(value)
+    }
+
+    /// `JSONSerialization` gives `NSNumber` for numbers and booleans alike, and
+    /// `NSNumber(1) as? Bool` succeeds — a restored `quantity: 1` would print
+    /// "true". Convert to Swift `Bool` / `Int` / `Double`, like decoded DSL values.
+    static func native(_ value: Any) -> Any {
+        switch value {
+        case let n as NSNumber:
+            if CFGetTypeID(n) == CFBooleanGetTypeID() { return n.boolValue }
+            let d = n.doubleValue
+            if d == d.rounded(), abs(d) < 9e15, !CFNumberIsFloatType(n) { return Int(d) }
+            return d
+        case let a as [Any]: return a.map(native)
+        case let o as [String: Any]: return o.mapValues(native)
+        default: return value
+        }
     }
 
     // MARK: - Save
