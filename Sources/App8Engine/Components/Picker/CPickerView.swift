@@ -20,6 +20,7 @@ class CPickerView: App8BaseView<DSL.Model.Component.Picker.C>, CViewProtocol {
     private var propertiesCancellable: AnyCancellable?
     private var variablesCancellable: AnyCancellable?
     private var externalUpdateCancellable: AnyCancellable?
+    private var optionsCancellable: AnyCancellable?
 
     // MARK: - Setup
 
@@ -71,6 +72,11 @@ class CPickerView: App8BaseView<DSL.Model.Component.Picker.C>, CViewProtocol {
             .sink { [weak self] value in
                 self?.updateSelection(value)
             }
+        optionsCancellable = viewModel.optionsUpdate
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] options in
+                self?.updateOptions(options)
+            }
 
         propertiesCancellable = viewModel.propertiesWithVariables
             .receive(on: DispatchQueue.main)
@@ -82,45 +88,107 @@ class CPickerView: App8BaseView<DSL.Model.Component.Picker.C>, CViewProtocol {
     // MARK: - Menu Mode
 
     private func setupMenuMode(viewModel: CPickerViewModel) {
-        let button = UIButton(type: .system)
+        let style = viewModel.currentStyle
+        let button: UIButton
+        if style?.usesPullDownLook == true {
+            button = UIButton(configuration: Self.pullDownConfiguration(style: style))
+        } else {
+            button = UIButton(type: .system)
+        }
         button.showsMenuAsPrimaryAction = true
         button.changesSelectionAsPrimaryAction = true
+        button.accessibilityIdentifier = "picker.menu"
 
-        let options = viewModel.currentProperties.options ?? []
+        contentView.addSubview(button)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        if style?.usesPullDownLook == true {
+            // Hugs its content, leading-aligned in its frame.
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            NSLayoutConstraint.activate([
+                button.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+                button.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor),
+                button.topAnchor.constraint(equalTo: contentView.topAnchor),
+                button.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            ])
+        } else {
+            NSLayoutConstraint.activate([
+                button.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+                button.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+                button.topAnchor.constraint(equalTo: contentView.topAnchor),
+                button.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            ])
+        }
+
+        self.menuButton = button
+        rebuildMenu()
+    }
+
+    /// Plain pull-down configuration: title in `style.label`, then the
+    /// indicator symbol, no background, no insets.
+    static func pullDownConfiguration(style: Content.Style?) -> UIButton.Configuration {
+        var config = UIButton.Configuration.plain()
+        config.contentInsets = .zero
+        config.background.backgroundColor = .clear
+        config.indicator = .none
+        let font = style?.label?.resolveUIFont() ?? style?.text?.resolveUIFont() ?? .systemFont(ofSize: 17)
+        let color = style?.label?.color?.ui ?? style?.text?.color?.ui ?? .label
+        config.baseForegroundColor = color
+        config.titleLineBreakMode = .byTruncatingTail
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var attrs = incoming
+            attrs.font = font
+            attrs.foregroundColor = color
+            return attrs
+        }
+        let symbol = style?.indicator ?? "chevron.up.chevron.down"
+        if !symbol.isEmpty {
+            let size = style?.indicatorSize ?? font.pointSize * 0.8
+            let symbolConfig = UIImage.SymbolConfiguration(pointSize: size, weight: .regular)
+            let tint = style?.indicatorColor?.ui ?? color
+            config.image = UIImage(systemName: symbol, withConfiguration: symbolConfig)?
+                .withTintColor(tint, renderingMode: .alwaysOriginal)
+            config.imagePlacement = .trailing
+            config.imagePadding = style?.indicatorSpacing ?? 6
+        }
+        return config
+    }
+
+    /// Rebuilds the menu from the current options with a checkmark on the
+    /// selected option, and sets the title.
+    private func rebuildMenu() {
+        guard let button = menuButton, let viewModel else { return }
+        let options = viewModel.currentOptions
+        let selection = viewModel.currentSelection
         let actions = options.map { option in
             let action = UIAction(title: option.label) { [weak self] _ in
                 self?.viewModel?.selectionChanged.send(option.value)
+                self?.setMenuTitle(option.label)
             }
-            if option.value == viewModel.currentSelection {
-                action.state = .on
-            }
+            action.state = option.value == selection ? .on : .off
             if let iconName = option.icon {
                 action.image = UIImage(systemName: iconName)
             }
             return action
         }
+        button.menu = UIMenu(options: .singleSelection, children: actions)
+        let selectedLabel = options.first(where: { $0.value == selection })?.label
+        setMenuTitle(selectedLabel ?? viewModel.currentProperties.placeholder ?? (selection.isEmpty ? "Select" : selection))
+    }
 
-        button.menu = UIMenu(children: actions)
-
-        let selectedLabel = options.first(where: { $0.value == viewModel.currentSelection })?.label
-        button.setTitle(selectedLabel ?? viewModel.currentProperties.placeholder ?? "Select", for: .normal)
-
-        contentView.addSubview(button)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            button.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            button.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            button.topAnchor.constraint(equalTo: contentView.topAnchor),
-            button.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
-        ])
-
-        self.menuButton = button
+    private func setMenuTitle(_ title: String) {
+        guard let button = menuButton else { return }
+        if button.configuration != nil {
+            button.configuration?.title = title
+        } else {
+            button.setTitle(title, for: .normal)
+        }
+        invalidateIntrinsicContentSize()
     }
 
     // MARK: - Segmented Mode
 
     private func setupSegmentedMode(viewModel: CPickerViewModel) {
-        let options = viewModel.currentProperties.options ?? []
+        let options = viewModel.currentOptions
         let sc = UISegmentedControl(items: options.map { $0.label })
 
         if let selectedIndex = options.firstIndex(where: { $0.value == viewModel.currentSelection }) {
@@ -142,7 +210,7 @@ class CPickerView: App8BaseView<DSL.Model.Component.Picker.C>, CViewProtocol {
 
     @objc private func segmentChanged() {
         guard let sc = segmentedControl,
-              let options = viewModel?.currentProperties.options,
+              let options = viewModel?.currentOptions,
               sc.selectedSegmentIndex < options.count else { return }
         viewModel?.selectionChanged.send(options[sc.selectedSegmentIndex].value)
     }
@@ -150,16 +218,30 @@ class CPickerView: App8BaseView<DSL.Model.Component.Picker.C>, CViewProtocol {
     // MARK: - Update Selection
 
     private func updateSelection(_ value: String) {
-        guard let options = viewModel?.currentProperties.options else { return }
+        guard let options = viewModel?.currentOptions else { return }
 
-        if let button = menuButton {
-            let label = options.first(where: { $0.value == value })?.label ?? value
-            button.setTitle(label, for: .normal)
+        if menuButton != nil {
+            rebuildMenu()
         }
 
         if let sc = segmentedControl,
            let index = options.firstIndex(where: { $0.value == value }) {
             sc.selectedSegmentIndex = index
+        }
+    }
+
+    private func updateOptions(_ options: [DSL.Model.Component.Picker.Option]) {
+        if menuButton != nil {
+            rebuildMenu()
+        }
+        if let sc = segmentedControl {
+            sc.removeAllSegments()
+            for (i, option) in options.enumerated() {
+                sc.insertSegment(withTitle: option.label, at: i, animated: false)
+            }
+            if let index = options.firstIndex(where: { $0.value == viewModel?.currentSelection }) {
+                sc.selectedSegmentIndex = index
+            }
         }
     }
 
@@ -186,7 +268,10 @@ class CPickerView: App8BaseView<DSL.Model.Component.Picker.C>, CViewProtocol {
         super.applyStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
         applyBaseStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
 
-        if let textModel = style?.text, let button = menuButton {
+        if let button = menuButton, button.configuration != nil {
+            button.configuration = Self.pullDownConfiguration(style: style)
+            rebuildMenu()
+        } else if let textModel = style?.text, let button = menuButton {
             button.titleLabel?.font = textModel.resolveUIFont()
             if let color = textModel.color {
                 button.setTitleColor(color.ui, for: .normal)
@@ -237,6 +322,11 @@ extension CPickerView: StreamingUpdatable {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] value in
                 self?.updateSelection(value)
+            }
+        optionsCancellable = vm.optionsUpdate
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] options in
+                self?.updateOptions(options)
             }
         propertiesCancellable = vm.propertiesWithVariables
             .receive(on: DispatchQueue.main)
