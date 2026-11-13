@@ -109,6 +109,8 @@ struct PersistedVariableTests {
     @Test func persistenceIdFallsBack() throws {
         let app = try JSONDecoder().decode(DSL.Model.App.self, from: Data(#"{ "title": "Facetheory", "bundleId": "com.ft" }"#.utf8))
         #expect(app.persistenceId == "com.ft")
+        let bare = try JSONDecoder().decode(DSL.Model.App.self, from: Data(#"{ "title": "Facetheory" }"#.utf8))
+        #expect(bare.persistenceId == (Bundle.main.bundleIdentifier ?? "default"))
         let withId = try JSONDecoder().decode(DSL.Model.App.self, from: Data(#"{ "id": "ft", "bundleId": "com.ft" }"#.utf8))
         #expect(withId.persistenceId == "ft")
     }
@@ -321,5 +323,59 @@ struct NativeZoomTransitionTests {
         let found = TransitionKeyLocator.view(forKey: "card-mask", in: harness.superview)
         #expect(found?.accessibilityIdentifier == "card")
         #expect(TransitionKeyLocator.view(forKey: "card-other", in: harness.superview) == nil)
+    }
+}
+
+// MARK: - updateVariable key / collection "fill" sizes
+
+@MainActor
+@Suite("updateVariable key and fill item sizes")
+struct CommerceAddendumTests {
+
+    @Test func updateVariableWithKeySetsOneKey() throws {
+        let store = VariableStore()
+        try store.defineVariable(name: "selectedVariants", definition: VariableDefinition(type: .object, initialValue: ["serum": "30"]))
+        try store.defineVariable(name: "product", definition: VariableDefinition(type: .object, initialValue: ["handle": "mask"]))
+        let json = #"{ "type": "updateVariable", "variableName": "selectedVariants", "key": "{{product.handle}}", "value": "100" }"#
+        let action = try JSONDecoder().decode(DSL.Model.Action.self, from: Data(json.utf8))
+        try VariableActionHandler().execute(action: action, store: store, context: VariableContext(store: store))
+        let map = try #require(store.getValue(name: "selectedVariants") as? [String: Any])
+        #expect(map["mask"] as? String == "100")
+        #expect(map["serum"] as? String == "30")
+    }
+
+    @Test func horizontalLayoutDecodesFillSizes() throws {
+        let json = #"{ "type": "horizontal", "itemWidth": "fill", "itemHeight": "fill", "pagingStyle": "paging" }"#
+        let layout = try JSONDecoder().decode(DSL.Model.Component.Collection.Layout.self, from: Data(json.utf8))
+        #expect(layout.itemWidthFill && layout.itemHeightFill)
+        #expect(layout.itemWidth == nil && layout.itemHeight == nil)
+        let fixed = try JSONDecoder().decode(DSL.Model.Component.Collection.Layout.self, from: Data(#"{ "type": "horizontal", "itemWidth": 280, "itemHeight": 200 }"#.utf8))
+        #expect(fixed.itemWidth == 280 && fixed.itemHeight == 200 && !fixed.itemHeightFill)
+    }
+
+    @Test func fillPagerItemsMatchCollectionHeight() throws {
+        let harness = RenderHarness()
+        try harness.render("""
+        {
+          "type": "view", "id": "root",
+          "content": {
+            "variables": { "pages": { "type": "array", "initialValue": ["a", "b", "c"] } },
+            "children": [{
+              "type": "collection", "id": "pager",
+              "content": {
+                "properties": { "data": "{{pages}}", "layout": { "type": "horizontal", "itemWidth": "fill", "itemHeight": "fill", "pagingStyle": "paging" } },
+                "layout": { "top": 0, "leading": 0, "trailing": 0, "height": 500 },
+                "template": { "type": "view", "id": "page", "content": {} }
+              }
+            }]
+          }
+        }
+        """)
+        harness.drain(0.3)
+        let collection = try #require(harness.find(UICollectionView.self))
+        collection.layoutIfNeeded()
+        let attrs = try #require(collection.collectionViewLayout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0)))
+        #expect(abs(attrs.frame.height - collection.bounds.height) < 1)
+        #expect(abs(attrs.frame.width - collection.bounds.width) < 1)
     }
 }
