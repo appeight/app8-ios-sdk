@@ -45,7 +45,9 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
                     tabs: entity.content.tabs,
                     initialTab: entity.content.initialTab,
                     tintColor: entity.content.tintColor,
-                    unselectedColor: entity.content.unselectedColor
+                    unselectedColor: entity.content.unselectedColor,
+                    badgeColor: entity.content.badgeColor,
+                    badgeTextColor: entity.content.badgeTextColor
                 ),
                 screenLoader: screenLoader,
                 appService: appService,

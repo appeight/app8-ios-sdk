@@ -28,6 +28,12 @@ extension DSL.Model.Component {
             /// Color for unselected tab items (hex string).
             let unselectedColor: String?
 
+            /// Badge background on every tab (hex).
+            let badgeColor: String?
+
+            /// Badge text color (hex).
+            let badgeTextColor: String?
+
             // MARK: - EntityContent conformance
 
             var properties: EmptyProperties { EmptyProperties() }
@@ -50,6 +56,8 @@ extension DSL.Model.Component {
                 case initialTab
                 case tintColor
                 case unselectedColor
+                case badgeColor
+                case badgeTextColor
             }
 
             init(from decoder: Decoder) throws {
@@ -58,6 +66,8 @@ extension DSL.Model.Component {
                 initialTab = try container.decodeIfPresent(String.self, forKey: .initialTab)
                 tintColor = try container.decodeIfPresent(String.self, forKey: .tintColor)
                 unselectedColor = try container.decodeIfPresent(String.self, forKey: .unselectedColor)
+                badgeColor = try container.decodeIfPresent(String.self, forKey: .badgeColor)
+                badgeTextColor = try container.decodeIfPresent(String.self, forKey: .badgeTextColor)
             }
         }
 
