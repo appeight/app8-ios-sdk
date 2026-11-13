@@ -196,9 +196,15 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
 
         switch request.type {
         case .push(let screenId, let params):
+            // A presented modal handles its own pushes.
+            guard presentedViewController == nil, parent?.presentedViewController == nil else { return }
             let screenComponent = try await screenLoader.loadScreen(id: screenId)
             let screenVC = await appService.renderScreen(screenComponent, screenId: screenId, params: params.isEmpty ? nil : params)
-            currentNavController.pushViewController(screenVC, animated: true)
+            if let transition = request.transition, transition.kind == .nativeZoom {
+                NativeZoomTransition.push(screenVC, on: currentNavController, transition: transition, coordinator: nil, logger: context.logger)
+            } else {
+                currentNavController.pushViewController(screenVC, animated: true)
+            }
 
         case .pop:
             currentNavController.popViewController(animated: true)

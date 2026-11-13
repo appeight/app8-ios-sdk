@@ -725,6 +725,15 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         return DSL.Model.ScreenTransition.resolve(inline, animationResolver: animationResolver)
     }
 
+    /// A string-or-expression key resolved against `context` (the action's
+    /// scope, e.g. a tapped cell's) or this component's scope.
+    private func resolveKey(_ raw: String, context: VariableContext?) -> String {
+        guard raw.contains("{{") else { return raw }
+        let value = resolveProperty(raw, context: context)
+        if let s = value as? String { return s }
+        return "\(value)"
+    }
+
     /// Execute an action directly (for event triggers). `context` overrides
     /// the store navigation params resolve against (e.g. a tapped cell's).
     func executeAction(_ action: DSL.Model.Action, context: VariableContext? = nil) {
@@ -762,9 +771,27 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 // Resolve the action-level transition. `mode` decides the route
                 // when the transition is custom; an explicit `.system` opts out
                 // (and suppresses screen/app defaults downstream).
-                let actionTransition = resolveTransition(action.transition)
+                var actionTransition = resolveTransition(action.transition)
 
-                if let actionTransition, actionTransition.kind != .system, actionTransition.mode == .modal {
+                if var zoomTransition = actionTransition, zoomTransition.kind == .nativeZoom, var zoom = zoomTransition.nativeZoom {
+                    // Native zoom: resolve the keys in the action's scope now.
+                    zoom.resolvedSourceKey = resolveKey(zoom.sourceKeyExpression, context: context)
+                    zoom.resolvedAlignmentKey = zoom.alignmentKeyExpression.map { resolveKey($0, context: context) }
+                    zoomTransition.nativeZoom = zoom
+                    actionTransition = zoomTransition
+                    let wantsModal = (action.presentation != nil && action.presentation != .push) || zoomTransition.mode == .modal
+                    let request: NavigationRequest
+                    if wantsModal {
+                        let style = action.presentation.flatMap { $0 == .push ? nil : $0.toModalPresentationStyle } ?? .fullScreen
+                        request = NavigationRequest(
+                            type: .presentModal(screenId: nextScreen, params: resolvedParams, style: style, detents: action.detents, grabber: action.grabber),
+                            transition: zoomTransition
+                        )
+                    } else {
+                        request = NavigationRequest(type: .push(screenId: nextScreen, params: resolvedParams), transition: zoomTransition)
+                    }
+                    NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
+                } else if let actionTransition, actionTransition.kind != .system, actionTransition.mode == .modal {
                     // Custom modal — engine-driven transition replaces the system modal.
                     let request = NavigationRequest(
                         type: .presentModal(
