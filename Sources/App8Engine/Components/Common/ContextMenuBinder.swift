@@ -160,19 +160,14 @@ final class ContextMenuPreviewController: UIViewController {
         view.backgroundColor = .systemBackground
         container.isUserInteractionEnabled = false
         container.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(container)
-        NSLayoutConstraint.activate([
-            container.topAnchor.constraint(equalTo: view.topAnchor),
-            container.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            container.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            container.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
 
         var component = preview.component
         if let templateId = component.templateId, component.asPointer() != nil,
            let resolved = service.resolveTemplate(named: templateId) {
             component = resolved
         }
+        // Render into the free-standing container first so it can be measured
+        // on its own, then attach it.
         renderResult = service.renderComponent(
             component,
             superview: container,
@@ -180,22 +175,49 @@ final class ContextMenuPreviewController: UIViewController {
             parentVariableStore: viewModel.variableStore,
             reuseViewModel: nil
         )
+        // Keep the component inside the container so a root with only a width
+        // still drives the container's height.
+        if let root = renderResult?.view {
+            NSLayoutConstraint.activate([
+                root.topAnchor.constraint(greaterThanOrEqualTo: container.topAnchor),
+                root.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor),
+            ])
+        }
 
         let height: CGFloat
         if let fixed = preview.height {
             height = CGFloat(fixed)
         } else {
+            // The fitting height at the preview width: lay out at that width
+            // (multi-line labels wrap), measure, lay out at the result, measure again.
             let widthConstraint = container.widthAnchor.constraint(equalToConstant: width)
             widthConstraint.isActive = true
-            let fitting = container.systemLayoutSizeFitting(
-                CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
-                withHorizontalFittingPriority: .required,
-                verticalFittingPriority: .fittingSizeLevel
-            )
+            func fit() -> CGFloat {
+                container.systemLayoutSizeFitting(
+                    CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
+                    withHorizontalFittingPriority: .required,
+                    verticalFittingPriority: .fittingSizeLevel
+                ).height
+            }
+            container.frame = CGRect(x: 0, y: 0, width: width, height: screen.height)
+            container.layoutIfNeeded()
+            let first = fit()
+            container.frame = CGRect(x: 0, y: 0, width: width, height: first)
+            container.layoutIfNeeded()
+            let second = fit()
             widthConstraint.isActive = false
-            let measured = fitting.height > 1 ? fitting.height : width
-            height = min(measured, screen.height * 0.7)
+            var measured = max(first, second)
+            if measured <= 1 { measured = width }
+            height = min(ceil(measured), screen.height * 0.7)
         }
+
+        view.addSubview(container)
+        NSLayoutConstraint.activate([
+            container.topAnchor.constraint(equalTo: view.topAnchor),
+            container.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            container.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
         preferredContentSize = CGSize(width: width, height: height)
     }
 }

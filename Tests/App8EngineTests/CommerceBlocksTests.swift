@@ -379,3 +379,39 @@ struct CommerceAddendumTests {
         #expect(abs(attrs.frame.width - collection.bounds.width) < 1)
     }
 }
+
+// MARK: - Native QA fixes
+
+@MainActor
+@Suite("Native QA fixes")
+struct NativeQAFixTests {
+
+    @Test func jsonNumberOnePrintsAsNumberNotTrue() throws {
+        let restored = try JSONSerialization.jsonObject(with: Data(#"[{"key":"a","quantity":1}]"#.utf8)) as! [Any]
+        let store = VariableStore()
+        try store.defineVariable(name: "cart", definition: VariableDefinition(type: .array, initialValue: [Any]()))
+        try store.setValue(name: "cart", value: restored)
+        let text = try PropertyResolver().resolveToString("{{find(cart, item.key == 'a').quantity}} ADDED", context: VariableContext(store: store))
+        #expect(text == "1 ADDED")
+        let native = VariablePersistence.native(restored) as? [[String: Any]]
+        #expect(native?.first?["quantity"] as? Int == 1)
+        #expect(VariablePersistence.native(NSNumber(value: true)) as? Bool == true)
+    }
+
+    @Test func computedSeesEarlierSiblings() throws {
+        let store = VariableStore()
+        try store.defineVariables([
+            "item": VariableDefinition(type: .object, initialValue: ["handle": "h", "variant": "50"]),
+            "selVariant": VariableDefinition(type: .string, computed: "{{item.variant}}"),
+            "cardKey": VariableDefinition(type: .string, computed: "{{item.handle + '|' + selVariant}}"),
+        ])
+        #expect(store.getValue(name: "cardKey") as? String == "h|50")
+    }
+
+    @Test func pickerButtonCarriesTheDSLId() throws {
+        let harness = RenderHarness()
+        try harness.render(PickerCommerceTests.variantMenu)
+        let button = try #require(harness.find(UIButton.self))
+        #expect(button.accessibilityIdentifier == "variantMenu")
+    }
+}

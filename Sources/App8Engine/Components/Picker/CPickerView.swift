@@ -97,7 +97,8 @@ class CPickerView: App8BaseView<DSL.Model.Component.Picker.C>, CViewProtocol {
         }
         button.showsMenuAsPrimaryAction = true
         button.changesSelectionAsPrimaryAction = true
-        button.accessibilityIdentifier = "picker.menu"
+        // The DSL id, like other components (UI tests find the control by it).
+        button.accessibilityIdentifier = viewModel.componentPath.split(separator: ".").last.map(String.init)
 
         contentView.addSubview(button)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -190,6 +191,7 @@ class CPickerView: App8BaseView<DSL.Model.Component.Picker.C>, CViewProtocol {
     private func setupSegmentedMode(viewModel: CPickerViewModel) {
         let options = viewModel.currentOptions
         let sc = UISegmentedControl(items: options.map { $0.label })
+        sc.accessibilityIdentifier = viewModel.componentPath.split(separator: ".").last.map(String.init)
 
         if let selectedIndex = options.firstIndex(where: { $0.value == viewModel.currentSelection }) {
             sc.selectedSegmentIndex = selectedIndex
