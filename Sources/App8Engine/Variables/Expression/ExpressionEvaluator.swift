@@ -816,6 +816,21 @@ public final class ExpressionEvaluator {
         let arrayValue = try evaluate(array, context: context)
         let indexValue = try evaluate(index, context: context)
 
+        // Object key access: `map[key]`. A string key reads the property; a
+        // number reads the key of that number as a string. Missing → null.
+        if let object = arrayValue as? [String: Any] {
+            let key: String
+            if let s = indexValue as? String {
+                key = s
+            } else if let n = toNumber(indexValue) {
+                key = n == n.rounded() && abs(n) < 1e15 ? String(Int(n)) : String(n)
+            } else {
+                return nil
+            }
+            guard let value = object[key], !(value is NSNull) else { return nil }
+            return value
+        }
+
         guard let array = arrayValue as? [Any] else {
             return nil
         }
