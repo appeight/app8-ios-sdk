@@ -179,6 +179,9 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
 
             var effectiveDefinitions: [String: VariableDefinition] = [:]
             for (name, definition) in variables {
+                if definition.persist == true {
+                    service.context.logger.warning("variable.persist.scope: 'persist' on '\(name)' in '\(componentPath)' is ignored — only app variables persist")
+                }
                 if definition.hasExternalSource,
                    let resolvedValue = parent.getValue(name: "__datasource_\(name)") {
                     effectiveDefinitions[name] = definition.withResolvedValue(resolvedValue)
