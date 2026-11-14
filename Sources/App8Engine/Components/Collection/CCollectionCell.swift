@@ -55,8 +55,25 @@ final class CCollectionCell: UICollectionViewCell {
         if selfSizesWidth { frame.size.width = ceil(size.width) }
         frame.size.height = ceil(size.height)
         layoutAttributes.frame = frame
+        reportedSize = frame.size
 
         return layoutAttributes
+    }
+
+    /// The size this cell last reported to the layout (nil: never measured).
+    private var reportedSize: CGSize?
+
+    /// Whether the content's fitting size now differs from the size last
+    /// reported (its expressions bound after the measurement).
+    func needsRemeasure() -> Bool {
+        guard let reported = reportedSize else { return false }
+        layoutIfNeeded()
+        let size = contentView.systemLayoutSizeFitting(
+            CGSize(width: reported.width, height: UIView.layoutFittingCompressedSize.height),
+            withHorizontalFittingPriority: selfSizesWidth ? .fittingSizeLevel : .required,
+            verticalFittingPriority: .fittingSizeLevel
+        )
+        return abs(ceil(size.height) - reported.height) > 0.5 || (selfSizesWidth && abs(ceil(size.width) - reported.width) > 0.5)
     }
 
     // MARK: - Configure (reuse path — cached VM exists)

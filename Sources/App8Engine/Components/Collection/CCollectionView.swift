@@ -48,6 +48,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     private var isSelfSizing = false             // true when scrollEnabled == false
     private var selfSizingHeightConstraint: NSLayoutConstraint?
     private var cellsSelfSizeWidth = false       // true when horizontal + estimatedItemWidth
+    private var remeasureScheduled = false
     /// Offsets of scrollables nested in this collection's cells (e.g. horizontal shelves
     /// in a vertical list), so they survive cell reuse.
     private var nestedScrollCache = NestedScrollOffsetCache()
@@ -134,6 +135,12 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         }
         if let templateRef = viewModel.component.properties.templateName {
             collectionView.register(CCollectionCell.self, forCellWithReuseIdentifier: templateRef)
+        }
+        // Each section definition may name its own template.
+        for definition in viewModel.component.properties.sectionDefinitions ?? [] {
+            if let templateRef = definition.templateName {
+                collectionView.register(CCollectionCell.self, forCellWithReuseIdentifier: templateRef)
+            }
         }
         if let templates = viewModel.component.templates {
             for (_, templateRef) in templates {
@@ -1282,7 +1289,25 @@ extension CCollectionView: UICollectionViewDataSource {
             itemKey: Self.itemScrollKey(item, sectionKey: sections[indexPath.section].key, indexPath: indexPath)
         )
 
+        // Text and isHidden bind on a later main-queue hop, after UIKit has
+        // measured the cell: measure again then, and relayout if it changed.
+        DispatchQueue.main.async { [weak self, weak cell] in
+            guard let self, let cell, cell.window != nil, cell.needsRemeasure() else { return }
+            self.scheduleRemeasure()
+        }
+
         return cell
+    }
+
+    /// One layout invalidation per run loop turn, however many cells changed size.
+    func scheduleRemeasure() {
+        guard !remeasureScheduled else { return }
+        remeasureScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.remeasureScheduled = false
+            self.collectionView.collectionViewLayout.invalidateLayout()
+        }
     }
 
     func collectionView(
