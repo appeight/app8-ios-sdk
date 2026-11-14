@@ -12,7 +12,7 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
     weak var materialView: MaterialView?
     /// contentView is used by CViewProtocol for corner masking - contains scrollView
     let contentView = UIView()
-    private let scrollView = UIScrollView()
+    private let scrollView = App8ZoomingScrollView()
     /// scrollContentView is the actual container for scroll content children
     private let scrollContentView = UIView()
 
@@ -24,6 +24,20 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
     /// so the first scroll event doesn't spuriously fire .onScrollThreshold with $crossed=false.
     /// Fires only when crossing (state changes).
     private var lastScrollThresholdCrossed: Bool = false
+
+    // MARK: - Zoom / stretchy top
+
+    /// Zoom on (`maximumZoomScale` > 1): `scrollContentView` is frame-laid-out
+    /// (not pinned to the content guide) so the scroll view can scale it.
+    private var zoomMode = false
+    private var doubleTapRecognizer: UITapGestureRecognizer?
+    /// Bounds size the zoom content was last laid out for (at zoom scale 1).
+    private var zoomLayoutSize: CGSize = .zero
+    /// The first rendered child (stretchy top).
+    private weak var topChildView: UIView?
+    /// Base constants of the top child's top / height constraints, by constraint.
+    private var stretchBaseConstants: [ObjectIdentifier: CGFloat] = [:]
+    private var lastStretch: CGFloat = 0
 
     private var focusCancellable: AnyCancellable?
     private var keyboardCancellable: AnyCancellable?
@@ -198,18 +212,26 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
             )
         }
 
-        // scrollContentView edges pinned to scrollView's content layout guide
-        scrollContentView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor).isActive = true
-        scrollContentView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor).isActive = true
-        scrollContentView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor).isActive = true
-        scrollContentView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor).isActive = true
+        configureZoom(props: props)
 
-        // Match frame layout guide for non-scrolling axis
-        switch direction {
-        case .vertical:
-            scrollContentView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor).isActive = true
-        case .horizontal:
-            scrollContentView.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor).isActive = true
+        // scrollContentView edges pinned to scrollView's content layout guide
+        if zoomMode {
+            // Frame layout (see `layoutZoomContentIfNeeded`). Children still use
+            // Auto Layout inside scrollContentView.
+            scrollContentView.translatesAutoresizingMaskIntoConstraints = true
+        } else {
+            scrollContentView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor).isActive = true
+            scrollContentView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor).isActive = true
+            scrollContentView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor).isActive = true
+            scrollContentView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor).isActive = true
+
+            // Match frame layout guide for non-scrolling axis
+            switch direction {
+            case .vertical:
+                scrollContentView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor).isActive = true
+            case .horizontal:
+                scrollContentView.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor).isActive = true
+            }
         }
 
         // Tear down any previous marquee state before re-rendering — clears
@@ -264,9 +286,134 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
             }
         } else {
             scrollView.isScrollEnabled = true
-            viewModel.component.children.forEach { child in
-                viewModel.service.renderComponent(child, superview: scrollContentView, parentPath: viewModel.componentPath, parentVariableStore: viewModel.variableStore)
+            stretchBaseConstants.removeAll()
+            lastStretch = 0
+            for (index, child) in viewModel.component.children.enumerated() {
+                let result = viewModel.service.renderComponent(child, superview: scrollContentView, parentPath: viewModel.componentPath, parentVariableStore: viewModel.variableStore)
+                if index == 0 { topChildView = result.view }
             }
+            zoomLayoutSize = .zero
+            setNeedsLayout()
+        }
+    }
+
+    // MARK: - Zoom
+
+    private func configureZoom(props: DSL.Model.Component.ScrollView.Properties) {
+        zoomMode = props.zoomEnabled && props.autoScroll == nil
+        scrollView.zoomScale = 1
+        scrollView.minimumZoomScale = zoomMode ? (props.minimumZoomScale ?? 1) : 1
+        scrollView.maximumZoomScale = zoomMode ? max(props.maximumZoomScale ?? 1, scrollView.minimumZoomScale) : 1
+        scrollView.bouncesZoom = true
+        scrollView.passesEdgePansToPager = zoomMode
+        scrollView.claimsPullDown = props.stretchesTopChild == true && (props.direction ?? .vertical) == .vertical
+        if zoomMode {
+            scrollView.contentInset = .zero
+            scrollView.contentInsetAdjustmentBehavior = .never
+        }
+
+        let wantsDoubleTap = zoomMode && (props.doubleTapZoom ?? true)
+        if wantsDoubleTap, doubleTapRecognizer == nil {
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+            tap.numberOfTapsRequired = 2
+            scrollView.addGestureRecognizer(tap)
+            doubleTapRecognizer = tap
+        }
+        doubleTapRecognizer?.isEnabled = wantsDoubleTap
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if zoomMode {
+            // The scroll view is a grandchild: lay it out now so its bounds are
+            // current (a cell's first pass would otherwise read a zero size and
+            // never size the zoom content).
+            contentView.layoutIfNeeded()
+        }
+        layoutZoomContentIfNeeded()
+    }
+
+    /// Sizes the zoom content to the scroll view's bounds at scale 1. A size
+    /// change (rotation, a stretching parent) resets the zoom.
+    private func layoutZoomContentIfNeeded() {
+        guard zoomMode else { return }
+        let size = scrollView.bounds.size
+        guard size.width > 0, size.height > 0, size != zoomLayoutSize else { return }
+        zoomLayoutSize = size
+        scrollView.zoomScale = 1
+        scrollContentView.transform = .identity
+        scrollContentView.frame = CGRect(origin: .zero, size: size)
+        scrollView.contentSize = size
+        scrollView.contentOffset = .zero
+        scrollContentView.layoutIfNeeded()
+        if scrollView.minimumZoomScale != 1 {
+            scrollView.zoomScale = max(scrollView.minimumZoomScale, min(1, scrollView.maximumZoomScale))
+        }
+        centerZoomedContent()
+    }
+
+    /// Keeps the zoomed content centered while it is smaller than the frame.
+    private func centerZoomedContent() {
+        let bounds = scrollView.bounds.size
+        let content = scrollView.contentSize
+        let insetX = max(0, (bounds.width - content.width) / 2)
+        let insetY = max(0, (bounds.height - content.height) / 2)
+        scrollView.contentInset = UIEdgeInsets(top: insetY, left: insetX, bottom: insetY, right: insetX)
+    }
+
+    @objc private func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
+        let minScale = scrollView.minimumZoomScale
+        if scrollView.zoomScale > minScale + 0.01 {
+            scrollView.setZoomScale(minScale, animated: true)
+            return
+        }
+        let target = min(2.5, scrollView.maximumZoomScale)
+        guard target > scrollView.zoomScale else { return }
+        let point = recognizer.location(in: scrollContentView)
+        let size = CGSize(width: scrollView.bounds.width / target, height: scrollView.bounds.height / target)
+        let rect = CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height)
+        scrollView.zoom(to: rect, animated: true)
+    }
+
+    // MARK: - Stretchy top
+
+    /// Pull-down at the top: keep the first child pinned to the top edge and
+    /// grow its height by the pull distance (its top / height constraints).
+    private func applyStretchyTop() {
+        guard let props = viewModel?.component.properties,
+              props.stretchesTopChild == true,
+              (props.direction ?? .vertical) == .vertical,
+              !zoomMode,
+              let child = topChildView,
+              let owner = child as? App8ConstraintOwning else { return }
+        let stretch = max(0, -(scrollView.contentOffset.y + scrollView.adjustedContentInset.top))
+        guard stretch != lastStretch else { return }
+        lastStretch = stretch
+
+        var adjusted = false
+        for constraint in owner.app8InstalledConstraints where constraint.isActive {
+            let id = ObjectIdentifier(constraint)
+            let isFirst = constraint.firstItem === child
+            let attribute = isFirst ? constraint.firstAttribute : constraint.secondAttribute
+            let isSecond = constraint.secondItem === child
+            guard isFirst || isSecond else { continue }
+            switch attribute {
+            case .top:
+                let base = stretchBaseConstants[id] ?? constraint.constant
+                stretchBaseConstants[id] = base
+                constraint.constant = isFirst ? base - stretch : base + stretch
+                adjusted = true
+            case .height where isFirst && constraint.secondItem == nil:
+                let base = stretchBaseConstants[id] ?? constraint.constant
+                stretchBaseConstants[id] = base
+                constraint.constant = base + stretch
+                adjusted = true
+            default:
+                continue
+            }
+        }
+        if adjusted {
+            scrollContentView.layoutIfNeeded()
         }
     }
 
@@ -499,7 +646,18 @@ extension CScrollViewView: StreamingUpdatable {
 
 extension CScrollViewView: UIScrollViewDelegate {
 
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        zoomMode ? scrollContentView : nil
+    }
+
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        guard zoomMode else { return }
+        centerZoomedContent()
+        updateOutputVariable(scrollView)
+    }
+
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        applyStretchyTop()
         let props = viewModel?.component.properties
         let hasOutputVar = props?.outputVariable != nil
         let hasThreshold = props?.scrollThreshold != nil
@@ -520,7 +678,7 @@ extension CScrollViewView: UIScrollViewDelegate {
         let offset = rawOffset + inset
 
         if let outputVar = props?.outputVariable {
-            try? viewModel?.variableStore.setValue(name: outputVar, value: offset)
+            try? viewModel?.variableStore.setValue(name: outputVar, value: outputValue(offset: offset))
         }
 
         checkScrollThreshold(offset: offset)
@@ -569,7 +727,13 @@ extension CScrollViewView: UIScrollViewDelegate {
         let rawOffset = direction == .horizontal ? scrollView.contentOffset.x : scrollView.contentOffset.y
         let inset = direction == .horizontal ? scrollView.adjustedContentInset.left : scrollView.adjustedContentInset.top
         let offset = rawOffset + inset
-        try? viewModel?.variableStore.setValue(name: outputVar, value: offset)
+        try? viewModel?.variableStore.setValue(name: outputVar, value: outputValue(offset: offset))
+    }
+
+    /// Plain offset, or `{ offset, zoomScale }` when zoom is on.
+    private func outputValue(offset: CGFloat) -> Any {
+        guard zoomMode else { return offset }
+        return ["offset": Double(offset), "zoomScale": Double(scrollView.zoomScale)] as [String: Any]
     }
 }
 
@@ -594,5 +758,36 @@ extension CScrollViewView: NestedScrollStateRestorable {
         apply()
         // Reparented content (labels, images) may resize on the next pass.
         DispatchQueue.main.async(execute: apply)
+    }
+}
+
+// MARK: - App8ZoomingScrollView
+
+/// A scroll view that, while zoom is on, lets a horizontal pan it cannot use
+/// (at scale 1, or at a content edge) fall through to an enclosing pager, so a
+/// zoomable page inside a horizontal paging collection still swipes pages.
+final class App8ZoomingScrollView: UIScrollView {
+
+    var passesEdgePansToPager = false
+    /// `stretchesTopChild`: the pull-down at the top belongs to this scroll view
+    /// (a zoom transition's interactive dismiss must not take it).
+    var claimsPullDown = false
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard passesEdgePansToPager, gestureRecognizer === panGestureRecognizer else {
+            return super.gestureRecognizerShouldBegin(gestureRecognizer)
+        }
+        let velocity = panGestureRecognizer.velocity(in: self)
+        if abs(velocity.x) > abs(velocity.y) {
+            if zoomScale <= minimumZoomScale + 0.01 { return false }
+            let minX = -adjustedContentInset.left
+            let maxX = contentSize.width + adjustedContentInset.right - bounds.width
+            if velocity.x > 0, contentOffset.x <= minX + 0.5 { return false }
+            if velocity.x < 0, contentOffset.x >= maxX - 0.5 { return false }
+        } else if zoomScale <= minimumZoomScale + 0.01 {
+            // Unzoomed: a vertical pan belongs to whatever encloses us (dismissal).
+            return false
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 }

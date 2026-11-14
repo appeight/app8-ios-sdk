@@ -65,6 +65,23 @@ extension DSL.Model {
             var interactive: InteractiveConfig?
             /// Modal-only sized-container geometry + chrome. Nil ⇒ full-screen modal.
             var presentation: ModalPresentation?
+            /// Native zoom (`preset: zoom`): the presenting-screen element
+            /// (`content.transition.key`) the incoming screen grows out of.
+            /// String or expression; re-evaluated in the presenting screen's
+            /// scope when the dismissal starts.
+            var sourceKey: String? = nil
+            /// Native zoom: element on the incoming screen the source lines up with.
+            var alignmentKey: String? = nil
+            /// Native zoom: which drags dismiss interactively. Default `any`.
+            var dismissGesture: DismissGesture? = nil
+        }
+
+        /// Interactive dismissal of a native zoom transition.
+        enum DismissGesture: String, SafeEnumCodable, Sendable {
+            case any
+            case down
+            case none
+            static var unknownCase: Self { .any }
         }
 
         // MARK: - Sub-models
@@ -544,6 +561,7 @@ extension DSL.Model.ScreenTransition.Inline: Decodable {
 
     private enum CodingKeys: String, CodingKey {
         case mode, preset, edge, animation, from, to, reverse, raise, dimming, interactive, presentation
+        case sourceKey, alignmentKey, dismissGesture
     }
 
     init(from decoder: any Decoder) throws {
@@ -560,6 +578,9 @@ extension DSL.Model.ScreenTransition.Inline: Decodable {
         self.dimming = try c.decodeIfPresent(DSL.Model.ScreenTransition.Dimming.self, forKey: .dimming)
         self.interactive = try c.decodeIfPresent(DSL.Model.ScreenTransition.InteractiveConfig.self, forKey: .interactive)
         self.presentation = try c.decodeIfPresent(DSL.Model.ScreenTransition.ModalPresentation.self, forKey: .presentation)
+        self.sourceKey = try c.decodeIfPresent(String.self, forKey: .sourceKey)
+        self.alignmentKey = try c.decodeIfPresent(String.self, forKey: .alignmentKey)
+        self.dismissGesture = try c.decodeIfPresent(DSL.Model.ScreenTransition.DismissGesture.self, forKey: .dismissGesture)
     }
 }
 

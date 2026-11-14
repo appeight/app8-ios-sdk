@@ -31,6 +31,20 @@ extension DSL.Model.Component {
             /// using a `CADisplayLink`. With `infinite: true` the rendered content
             /// is duplicated via a snapshot so the loop wraps seamlessly.
             let autoScroll: AutoScroll?
+            /// Smallest pinch zoom. Default 1.
+            let minimumZoomScale: CGFloat?
+            /// Largest pinch zoom. Above 1 turns zoom on.
+            let maximumZoomScale: CGFloat?
+            /// Double tap zooms to the tap point / back out. Default true when zoom is on.
+            let doubleTapZoom: Bool?
+            /// Vertical only: the first child stays pinned to the top on pull-down
+            /// and grows by the pull distance (stretchy header).
+            let stretchesTopChild: Bool?
+
+            /// Zoom is on when `maximumZoomScale` > 1 (or `minimumZoomScale` < 1).
+            var zoomEnabled: Bool {
+                (maximumZoomScale ?? 1) > 1 || (minimumZoomScale ?? 1) < 1
+            }
 
             enum Direction: String, Decodable {
                 case vertical, horizontal

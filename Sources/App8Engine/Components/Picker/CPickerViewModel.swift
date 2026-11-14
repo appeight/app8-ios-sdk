@@ -8,15 +8,18 @@ import Foundation
 
 class CPickerViewModel: CBaseViewModel<DSL.Model.Component.Picker.C> {
 
+    typealias Option = DSL.Model.Component.Picker.Option
+
     let selectionChanged = PassthroughSubject<String, Never>()
 
     /// External updates originating from variable changes.
     let externalSelectionUpdate = PassthroughSubject<String, Never>()
 
-    private(set) var currentSelection: String = ""
+    /// Fires when expression `options` resolve to a different list.
+    let optionsUpdate = PassthroughSubject<[Option], Never>()
 
-    /// Guards against view↔variable feedback loops.
-    private var isUpdatingFromVariable = false
+    private(set) var currentSelection: String = ""
+    private(set) var currentOptions: [Option] = []
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -24,51 +27,105 @@ class CPickerViewModel: CBaseViewModel<DSL.Model.Component.Picker.C> {
 
     override func setup() {
         super.setup()
-        setupTwoWayBinding()
-        initializeValue()
+        currentOptions = resolveOptions()
+        currentSelection = resolveSelection() ?? ""
+        setupBinding()
     }
 
-    private func initializeValue() {
-        if let bindVar = currentProperties.bindVariable,
-           let value = variableStore.getValue(name: bindVar) as? String {
-            currentSelection = value
-        } else if let expr = currentProperties.selectedValue {
-            currentSelection = resolvePropertyToString(expr)
+    // MARK: - Resolution
+
+    /// Static `options`, or the `options` expression resolved to an array.
+    func resolveOptions() -> [Option] {
+        let props = currentProperties
+        if let expression = props.optionsExpression {
+            let resolved = resolveProperty(expression)
+            guard let array = resolved as? [Any] else { return [] }
+            return array.compactMap(Option.init(any:))
+        }
+        return props.options ?? []
+    }
+
+    /// The `bindKey` resolved in this component's scope (nil when unset/empty).
+    private func resolvedBindKey() -> String? {
+        guard let raw = currentProperties.bindKey else { return nil }
+        let key = resolvePropertyToString(raw)
+        return key.isEmpty ? nil : key
+    }
+
+    private static func string(_ value: Any?) -> String? {
+        switch value {
+        case let s as String: return s
+        case let n as NSNumber:
+            let d = n.doubleValue
+            return d == d.rounded() && abs(d) < 1e15 ? String(Int(d)) : String(d)
+        default: return nil
         }
     }
 
-    private func setupTwoWayBinding() {
-        guard let bindVar = currentProperties.bindVariable else { return }
+    /// Selection from the bound variable (at `bindKey` for an object variable),
+    /// else from `selectedValue`.
+    func resolveSelection() -> String? {
+        let props = currentProperties
+        if let bindVar = props.bindVariable {
+            let bound = variableStore.getValue(name: bindVar)
+            if let key = resolvedBindKey() {
+                if let map = bound as? [String: Any], let value = Self.string(map[key]) {
+                    return value
+                }
+            } else if let value = Self.string(bound), !value.isEmpty || props.selectedValue == nil {
+                return value
+            }
+        }
+        if let expr = props.selectedValue {
+            return resolvePropertyToString(expr)
+        }
+        return nil
+    }
 
+    // MARK: - Binding
+
+    private func setupBinding() {
         // View -> Variable
         selectionChanged
-            .filter { [weak self] _ in !(self?.isUpdatingFromVariable ?? false) }
             .sink { [weak self] newValue in
-                guard let self = self else { return }
+                guard let self else { return }
                 self.currentSelection = newValue
-                try? self.variableStore.setValue(name: bindVar, value: newValue)
+                self.write(newValue)
             }
             .store(in: &cancellables)
 
-        // Variable -> View
+        // Variable -> View: re-resolve options and selection on any change in scope.
         variableStore.anyVariableChanged
-            .filter { $0 == bindVar }
-            .compactMap { [weak self] _ -> String? in
-                self?.variableStore.getValue(name: bindVar) as? String
-            }
-            .filter { [weak self] newValue in
-                guard let self = self else { return false }
-                return newValue != self.currentSelection
-            }
-            .sink { [weak self] value in
-                guard let self = self else { return }
-                self.isUpdatingFromVariable = true
-                self.currentSelection = value
-                self.externalSelectionUpdate.send(value)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    self.isUpdatingFromVariable = false
-                }
-            }
+            .sink { [weak self] _ in self?.refreshFromVariables() }
             .store(in: &cancellables)
+    }
+
+    private func write(_ value: String) {
+        guard let bindVar = currentProperties.bindVariable else { return }
+        if let key = resolvedBindKey() {
+            var map = (variableStore.getValue(name: bindVar) as? [String: Any]) ?? [:]
+            map[key] = value
+            do {
+                try variableStore.setValue(name: bindVar, value: map)
+            } catch {
+                service.context.logger.error("picker: failed to write '\(bindVar)[\(key)]': \(error)")
+            }
+        } else {
+            try? variableStore.setValue(name: bindVar, value: value)
+        }
+    }
+
+    private func refreshFromVariables() {
+        if currentProperties.optionsExpression != nil {
+            let options = resolveOptions()
+            if options.map(\.value) != currentOptions.map(\.value) || options.map(\.label) != currentOptions.map(\.label) {
+                currentOptions = options
+                optionsUpdate.send(options)
+            }
+        }
+        if let selection = resolveSelection(), selection != currentSelection {
+            currentSelection = selection
+            externalSelectionUpdate.send(selection)
+        }
     }
 }

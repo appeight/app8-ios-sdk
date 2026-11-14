@@ -16,6 +16,7 @@ extension DSL.Model.ScreenTransition {
             case none     // no animation (instantaneous)
             case custom   // animate the screen keyframes below (PropertyTransitionAnimator)
             case shared   // morph matched elements between screens (SharedElementTransitionAnimator)
+            case nativeZoom // UIKit zoom (`preferredTransition = .zoom`) out of a keyed source element
         }
 
         var kind: Kind
@@ -34,6 +35,21 @@ extension DSL.Model.ScreenTransition {
         var interactive: InteractiveConfig?
         /// Sized-modal container geometry + chrome. Nil ⇒ full-screen modal.
         var presentation: ResolvedModalPresentation?
+        /// Native zoom parameters (kind `.nativeZoom`).
+        var nativeZoom: NativeZoom? = nil
+    }
+
+    /// `preset: zoom` + `sourceKey`: the platform zoom transition.
+    struct NativeZoom {
+        /// `sourceKey` as written (string or expression).
+        var sourceKeyExpression: String
+        /// `alignmentKey` as written.
+        var alignmentKeyExpression: String?
+        var dismissGesture: DismissGesture
+        /// `sourceKey` evaluated in the action's scope when the transition starts.
+        var resolvedSourceKey: String?
+        /// `alignmentKey` evaluated in the action's scope.
+        var resolvedAlignmentKey: String?
     }
 
     struct ResolvedDimming {
@@ -133,6 +149,23 @@ extension DSL.Model.ScreenTransition {
                 from: .identityPair, to: .identityPair,
                 reverseFrom: nil, reverseTo: nil, dimming: nil, interactive: nil,
                 presentation: nil
+            )
+        }
+
+        // `zoom` with a `sourceKey` is the native zoom transition. Push unless
+        // the action asks for a modal presentation (or `mode: modal`).
+        if preset == Preset.zoom, let sourceKey = inline.sourceKey, !sourceKey.isEmpty {
+            return Resolved(
+                kind: .nativeZoom, mode: inline.mode ?? .push, edge: edge, raise: raise,
+                animation: .transitionDefault,
+                from: .identityPair, to: .identityPair,
+                reverseFrom: nil, reverseTo: nil, dimming: nil, interactive: nil,
+                presentation: nil,
+                nativeZoom: NativeZoom(
+                    sourceKeyExpression: sourceKey,
+                    alignmentKeyExpression: inline.alignmentKey,
+                    dismissGesture: inline.dismissGesture ?? .any
+                )
             )
         }
 
@@ -430,7 +463,7 @@ extension DSL.Model.ScreenTransition.Resolved {
         switch kind {
         case .shared:
             return SharedElementTransitionAnimator(resolved: self, direction: direction)
-        case .custom, .none, .system:
+        case .custom, .none, .system, .nativeZoom:
             return PropertyTransitionAnimator(resolved: self, direction: direction)
         }
     }

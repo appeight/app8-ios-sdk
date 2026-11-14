@@ -35,6 +35,9 @@ public struct VariableDefinition: Codable, Sendable {
     public let schema: String?
     /// Sample value hint used only during standalone renderScreen() calls
     public let preview: VariablePreview?
+    /// App scope only: keep the value across launches (UserDefaults suite
+    /// `app8.<appId>`, key `var.<name>`). Ignored elsewhere with a warning.
+    public let persist: Bool?
 
     enum CodingKeys: String, CodingKey {
         case type
@@ -44,9 +47,10 @@ public struct VariableDefinition: Codable, Sendable {
         case streaming
         case schema
         case preview
+        case persist
     }
 
-    public init(type: VariableType, initialValue: Any? = nil, computed: String? = nil, source: String? = nil, streaming: Bool? = nil, schema: String? = nil, preview: VariablePreview? = nil) {
+    public init(type: VariableType, initialValue: Any? = nil, computed: String? = nil, source: String? = nil, streaming: Bool? = nil, schema: String? = nil, preview: VariablePreview? = nil, persist: Bool? = nil) {
         self.type = type
         self.initialValue = initialValue.map { AnyCodableValue(value: $0) }
         self.computed = computed
@@ -54,6 +58,7 @@ public struct VariableDefinition: Codable, Sendable {
         self.streaming = streaming
         self.schema = schema
         self.preview = preview
+        self.persist = persist
     }
 
     public init(from decoder: Decoder) throws {
@@ -65,6 +70,7 @@ public struct VariableDefinition: Codable, Sendable {
         streaming = try container.decodeIfPresent(Bool.self, forKey: .streaming)
         schema = try container.decodeIfPresent(String.self, forKey: .schema)
         preview = try container.decodeIfPresent(VariablePreview.self, forKey: .preview)
+        persist = try container.decodeIfPresent(Bool.self, forKey: .persist)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -76,6 +82,7 @@ public struct VariableDefinition: Codable, Sendable {
         try container.encodeIfPresent(streaming, forKey: .streaming)
         try container.encodeIfPresent(schema, forKey: .schema)
         try container.encodeIfPresent(preview, forKey: .preview)
+        try container.encodeIfPresent(persist, forKey: .persist)
     }
 
     /// Get the raw initial value
@@ -95,7 +102,7 @@ public struct VariableDefinition: Codable, Sendable {
 
     /// Create a copy with resolved initialValue (used after datasource loading)
     public func withResolvedValue(_ value: Any) -> VariableDefinition {
-        VariableDefinition(type: type, initialValue: value, computed: computed, source: nil, streaming: streaming, schema: schema, preview: preview)
+        VariableDefinition(type: type, initialValue: value, computed: computed, source: nil, streaming: streaming, schema: schema, preview: preview, persist: persist)
     }
 }
 

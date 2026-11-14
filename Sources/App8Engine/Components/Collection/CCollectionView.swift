@@ -11,8 +11,8 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
 
     // MARK: - UI
 
-    private lazy var collectionView: UICollectionView = {
-        let cv = UICollectionView(frame: .zero, collectionViewLayout: createLayout())
+    private lazy var collectionView: App8CollectionView = {
+        let cv = App8CollectionView(frame: .zero, collectionViewLayout: createLayout())
         cv.backgroundColor = .clear
         cv.delegate = self
         cv.dataSource = self
@@ -38,9 +38,17 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     private var cancellables = Set<AnyCancellable>()
     private var isViewHierarchySetup = false
     private var lastReportedPageIndex: Int = -1
+    /// Page requested by a write to `currentPageVariable` that could not be
+    /// applied yet (no layout / width). Applied in `layoutSubviews`.
+    private var pendingPageIndex: Int?
+    /// True while an animated scroll started by a `currentPageVariable` write
+    /// runs: its in-between pages are not written back (two pagers bound to
+    /// one variable would otherwise fight).
+    private var isScrollingFromVariable = false
     private var isSelfSizing = false             // true when scrollEnabled == false
     private var selfSizingHeightConstraint: NSLayoutConstraint?
     private var cellsSelfSizeWidth = false       // true when horizontal + estimatedItemWidth
+    private var remeasureScheduled = false
     /// Offsets of scrollables nested in this collection's cells (e.g. horizontal shelves
     /// in a vertical list), so they survive cell reuse.
     private var nestedScrollCache = NestedScrollOffsetCache()
@@ -88,6 +96,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         configureLayout()
 
         bindSections()
+        bindCurrentPageVariable()
         bindEmptyState()
         bindLoadingState()
         bindErrorState()
@@ -126,6 +135,12 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         }
         if let templateRef = viewModel.component.properties.templateName {
             collectionView.register(CCollectionCell.self, forCellWithReuseIdentifier: templateRef)
+        }
+        // Each section definition may name its own template.
+        for definition in viewModel.component.properties.sectionDefinitions ?? [] {
+            if let templateRef = definition.templateName {
+                collectionView.register(CCollectionCell.self, forCellWithReuseIdentifier: templateRef)
+            }
         }
         if let templates = viewModel.component.templates {
             for (_, templateRef) in templates {
@@ -192,6 +207,9 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             // A pager scrolls sideways only; safe-area insets would shift its
             // full-height pages down (e.g. a gallery under the status bar).
             if nativePaging { collectionView.contentInsetAdjustmentBehavior = .never }
+            // A vertical drag on a sideways pager belongs to what encloses it
+            // (a zoom transition's interactive dismiss, an outer scroll view).
+            collectionView.refusesVerticalPans = nativePaging
         } else {
             let scrollEnabled = viewModel?.component.properties.layout?.scrollEnabled ?? true
             collectionView.isScrollEnabled = scrollEnabled
@@ -447,13 +465,141 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             }
         }
 
+        if !nativePaging, config.itemHeightFill {
+            // `itemHeight: "fill"`: items as tall as the collection's frame minus
+            // vertical insets, re-measured when the collection resizes.
+            let spacing = section.interGroupSpacing
+            let insets = section.contentInsets
+            let behavior = section.orthogonalScrollingBehavior
+            let handler = section.visibleItemsInvalidationHandler
+            let topInset = config.contentInsets?.top ?? 0
+            return UICollectionViewCompositionalLayout { _, environment in
+                let available = environment.container.contentSize.height - topInset - insets.bottom
+                let height = max(1, available)
+                let size = NSCollectionLayoutSize(widthDimension: widthDimension, heightDimension: .absolute(height))
+                let fillItem = NSCollectionLayoutItem(layoutSize: size)
+                let fillGroup = NSCollectionLayoutGroup.horizontal(layoutSize: size, subitems: [fillItem])
+                let fillSection = NSCollectionLayoutSection(group: fillGroup)
+                fillSection.orthogonalScrollingBehavior = behavior
+                fillSection.interGroupSpacing = spacing
+                fillSection.contentInsets = insets
+                fillSection.visibleItemsInvalidationHandler = handler
+                return fillSection
+            }
+        }
+
         guard nativePaging else { return UICollectionViewCompositionalLayout(section: section) }
         let layoutConfig = UICollectionViewCompositionalLayoutConfiguration()
         layoutConfig.scrollDirection = .horizontal
         // Pages fill the collection's bounds, not its safe area.
         layoutConfig.contentInsetsReference = .none
         section.contentInsetsReference = .none
-        return UICollectionViewCompositionalLayout(section: section, configuration: layoutConfig)
+        // Pages are as tall as the collection (`itemHeight` until measured), re-laid
+        // out when its height changes — e.g. a gallery in a stretchy header.
+        let spacing = section.interGroupSpacing
+        let sectionInsets = section.contentInsets
+        return UICollectionViewCompositionalLayout(sectionProvider: { _, environment in
+            let containerHeight = environment.container.contentSize.height
+            let height = containerHeight > 0 ? max(1, containerHeight - sectionInsets.bottom) : itemHeight
+            let size = NSCollectionLayoutSize(widthDimension: widthDimension, heightDimension: .absolute(height))
+            let pageItem = NSCollectionLayoutItem(layoutSize: size)
+            let pageGroup = NSCollectionLayoutGroup.horizontal(layoutSize: size, subitems: [pageItem])
+            let pageSection = NSCollectionLayoutSection(group: pageGroup)
+            pageSection.interGroupSpacing = spacing
+            pageSection.contentInsets = sectionInsets
+            pageSection.contentInsetsReference = .none
+            return pageSection
+        }, configuration: layoutConfig)
+    }
+
+    // MARK: - currentPageVariable (two-way)
+
+    /// A write to `currentPageVariable` from elsewhere scrolls to that page:
+    /// animated while visible, without animation while off screen.
+    private func bindCurrentPageVariable() {
+        guard let viewModel,
+              let config = viewModel.component.properties.layout,
+              config.type == .horizontal,
+              let varName = config.currentPageVariable else { return }
+        if let initial = Self.pageIndex(viewModel.variableStore.getValue(name: varName)), initial > 0 {
+            pendingPageIndex = initial
+            lastReportedPageIndex = initial
+        }
+        viewModel.variableStore.anyVariableChanged
+            .filter { $0 == varName }
+            .compactMap { [weak viewModel] _ in Self.pageIndex(viewModel?.variableStore.getValue(name: varName)) }
+            .sink { [weak self] page in
+                guard let self, page != self.lastReportedPageIndex else { return }
+                self.lastReportedPageIndex = page
+                self.pendingPageIndex = page
+                self.applyPendingPage(animated: self.window != nil)
+            }
+            .store(in: &cancellables)
+    }
+
+    private static func pageIndex(_ value: Any?) -> Int? {
+        switch value {
+        case let i as Int: return i
+        case let d as Double where d.isFinite: return Int(d.rounded())
+        case let n as NSNumber: return n.intValue
+        case let s as String: return Int(s)
+        default: return nil
+        }
+    }
+
+    private func applyPendingPage(animated: Bool) {
+        guard let page = pendingPageIndex,
+              collectionView.bounds.width > 0,
+              collectionView.numberOfSections > 0 else { return }
+        let count = collectionView.numberOfItems(inSection: 0)
+        guard count > 0 else { return }
+        let clamped = max(0, min(page, count - 1))
+        pendingPageIndex = nil
+        if animated {
+            isScrollingFromVariable = true
+            // Orthogonal sections report no scroll-animation end; time it out.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.isScrollingFromVariable = false
+            }
+        }
+        if usesNativeHorizontalPaging {
+            let x = CGFloat(clamped) * collectionView.bounds.width
+            collectionView.setContentOffset(CGPoint(x: x, y: collectionView.contentOffset.y), animated: animated)
+        } else {
+            collectionView.layoutIfNeeded()
+            collectionView.scrollToItem(at: IndexPath(item: clamped, section: 0), at: .centeredHorizontally, animated: animated)
+        }
+    }
+
+    /// Self-sizing (`scrollEnabled: false`): the height follows the content
+    /// size whenever it changes — new data, a variable change, a width change
+    /// (e.g. a grid that was laid out while hidden).
+    private var contentSizeObservation: NSKeyValueObservation?
+
+    private func observeContentSizeIfNeeded() {
+        guard contentSizeObservation == nil else { return }
+        contentSizeObservation = collectionView.observe(\.contentSize, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.syncSelfSizingHeight() }
+        }
+    }
+
+    private func syncSelfSizingHeight() {
+        guard isSelfSizing, let constraint = selfSizingHeightConstraint else { return }
+        let actual = collectionView.contentSize.height + collectionView.contentInset.top + collectionView.contentInset.bottom
+        guard actual > 0, abs(actual - constraint.constant) > 0.5 else { return }
+        constraint.constant = actual
+        superview?.setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if isSelfSizing {
+            observeContentSizeIfNeeded()
+        }
+        if pendingPageIndex != nil {
+            collectionView.layoutIfNeeded()
+            applyPendingPage(animated: false)
+        }
     }
 
     /// Handles page change detection for horizontal paging collections
@@ -462,6 +608,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
               let varName = config.currentPageVariable,
               containerWidth > 0 else { return }
 
+        guard !isScrollingFromVariable else { return }
         let currentPage = Int(round(offset.x / containerWidth))
         guard currentPage != lastReportedPageIndex else { return }
         lastReportedPageIndex = currentPage
@@ -785,11 +932,14 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                 if self.isSelfSizing {
                     let layoutConfig = self.viewModel?.component.properties.layout
                     let itemCount = newSections.reduce(0) { $0 + $1.items.count }
-                    let estimatedItemHeight: CGFloat = layoutConfig?.estimatedItemHeight ?? 44
-                    let spacing: CGFloat = layoutConfig?.itemSpacing ?? 0
+                    let estimatedItemHeight: CGFloat = layoutConfig?.itemHeight ?? layoutConfig?.estimatedItemHeight ?? 44
+                    let isGrid = layoutConfig?.type == .grid
+                    // A grid stacks rows of `columns` items, separated by `lineSpacing`.
+                    let rows = isGrid ? Int(ceil(Double(itemCount) / Double(max(1, layoutConfig?.columns ?? 2)))) : itemCount
+                    let spacing: CGFloat = isGrid ? (layoutConfig?.lineSpacing ?? 0) : (layoutConfig?.itemSpacing ?? 0)
                     let insetsHeight: CGFloat = (layoutConfig?.contentInsets?.top ?? 0) + (layoutConfig?.contentInsets?.bottom ?? 0)
-                    let itemsHeight: CGFloat = CGFloat(itemCount) * estimatedItemHeight
-                    let gapsHeight: CGFloat = CGFloat(max(0, itemCount - 1)) * spacing
+                    let itemsHeight: CGFloat = CGFloat(rows) * estimatedItemHeight
+                    let gapsHeight: CGFloat = CGFloat(max(0, rows - 1)) * spacing
                     let estimatedHeight: CGFloat = itemsHeight + gapsHeight + insetsHeight
                     self.selfSizingHeightConstraint?.constant = estimatedHeight
                     self.superview?.setNeedsLayout()
@@ -805,6 +955,14 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                     }
                 } else {
                     self.collectionView.reloadData()
+                }
+
+                // A page requested before the items arrived (gallery opened at page N).
+                if self.pendingPageIndex != nil {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.collectionView.layoutIfNeeded()
+                        self?.applyPendingPage(animated: false)
+                    }
                 }
 
                 // HACK: Force layout invalidation for self-sizing horizontal cells.
@@ -831,12 +989,8 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                 // Refine height from actual contentSize after cells lay out.
                 if self.isSelfSizing {
                     DispatchQueue.main.async { [weak self] in
-                        guard let self else { return }
-                        let actual = self.collectionView.contentSize.height
-                        if actual > 0, actual != self.selfSizingHeightConstraint?.constant {
-                            self.selfSizingHeightConstraint?.constant = actual
-                            self.superview?.setNeedsLayout()
-                        }
+                        self?.collectionView.layoutIfNeeded()
+                        self?.syncSelfSizingHeight()
                     }
                 }
             }
@@ -1135,7 +1289,25 @@ extension CCollectionView: UICollectionViewDataSource {
             itemKey: Self.itemScrollKey(item, sectionKey: sections[indexPath.section].key, indexPath: indexPath)
         )
 
+        // Text and isHidden bind on a later main-queue hop, after UIKit has
+        // measured the cell: measure again then, and relayout if it changed.
+        DispatchQueue.main.async { [weak self, weak cell] in
+            guard let self, let cell, cell.window != nil, cell.needsRemeasure() else { return }
+            self.scheduleRemeasure()
+        }
+
         return cell
+    }
+
+    /// One layout invalidation per run loop turn, however many cells changed size.
+    func scheduleRemeasure() {
+        guard !remeasureScheduled else { return }
+        remeasureScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.remeasureScheduled = false
+            self.collectionView.collectionViewLayout.invalidateLayout()
+        }
     }
 
     func collectionView(
@@ -1207,7 +1379,13 @@ extension CCollectionView: UICollectionViewDelegate {
         saveNestedScrollState(from: cell)
     }
 
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        isScrollingFromVariable = false
+    }
+
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        // The user took over from a variable-driven scroll.
+        isScrollingFromVariable = false
         // The user took over; don't snap back to a restored offset.
         pendingRestoreToken = nil
     }
@@ -1261,5 +1439,48 @@ extension CCollectionView: NestedScrollStateRestorable {
             self.collectionView.layoutIfNeeded()
             self.applyRestoredOffset(offset)
         }
+    }
+}
+
+// MARK: - App8CollectionView
+
+/// A collection view that, as a horizontal pager, does not begin its pan for a
+/// mostly vertical drag, so an enclosing gesture (zoom dismiss) can take it.
+final class App8CollectionView: UICollectionView {
+    var refusesVerticalPans = false
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if refusesVerticalPans, gestureRecognizer === panGestureRecognizer {
+            let v = panGestureRecognizer.velocity(in: self)
+            if contentSize.height <= bounds.height + 1, abs(v.y) > abs(v.x) { return false }
+            // A pan from the leading screen edge is the back / dismiss gesture,
+            // even over a pager (spec: native zoom, leading-edge swipe).
+            if v.x > 0, let window, isLeadingEdgeTouch(in: window), screenCanGoBack { return false }
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
+    }
+
+    static let edgeWidth: CGFloat = 20
+
+    private func isLeadingEdgeTouch(in window: UIWindow) -> Bool {
+        let x = panGestureRecognizer.location(in: window).x
+        let start = x - panGestureRecognizer.translation(in: window).x
+        if effectiveUserInterfaceLayoutDirection == .rightToLeft {
+            return start > window.bounds.width - Self.edgeWidth
+        }
+        return start < Self.edgeWidth
+    }
+
+    /// Whether the screen showing this view can be popped or dismissed.
+    private var screenCanGoBack: Bool {
+        var responder: UIResponder? = self
+        while let r = responder {
+            if let vc = r as? UIViewController {
+                if let nav = vc.navigationController, nav.viewControllers.count > 1, nav.topViewController === vc { return true }
+                if vc.presentingViewController != nil { return true }
+            }
+            responder = r.next
+        }
+        return false
     }
 }

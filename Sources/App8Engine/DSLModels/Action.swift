@@ -55,6 +55,7 @@ extension DSL.Model {
         // Variable operations
         var variableName: String?              // Variable name for single-variable actions
         var value: AnyCodableValue?            // Value (can contain expressions as strings)
+        var key: String?                       // updateVariable on an object variable: set only this key (string/expression)
         var by: Double?                        // Increment/decrement amount
         var matchBy: String?                   // For toggleArrayValue / incrementArrayItem: key to match when array contains objects (e.g. "id")
         var field: String?                     // For incrementArrayItem: numeric field to adjust (default "quantity")

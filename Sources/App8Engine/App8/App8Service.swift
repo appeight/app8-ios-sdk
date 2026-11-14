@@ -18,15 +18,33 @@ final class App8Service: A8.DataSourceHolder {
 
     /// Defines `app.json` `variables` in the app scope. Ones already defined
     /// keep their value, so an app config reload doesn't wipe live state.
-    @MainActor func defineAppVariables(_ definitions: [String: VariableDefinition]) {
+    @MainActor func defineAppVariables(_ definitions: [String: VariableDefinition], appId: String? = nil) {
         for (name, definition) in definitions where !appVariableStore.hasVariable(name: name) {
             do {
                 try appVariableStore.defineVariable(name: name, definition: definition)
             } catch {
                 context.logger.error("Failed to define app variable '\(name)': \(error)")
+                continue
             }
+            guard definition.persist == true else { continue }
+            if definition.computed != nil {
+                context.logger.warning("variable.persist.scope: 'persist' on computed variable '\(name)' is ignored")
+                continue
+            }
+            if variablePersistence == nil {
+                variablePersistence = VariablePersistence(
+                    appId: appId ?? "default",
+                    store: appVariableStore,
+                    logger: context.logger
+                )
+            }
+            variablePersistence?.adopt(name: name, definition: definition)
         }
     }
+
+    /// Saves `persist: true` app variables (UserDefaults suite `app8.<appId>`).
+    /// Created on the first persisted definition.
+    @MainActor private(set) var variablePersistence: VariablePersistence?
 
     @MainActor private(set) lazy var imageLoader: ImageLoader = {
         let l = ImageLoader()
@@ -313,6 +331,9 @@ extension App8Service: ComponentRenderer, ComponentService {
         // derived `isUserInteractionEnabled` default.
         if let viewModel = result.viewModel {
             CommonComponentProps.bind(view: result.view, viewModel: viewModel)
+            if component.type.isOneOf(.view, .stackView, .image, .button) {
+                ContextMenuBinder.bind(view: result.view, viewModel: viewModel)
+            }
         }
         // Register a shared-element transition participant when the component
         // declares an element context on `content.transition`. Done once here
@@ -320,7 +341,11 @@ extension App8Service: ComponentRenderer, ComponentService {
         if let element = component.elementTransition {
             let path = parentPath.map { "\($0).\(component.id)" } ?? component.id
             let screenRoot = String(path.split(separator: ".").first ?? Substring(path))
-            componentRegistry.registerParticipant(screenRoot: screenRoot, key: element.key, view: result.view, config: element)
+            // Keys may be expressions (`"{{'card-' + item.handle}}"`): tag the
+            // view so native zoom resolves the live key, register the key as
+            // resolved now for shared-element matching.
+            let tag = TransitionKeyTag.tag(result.view, rawKey: element.key, viewModel: result.viewModel)
+            componentRegistry.registerParticipant(screenRoot: screenRoot, key: tag.keyAtRender, view: result.view, config: element)
         }
         return result
     }

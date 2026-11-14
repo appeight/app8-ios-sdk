@@ -116,6 +116,8 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
                 selectedImage: UIImage(systemName: "\(tab.icon).fill")
             )
 
+            applyBadgeColors(to: navController.tabBarItem, tab: tab)
+
             tabNavigationControllers[tab.id] = navController
             tabIds.append(tab.id)
             viewControllers.append(navController)
@@ -131,6 +133,18 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     }
 
     // MARK: - Badges
+
+    /// Badge background (`badgeColor`, per tab over the bar's) and text color
+    /// (`badgeTextColor`) on the tab's `UITabBarItem`, normal and selected.
+    private func applyBadgeColors(to item: UITabBarItem, tab: DSL.Model.Tab) {
+        if let hex = tab.badgeColor ?? tabBarContent.badgeColor, let color = UIColor(withHexString: hex) {
+            item.badgeColor = color
+        }
+        if let hex = tabBarContent.badgeTextColor, let color = UIColor(withHexString: hex) {
+            item.setBadgeTextAttributes([.foregroundColor: color], for: .normal)
+            item.setBadgeTextAttributes([.foregroundColor: color], for: .selected)
+        }
+    }
 
     private func bindBadges() {
         guard tabBarContent.tabs.contains(where: { $0.badge != nil }) else { return }
@@ -182,9 +196,15 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
 
         switch request.type {
         case .push(let screenId, let params):
+            // A presented modal handles its own pushes.
+            guard presentedViewController == nil, parent?.presentedViewController == nil else { return }
             let screenComponent = try await screenLoader.loadScreen(id: screenId)
             let screenVC = await appService.renderScreen(screenComponent, screenId: screenId, params: params.isEmpty ? nil : params)
-            currentNavController.pushViewController(screenVC, animated: true)
+            if let transition = request.transition, transition.kind == .nativeZoom {
+                NativeZoomTransition.push(screenVC, on: currentNavController, transition: transition, coordinator: nil, logger: context.logger)
+            } else {
+                currentNavController.pushViewController(screenVC, animated: true)
+            }
 
         case .pop:
             currentNavController.popViewController(animated: true)

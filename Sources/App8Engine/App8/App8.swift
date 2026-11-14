@@ -216,7 +216,7 @@ final class A8: App8.DebugInstance {
                     let model = try self.decoder.decode(DSL.Model.App.self, from: appData)
                     self.app = model
                     if let variables = model.variables {
-                        await self.appService?.defineAppVariables(variables)
+                        await self.appService?.defineAppVariables(variables, appId: model.persistenceId)
                     }
                     // Pointer-only entries would self-reference and are skipped (inlineOrNil → nil).
                     let registry: [String: DSL.Model.Animation.Inline] = (model.animations ?? [])

@@ -41,8 +41,17 @@ class CImageView: App8BaseView<DSL.Model.Component.Image.C>, CViewProtocol {
     /// expensive resolvePropertyToString calls on every scroll frame for no reason.
     private func bindVariables(viewModel: CImageViewModel) {
         variablesCancellable?.cancel()
+        // React to the variables the image's own expressions read, plus `item`
+        // and reparent signals ("") for reused cells.
+        var expressions: [String?] = []
+        switch viewModel.component.properties.model {
+        case .remoteAsset(let asset): expressions = [asset.url, asset.name]
+        case .asset(let asset): expressions = [asset.name]
+        default: break
+        }
+        let deps = ExpressionDependencies.names(in: expressions)
         variablesCancellable = viewModel.variablesChanged
-            .filter { $0 == "item" || $0.isEmpty }
+            .filter { name in name == "item" || name.isEmpty || deps?.contains(name) ?? true }
             .prepend("")
             .sink { [weak self] _ in
                 guard let self, let vm = self.viewModel else { return }
@@ -238,4 +247,10 @@ extension CImageView: StreamingUpdatable {
         configureContent(viewModel: vm, animated: animated)
         return vm
     }
+}
+
+// MARK: - ContextMenuHost
+
+extension CImageView: ContextMenuHost {
+    var contextMenuViewModel: ComponentViewModelAbstract? { viewModel }
 }
