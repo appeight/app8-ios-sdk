@@ -425,3 +425,35 @@ struct NativeQAFixTests {
         #expect(button.accessibilityIdentifier == "variantMenu")
     }
 }
+
+@MainActor
+@Suite("Icon follows the variables it reads")
+struct IconDependencyTests {
+    @Test func heartIconUpdatesWhenWishlistToggles() async throws {
+        let harness = RenderHarness()
+        try harness.render("""
+        {
+          "type": "view", "id": "root",
+          "content": {
+            "variables": {
+              "wishlist": { "type": "array", "initialValue": [] },
+              "item": { "type": "object", "initialValue": { "handle": "mask" } }
+            },
+            "children": [{
+              "type": "icon", "id": "heart",
+              "content": { "properties": { "type": "symbol", "name": "{{wishlist.includes(item.handle) ? 'heart.fill' : 'heart'}}" } }
+            }]
+          }
+        }
+        """)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let imageView = try #require(harness.find(UIImageView.self))
+        let before = imageView.image
+        let root: CViewModel = try #require(harness.viewModel("root"))
+        try root.variableStore.setValue(name: "wishlist", value: ["mask"])
+        try await Task.sleep(nanoseconds: 200_000_000)
+        #expect(imageView.image != nil)
+        #expect(imageView.image !== before)
+        #expect(ExpressionDependencies.names(in: ["{{wishlist.includes(item.handle) ? 'a' : 'b'}}"]) == ["wishlist", "item"])
+    }
+}

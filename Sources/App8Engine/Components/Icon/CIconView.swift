@@ -135,8 +135,19 @@ class CIconView: App8BaseView<DSL.Model.Component.Icon.C>, CViewProtocol {
     /// Filters out unrelated variable changes (e.g. scroll offset) to avoid unnecessary work per frame.
     private func bindVariables(viewModel: CIconViewModel) {
         variablesCancellable?.cancel()
+        // React to the variables the icon's own expressions read (e.g. an app
+        // `wishlist` toggled from inside a collection cell), plus `item` and
+        // reparent signals ("") for reused cells.
+        let props = viewModel.currentProperties
+        var expressions: [String?] = [props.tintColor?.value, props.backgroundColor?.value]
+        switch props.model {
+        case .symbol(let symbol): expressions.append(symbol.name)
+        case .asset(let asset): expressions.append(asset.name)
+        default: break
+        }
+        let deps = ExpressionDependencies.names(in: expressions)
         variablesCancellable = viewModel.variablesChanged
-            .filter { $0 == "item" || $0.isEmpty }
+            .filter { name in name == "item" || name.isEmpty || deps?.contains(name) ?? true }
             .sink { [weak self] _ in
                 guard let self, let vm = self.viewModel else { return }
                 self.applyIconContent(viewModel: vm)
