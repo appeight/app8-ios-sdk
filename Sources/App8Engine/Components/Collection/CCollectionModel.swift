@@ -95,8 +95,14 @@ extension DSL.Model.Component.Collection {
         let rows: Int?
 
         // Item sizing
-        let itemWidth: CGFloat?
-        let itemHeight: CGFloat?
+        /// Number, or `"fill"` (horizontal: the collection's frame minus insets).
+        let itemWidthValue: FillableLength?
+        let itemHeightValue: FillableLength?
+        /// Fixed item width; nil for `"fill"` / unset.
+        var itemWidth: CGFloat? { itemWidthValue?.points }
+        var itemHeight: CGFloat? { itemHeightValue?.points }
+        var itemWidthFill: Bool { itemWidthValue?.isFill == true }
+        var itemHeightFill: Bool { itemHeightValue?.isFill == true }
         let aspectRatio: CGFloat?
         let estimatedItemHeight: CGFloat?
         /// Estimated width for self-sizing horizontal cells. When set, cells determine their own width.
@@ -112,6 +118,32 @@ extension DSL.Model.Component.Collection {
 
         // Page tracking (for carousels/sliders)
         let currentPageVariable: String?  // Plain variable name (e.g. "currentPage") to update with current page index
+
+        private enum CodingKeys: String, CodingKey {
+            case type, itemSpacing, lineSpacing, contentInsets, columns, minItemWidth, rows
+            case itemWidthValue = "itemWidth"
+            case itemHeightValue = "itemHeight"
+            case aspectRatio, estimatedItemHeight, estimatedItemWidth, separatorStyle, pagingEnabled
+            case snapToItem, pagingStyle, showsScrollIndicator, scrollEnabled, currentPageVariable
+        }
+
+        /// A number of points or `"fill"`.
+        enum FillableLength: Decodable, Sendable {
+            case points(CGFloat)
+            case fill
+
+            var points: CGFloat? { if case .points(let p) = self { return p }; return nil }
+            var isFill: Bool { if case .fill = self { return true }; return false }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.singleValueContainer()
+                if let n = try? c.decode(Double.self) { self = .points(CGFloat(n)); return }
+                let s = try c.decode(String.self).trimmingCharacters(in: .whitespaces)
+                if s == "fill" { self = .fill; return }
+                if let n = Double(s) { self = .points(CGFloat(n)); return }
+                throw DecodingError.dataCorruptedError(in: c, debugDescription: "Expected a number or \"fill\", got \"\(s)\"")
+            }
+        }
 
         enum LayoutType: String, Decodable, Sendable {
             case vertical, horizontal, grid

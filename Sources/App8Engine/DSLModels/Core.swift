@@ -139,6 +139,8 @@ extension DSL.Model {
         /// System badge on the tab item, usually an expression over app
         /// variables (`"{{length(cart)}}"`). Empty, `0` or nil hides it.
         let badge: String?
+        /// This tab's badge background (hex). Overrides the bar's `badgeColor`.
+        let badgeColor: String?
     }
 
     /// Content for tab bar screens
@@ -151,6 +153,10 @@ extension DSL.Model {
         let tintColor: String?
         /// Color for unselected tab items (hex string)
         let unselectedColor: String?
+        /// Badge background on every tab (hex). Default system red.
+        var badgeColor: String? = nil
+        /// Badge text color (hex). Default white.
+        var badgeTextColor: String? = nil
     }
 
     // MARK: - Navigation Bar

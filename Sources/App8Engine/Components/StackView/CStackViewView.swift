@@ -290,3 +290,9 @@ extension CStackViewView: StreamingUpdatable {
         return vm
     }
 }
+
+// MARK: - ContextMenuHost
+
+extension CStackViewView: ContextMenuHost {
+    var contextMenuViewModel: ComponentViewModelAbstract? { viewModel }
+}

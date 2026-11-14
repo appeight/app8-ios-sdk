@@ -45,7 +45,9 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
                     tabs: entity.content.tabs,
                     initialTab: entity.content.initialTab,
                     tintColor: entity.content.tintColor,
-                    unselectedColor: entity.content.unselectedColor
+                    unselectedColor: entity.content.unselectedColor,
+                    badgeColor: entity.content.badgeColor,
+                    badgeTextColor: entity.content.badgeTextColor
                 ),
                 screenLoader: screenLoader,
                 appService: appService,
@@ -113,6 +115,8 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
         animated: Bool
     ) {
         switch transition?.kind {
+        case .some(.nativeZoom):
+            NativeZoomTransition.push(screenVC, on: navController, transition: transition!, coordinator: navTransitionCoordinator, logger: context.logger)
         case .some(.custom), .some(.shared):
             navTransitionCoordinator.register(transition, for: screenVC)
             navController.pushViewController(screenVC, animated: true)
@@ -187,7 +191,18 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
             context: context
         )
 
-        if style == .custom, let transition, transition.isAnimated {
+        if let transition, transition.kind == .nativeZoom, let zoom = transition.nativeZoom {
+            // Native zoom out of an element on the visible screen.
+            switch style {
+            case .sheet, .pageSheet: modalVC.modalPresentationStyle = .pageSheet
+            case .formSheet: modalVC.modalPresentationStyle = .formSheet
+            default: modalVC.modalPresentationStyle = .fullScreen
+            }
+            let presenting = presentedModal?.topScreenViewController ?? visibleScreenViewController
+            if !NativeZoomTransition.apply(to: modalVC, zoom: zoom, presentingScreen: presenting, logger: context.logger) {
+                modalVC.modalTransitionStyle = .crossDissolve
+            }
+        } else if style == .custom, let transition, transition.isAnimated {
             // Engine-driven custom modal transition.
             let manager = App8TransitionManager(resolved: transition)
             modalVC.modalPresentationStyle = .custom
@@ -225,6 +240,13 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
         }
 
         presentedModal = modalVC
+        modalVC.onDidDismiss = { [weak self, weak modalVC] in
+            // Covers dismissals that bypass `dismissModal` (e.g. the zoom
+            // transition's interactive dismiss).
+            guard let self, self.presentedModal === modalVC else { return }
+            self.presentedModal = nil
+            NotificationCenter.default.post(name: .app8ScreenContextChanged, object: nil)
+        }
         modalVC.presentationController?.delegate = self
         present(modalVC, animated: true)
     }
