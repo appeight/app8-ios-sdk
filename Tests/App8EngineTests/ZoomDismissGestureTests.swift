@@ -54,9 +54,9 @@ struct ZoomDismissGestureTests {
         return (root, gallery)
     }
 
-    private func begins(_ root: UIView, at point: CGPoint, velocity: CGPoint) -> Bool {
+    private func begins(_ root: UIView, at point: CGPoint, velocity: CGPoint, willBegin: Bool = true) -> Bool {
         NativeZoomTransition.shouldBeginDismiss(
-            gesture: .any, location: point, velocity: velocity, willBegin: true, zoomedView: root
+            gesture: .any, location: point, velocity: velocity, willBegin: willBegin, zoomedView: root
         )
     }
 
@@ -135,6 +135,37 @@ struct ZoomDismissGestureTests {
         #expect(!begins(later, at: midGallery, velocity: left))
     }
 
+    // UIKit asks with `willBegin == false` for a back drag over the pager's
+    // later page (measured in Shoppu, SDK 0.5.2: the old early `return true`
+    // popped the screen instead of paging back).
+    @Test func uikitDefaultDoesNotOverrideTheGallerysClaim() {
+        let (later, _) = makeScreen(page: 1)
+        #expect(!begins(later, at: midGallery, velocity: right, willBegin: false))
+        let (last, _) = makeScreen(page: pages - 1)
+        #expect(!begins(last, at: midGallery, velocity: left, willBegin: false))
+        let (zoomed, gallery) = makeScreen(page: 0)
+        gallery.maximumZoomScale = 3
+        gallery.delegate = ZoomDelegate.shared
+        ZoomDelegate.shared.view = gallery.subviews[0]
+        gallery.zoomScale = 2
+        #expect(!begins(zoomed, at: midGallery, velocity: CGPoint(x: 9, y: 400), willBegin: false))
+        // Nothing claims it: the pop still begins.
+        let (first, _) = makeScreen(page: 0)
+        #expect(begins(first, at: midGallery, velocity: right, willBegin: false))
+    }
+
+    // On a real drag the pager's pan has often begun (not yet scrolled) when
+    // the dismiss is asked; once the dismiss begins the pager must let go.
+    @Test func dismissReleasesThePagersPan() {
+        let (root, gallery) = makeScreen(page: 0, scrollClass: ToggleCountingScrollView.self)
+        let pan = gallery.panGestureRecognizer as UIGestureRecognizer
+        let counter = gallery as! ToggleCountingScrollView
+        counter.watch(pan)
+        NativeZoomTransition.releaseHorizontalScrollers(at: midGallery, in: root)
+        #expect(counter.disabledCount == 1)
+        #expect(pan.isEnabled)
+    }
+
     @Test func disabledScrollerNeverKeepsThePan() {
         let (root, gallery) = makeScreen(page: 1)
         gallery.isScrollEnabled = false
@@ -155,4 +186,18 @@ private final class MovingScrollView: UIScrollView {
     var movingByFinger = false
     override var isDecelerating: Bool { movingByMomentum }
     override var isDragging: Bool { movingByFinger }
+}
+
+/// Counts how often its pan was switched off (the release toggles it).
+@MainActor
+private final class ToggleCountingScrollView: UIScrollView {
+    private(set) var disabledCount = 0
+    private var observation: NSKeyValueObservation?
+    func watch(_ pan: UIGestureRecognizer) {
+        observation = pan.observe(\.isEnabled, options: [.new]) { [weak self] _, change in
+            MainActor.assumeIsolated {
+                if change.newValue == false { self?.disabledCount += 1 }
+            }
+        }
+    }
 }

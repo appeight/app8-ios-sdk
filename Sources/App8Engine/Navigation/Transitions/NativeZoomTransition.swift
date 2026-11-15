@@ -185,20 +185,52 @@ enum NativeZoomTransition {
 
     /// `none`: never. `down`: a mostly vertical, downward drag. `any`: any drag
     /// the content under the finger cannot use itself (a zoomed scroll view, a
-    /// horizontal pan a horizontal scroller can still scroll with, or the
+    /// horizontal pan the innermost horizontal scroller claims, or the
     /// pull-down of a stretchy-top scroll view).
+    ///
+    /// When the dismiss begins, the horizontal scrollers under the finger stop
+    /// tracking this drag, so a pager never rubber-bands while the screen
+    /// shrinks: one drag, one owner.
     private static func shouldBeginDismiss(
         gesture: DSL.Model.ScreenTransition.DismissGesture,
         context: UIViewController.Transition.ZoomOptions.InteractionContext,
         zoomedView: UIView?
     ) -> Bool {
-        shouldBeginDismiss(
+        let begins = shouldBeginDismiss(
             gesture: gesture,
             location: context.location,
             velocity: CGPoint(x: context.velocity.dx, y: context.velocity.dy),
             willBegin: context.willBegin,
             zoomedView: zoomedView
         )
+        if begins, let zoomedView {
+            releaseHorizontalScrollers(at: context.location, in: zoomedView)
+        }
+        return begins
+    }
+
+    /// Cancels the pan of every horizontally scrollable view under `location`
+    /// (toggling `isEnabled` cancels a running recognizer and drops the touches
+    /// it was tracking), so it cannot scroll or bounce along with the dismiss.
+    static func releaseHorizontalScrollers(at location: CGPoint, in root: UIView) {
+        guard let hit = root.hitTest(location, with: nil) else { return }
+        var view: UIView? = hit
+        while let current = view, current !== root.superview {
+            if let scroll = current as? UIScrollView, scrollsHorizontally(scroll) {
+                let pan = scroll.panGestureRecognizer
+                if pan.isEnabled {
+                    pan.isEnabled = false
+                    pan.isEnabled = true
+                }
+            }
+            view = current.superview
+        }
+    }
+
+    private static func scrollsHorizontally(_ scroll: UIScrollView) -> Bool {
+        guard scroll.isScrollEnabled else { return false }
+        let inset = scroll.adjustedContentInset
+        return scroll.contentSize.width + inset.right - scroll.bounds.width > -inset.left + 1
     }
 
     /// `interactiveDismissShouldBegin` decision, testable without a live
@@ -216,7 +248,12 @@ enum NativeZoomTransition {
         case .down:
             return velocity.y > 0 && abs(velocity.y) > abs(velocity.x)
         case .any:
-            guard willBegin else { return true }
+            // `willBegin` is UIKit's own default: false while a scroll view under
+            // the finger could use the drag. It is not trusted either way (it
+            // says false for a back drag over a pager's later page, and true
+            // while a pager's pan has already begun): the walk below decides.
+            // With nothing under the finger claiming the drag, the dismiss
+            // begins even where UIKit would not.
             let horizontal = abs(velocity.x) > abs(velocity.y)
             // A pan from the leading edge always dismisses, even over a pager.
             if let root = zoomedView, horizontal {
