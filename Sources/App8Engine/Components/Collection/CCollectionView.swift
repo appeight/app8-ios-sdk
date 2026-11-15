@@ -37,14 +37,26 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     private var sections: [CCollectionViewModel.Section] = []
     private var cancellables = Set<AnyCancellable>()
     private var isViewHierarchySetup = false
-    private var lastReportedPageIndex: Int = -1
+    /// The page this pager itself shows, as last observed from its offset (or
+    /// set when it follows the variable). `nil` until the first report. The
+    /// pager writes `currentPageVariable` only when this changes, never just
+    /// because the variable holds another value: two pagers bound to one
+    /// variable with different page counts would otherwise write their own
+    /// pages back and forth.
+    private var ownPageIndex: Int?
+    /// Last offset seen by the page tracker. Compositional layout calls the
+    /// visible-items handler on every layout pass; only a real offset change
+    /// is a page report.
+    private var lastPageTrackingOffset: CGPoint?
     /// Page requested by a write to `currentPageVariable` that could not be
     /// applied yet (no layout / width). Applied in `layoutSubviews`.
     private var pendingPageIndex: Int?
     /// True while an animated scroll started by a `currentPageVariable` write
-    /// runs: its in-between pages are not written back (two pagers bound to
-    /// one variable would otherwise fight).
+    /// runs: its in-between pages are not written back. It expires after a
+    /// second, so a pager never waits forever for an animation end that UIKit
+    /// does not report, and a user drag takes over at once.
     private var isScrollingFromVariable = false
+    private var variableScrollToken = 0
     private var isSelfSizing = false             // true when scrollEnabled == false
     private var selfSizingHeightConstraint: NSLayoutConstraint?
     private var cellsSelfSizeWidth = false       // true when horizontal + estimatedItemWidth
@@ -523,14 +535,13 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
               let varName = config.currentPageVariable else { return }
         if let initial = Self.pageIndex(viewModel.variableStore.getValue(name: varName)), initial > 0 {
             pendingPageIndex = initial
-            lastReportedPageIndex = initial
         }
         viewModel.variableStore.anyVariableChanged
             .filter { $0 == varName }
             .compactMap { [weak viewModel] _ in Self.pageIndex(viewModel?.variableStore.getValue(name: varName)) }
             .sink { [weak self] page in
-                guard let self, page != self.lastReportedPageIndex else { return }
-                self.lastReportedPageIndex = page
+                // Already there (or this pager's own write coming back).
+                guard let self, page != self.ownPageIndex else { return }
                 self.pendingPageIndex = page
                 self.applyPendingPage(animated: self.window != nil)
             }
@@ -553,18 +564,31 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
               collectionView.numberOfSections > 0 else { return }
         let count = collectionView.numberOfItems(inSection: 0)
         guard count > 0 else { return }
+        // A pager with fewer pages than the variable asks for goes to its last
+        // page and stays quiet: the page it shows is a follow, not a change of
+        // its own, so it is not written back.
         let clamped = max(0, min(page, count - 1))
         pendingPageIndex = nil
+        let alreadyThere = ownPageIndex == clamped
+        ownPageIndex = clamped
+        guard !alreadyThere else { return }
         if animated {
             isScrollingFromVariable = true
+            variableScrollToken += 1
+            let token = variableScrollToken
             // Orthogonal sections report no scroll-animation end; time it out.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                self?.isScrollingFromVariable = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                guard let self, self.variableScrollToken == token else { return }
+                self.isScrollingFromVariable = false
             }
         }
         if usesNativeHorizontalPaging {
-            let x = CGFloat(clamped) * collectionView.bounds.width
-            collectionView.setContentOffset(CGPoint(x: x, y: collectionView.contentOffset.y), animated: animated)
+            let width = collectionView.bounds.width
+            var x = CGFloat(clamped) * width
+            // Never past the content's end, so the scroll can finish.
+            let maxX = collectionView.contentSize.width - width
+            if maxX >= 0 { x = min(x, maxX) }
+            collectionView.setContentOffset(CGPoint(x: max(0, x), y: collectionView.contentOffset.y), animated: animated)
         } else {
             collectionView.layoutIfNeeded()
             collectionView.scrollToItem(at: IndexPath(item: clamped, section: 0), at: .centeredHorizontally, animated: animated)
@@ -600,6 +624,18 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             collectionView.layoutIfNeeded()
             applyPendingPage(animated: false)
         }
+        recordRestingPageIfNeeded()
+    }
+
+    /// Once the pager has pages and a width, the page it rests on is its own
+    /// page, so the first scroll the user makes is a change from there.
+    private func recordRestingPageIfNeeded() {
+        guard ownPageIndex == nil, pendingPageIndex == nil,
+              viewModel?.component.properties.layout?.currentPageVariable != nil,
+              collectionView.bounds.width > 0,
+              collectionView.numberOfSections > 0,
+              collectionView.numberOfItems(inSection: 0) > 0 else { return }
+        ownPageIndex = Int((collectionView.contentOffset.x / collectionView.bounds.width).rounded())
     }
 
     /// Handles page change detection for horizontal paging collections
@@ -608,11 +644,20 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
               let varName = config.currentPageVariable,
               containerWidth > 0 else { return }
 
+        guard offset.x.isFinite, offset != lastPageTrackingOffset else { return }
+        lastPageTrackingOffset = offset
         guard !isScrollingFromVariable else { return }
-        let currentPage = Int(round(offset.x / containerWidth))
-        guard currentPage != lastReportedPageIndex else { return }
-        lastReportedPageIndex = currentPage
-        try? viewModel?.variableStore.setValue(name: varName, value: currentPage)
+        let currentPage = Int((offset.x / containerWidth).rounded())
+        // The first report only records where the pager is.
+        guard let previous = ownPageIndex else {
+            ownPageIndex = currentPage
+            return
+        }
+        guard currentPage != previous else { return }
+        ownPageIndex = currentPage
+        guard let store = viewModel?.variableStore,
+              Self.pageIndex(store.getValue(name: varName)) != currentPage else { return }
+        try? store.setValue(name: varName, value: currentPage)
     }
 
     private func orthogonalBehavior(for config: DSL.Model.Component.Collection.Layout?) -> UICollectionLayoutSectionOrthogonalScrollingBehavior {
@@ -963,6 +1008,8 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                         self?.collectionView.layoutIfNeeded()
                         self?.applyPendingPage(animated: false)
                     }
+                } else {
+                    DispatchQueue.main.async { [weak self] in self?.recordRestingPageIfNeeded() }
                 }
 
                 // HACK: Force layout invalidation for self-sizing horizontal cells.

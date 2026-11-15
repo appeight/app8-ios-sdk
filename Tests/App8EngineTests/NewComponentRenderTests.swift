@@ -151,12 +151,13 @@ final class NewComponentRenderTests: XCTestCase {
 
     // MARK: - PageControl
 
-    func testPageControlRendersUIPageControl() throws {
+    func testPageControlRendersMediaCapsule() throws {
         let json = """
         {
             "type": "pageControl", "id": "test-dots",
             "content": {
                 "properties": { "numberOfPages": "5", "currentPage": "2" },
+                "style": { "pageIndicatorTintColor": "#0000003D", "currentPageIndicatorTintColor": "#2D4D3A" },
                 "layout": { "width": 200, "height": 30 }
             }
         }
@@ -165,10 +166,28 @@ final class NewComponentRenderTests: XCTestCase {
         let pageView = findView(ofType: CPageControlView.self, in: superview)
         XCTAssertNotNil(pageView, "CPageControlView should be rendered")
 
-        let uiPageControl = findView(ofType: UIPageControl.self, in: superview)
-        XCTAssertNotNil(uiPageControl, "UIPageControl should be in hierarchy")
-        XCTAssertEqual(uiPageControl?.numberOfPages, 5)
-        XCTAssertEqual(uiPageControl?.currentPage, 2)
+        let control = try XCTUnwrap(findView(ofType: MediaPageControl.self, in: superview))
+        XCTAssertEqual(control.numberOfPages, 5)
+        XCTAssertEqual(control.currentPage, 2)
+        // Capsule sized like the web renderer: pages * 16 + 10 by 26.
+        XCTAssertEqual(control.intrinsicContentSize, CGSize(width: 90, height: 26))
+        XCTAssertNotNil(findView(ofType: UIVisualEffectView.self, in: control), "blurred capsule behind the dots")
+
+        // White dots whatever the DSL tints: current opaque, others at 50 %.
+        control.frame = CGRect(origin: .zero, size: control.intrinsicContentSize)
+        control.layoutIfNeeded()
+        let dots = (control.layer.sublayers ?? []).filter { $0.bounds.width == MediaPageControl.dotSize }
+        XCTAssertEqual(dots.count, 5)
+        let alphas = dots.compactMap { $0.backgroundColor.map { UIColor(cgColor: $0) } }.map { color -> CGFloat in
+            var white: CGFloat = 0, alpha: CGFloat = 0
+            color.getWhite(&white, alpha: &alpha)
+            XCTAssertEqual(white, 1, accuracy: 0.01)
+            return alpha
+        }
+        XCTAssertEqual(alphas.map { ($0 * 10).rounded() / 10 }, [0.5, 0.5, 1, 0.5, 0.5])
+        // 7 pt dots, 9 pt apart, centred.
+        XCTAssertEqual(dots[1].frame.minX - dots[0].frame.maxX, 9, accuracy: 0.01)
+        XCTAssertEqual(dots[0].frame.minX, control.bounds.width - dots[4].frame.maxX, accuracy: 0.01)
     }
 
     // MARK: - Picker (Menu)
