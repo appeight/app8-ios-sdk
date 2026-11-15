@@ -5,8 +5,9 @@
 //  `interactiveDismissShouldBegin` for a zoom-pushed screen shaped like the
 //  Facetheory product page: a stretchy-top vertical scroll view whose top child
 //  is a 500 pt horizontal paging gallery. A back drag over the gallery on its
-//  first page must start the full-width pop instead of being vetoed for the
-//  pager (it used to be, so a pop begun mid-screen did nothing).
+//  first page, at rest, starts the full-width pop; any drag the gallery can
+//  use (it is moving, has content that way, or the drag is forward) stays
+//  with the gallery, so the two never fight over one drag.
 //
 
 import Testing
@@ -21,7 +22,12 @@ struct ZoomDismissGestureTests {
     private let pages = 4
 
     /// root ⊃ stretchy-top scroll ⊃ gallery pager ⊃ page content.
-    private func makeScreen(page: Int, rtl: Bool = false) -> (root: UIView, gallery: UIScrollView) {
+    private func makeScreen(
+        page: Int,
+        rtl: Bool = false,
+        scrollClass: UIScrollView.Type = UIScrollView.self,
+        configure: (UIScrollView) -> Void = { _ in }
+    ) -> (root: UIView, gallery: UIScrollView) {
         let root = UIView(frame: CGRect(x: 0, y: 0, width: width, height: 844))
         if rtl { root.semanticContentAttribute = .forceRightToLeft }
 
@@ -31,14 +37,16 @@ struct ZoomDismissGestureTests {
         scroll.contentSize = CGSize(width: width, height: 1400)
         root.addSubview(scroll)
 
-        let gallery = UIScrollView(frame: CGRect(x: 0, y: 0, width: width, height: 500))
+        let gallery = scrollClass.init(frame: CGRect(x: 0, y: 0, width: width, height: 500))
         gallery.isPagingEnabled = true
+        if rtl { gallery.semanticContentAttribute = .forceRightToLeft }
         gallery.contentInsetAdjustmentBehavior = .never
         gallery.contentSize = CGSize(width: width * CGFloat(pages), height: 500)
         for i in 0..<pages {
             gallery.addSubview(UIView(frame: CGRect(x: width * CGFloat(i), y: 0, width: width, height: 500)))
         }
         gallery.contentOffset = CGPoint(x: width * CGFloat(page), y: 0)
+        configure(gallery)
         scroll.addSubview(gallery)
 
         let info = UIView(frame: CGRect(x: 0, y: 500, width: width, height: 900))
@@ -66,11 +74,31 @@ struct ZoomDismissGestureTests {
         #expect(!begins(root, at: midGallery, velocity: right))
     }
 
-    @Test func forwardDragPagesWhileGalleryHasMorePages() {
+    @Test func forwardDragAlwaysStaysWithTheGallery() {
         let (root, _) = makeScreen(page: 0)
         #expect(!begins(root, at: midGallery, velocity: left))
+        // On the last page it rubber-bands; it never dismisses.
         let (last, _) = makeScreen(page: pages - 1)
-        #expect(begins(last, at: midGallery, velocity: left))
+        #expect(!begins(last, at: midGallery, velocity: left))
+    }
+
+    @Test func movingGalleryKeepsABackDragOnItsFirstPage() {
+        // Snapping back to page 0 from a fling: offset already at 0, still decelerating.
+        let (decelerating, _) = makeScreen(page: 0, scrollClass: MovingScrollView.self) { ($0 as! MovingScrollView).movingByMomentum = true }
+        #expect(!begins(decelerating, at: midGallery, velocity: right))
+        let (dragging, _) = makeScreen(page: 0, scrollClass: MovingScrollView.self) { ($0 as! MovingScrollView).movingByFinger = true }
+        #expect(!begins(dragging, at: midGallery, velocity: right))
+        // Bouncing back after being pulled past its leading end.
+        let (bouncing, gallery) = makeScreen(page: 0)
+        gallery.contentOffset.x = -30
+        #expect(!begins(bouncing, at: midGallery, velocity: right))
+    }
+
+    @Test func galleryWithLeadingInsetAtRestLeavesABackDragToThePop() {
+        let (root, gallery) = makeScreen(page: 0)
+        gallery.contentInset.left = 16
+        gallery.contentOffset.x = -16
+        #expect(begins(root, at: midGallery, velocity: right))
     }
 
     @Test func leadingEdgeDragPopsOverAnyPage() {
@@ -119,4 +147,12 @@ private final class ZoomDelegate: NSObject, UIScrollViewDelegate {
     static let shared = ZoomDelegate()
     weak var view: UIView?
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { view }
+}
+
+/// A scroll view whose motion state a test can set.
+private final class MovingScrollView: UIScrollView {
+    var movingByMomentum = false
+    var movingByFinger = false
+    override var isDecelerating: Bool { movingByMomentum }
+    override var isDragging: Bool { movingByFinger }
 }
