@@ -171,7 +171,18 @@ class CPickerView: App8BaseView<DSL.Model.Component.Picker.C>, CViewProtocol {
             }
             return action
         }
-        button.menu = UIMenu(options: .singleSelection, children: actions)
+        // A button with `changesSelectionAsPrimaryAction` forces a selection in
+        // its menu, and UIKit asserts (-[UIMenu establishInitialDefaultSingleSelection])
+        // when the menu has nothing to select. A reused card can switch to a
+        // product with no variants, so drop the menu instead of handing UIKit
+        // an empty one.
+        if actions.isEmpty {
+            button.changesSelectionAsPrimaryAction = false
+            button.menu = nil
+        } else {
+            button.menu = UIMenu(options: .singleSelection, children: actions)
+            button.changesSelectionAsPrimaryAction = true
+        }
         let selectedLabel = options.first(where: { $0.value == selection })?.label
         setMenuTitle(selectedLabel ?? viewModel.currentProperties.placeholder ?? (selection.isEmpty ? "Select" : selection))
     }
