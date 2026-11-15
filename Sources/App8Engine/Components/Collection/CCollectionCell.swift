@@ -17,6 +17,13 @@ final class CCollectionCell: UICollectionViewCell {
     /// Whether this cell should self-size its width (horizontal collections with estimatedItemWidth)
     var selfSizesWidth = false
 
+    /// Self-sizing grid rows: given this cell's index path and natural height,
+    /// the height of its row (the tallest natural height among the row's items).
+    /// Nil outside self-sizing grids. The compositional layout's horizontal
+    /// `.estimated` group already makes the row as tall as its tallest item but
+    /// leaves the shorter items at their own height; this stretches them.
+    var gridRowHeight: ((IndexPath, CGFloat) -> CGFloat)?
+
     /// Identity of the outer item this cell was last configured for, used to save
     /// nested scroll offsets under the right key when the cell ends display.
     var scrollStateItemKey: String?
@@ -45,22 +52,45 @@ final class CCollectionCell: UICollectionViewCell {
         setNeedsLayout()
         layoutIfNeeded()
 
-        let size = contentView.systemLayoutSizeFitting(
-            layoutAttributes.size,
-            withHorizontalFittingPriority: selfSizesWidth ? .fittingSizeLevel : .required,
-            verticalFittingPriority: .fittingSizeLevel
-        )
+        let size = fittingSize(width: layoutAttributes.size.width, height: layoutAttributes.size.height)
 
         var frame = layoutAttributes.frame
         if selfSizesWidth { frame.size.width = ceil(size.width) }
         frame.size.height = ceil(size.height)
-        layoutAttributes.frame = frame
+        // The natural size: `needsRemeasure` compares against it, not the row height.
         reportedSize = frame.size
+        if let gridRowHeight {
+            frame.size.height = gridRowHeight(layoutAttributes.indexPath, frame.size.height)
+        }
+        layoutAttributes.frame = frame
 
         return layoutAttributes
     }
 
-    /// The size this cell last reported to the layout (nil: never measured).
+    /// The content's natural size at `width`.
+    ///
+    /// Height is measured from a compressed target (the smallest height the
+    /// constraints allow), not from the frame the layout proposes. A template
+    /// whose footer hangs off a `>=` gap (`top >= cardInfo.bottom + 14`, the
+    /// pattern collections.md gives for equal-height grid rows) is ambiguous in
+    /// height; fitted against the proposed frame (the `estimatedItemHeight`, or
+    /// the row height it was stretched to) the solver lands on that frame, so
+    /// cards kept the estimate's empty space and rows could only ever grow.
+    /// In a self-sizing grid the row then takes its tallest item's height
+    /// (`gridRowHeight`).
+    ///
+    /// Self-sizing-width cells (horizontal strips, fixed height) keep the
+    /// proposed height: their width may depend on it.
+    private func fittingSize(width: CGFloat, height: CGFloat) -> CGSize {
+        let targetHeight = selfSizesWidth ? height : UIView.layoutFittingCompressedSize.height
+        return contentView.systemLayoutSizeFitting(
+            CGSize(width: width, height: targetHeight),
+            withHorizontalFittingPriority: selfSizesWidth ? .fittingSizeLevel : .required,
+            verticalFittingPriority: .fittingSizeLevel
+        )
+    }
+
+    /// The natural size this cell last measured (nil: never measured).
     private var reportedSize: CGSize?
 
     /// Whether the content's fitting size now differs from the size last
@@ -68,11 +98,7 @@ final class CCollectionCell: UICollectionViewCell {
     func needsRemeasure() -> Bool {
         guard let reported = reportedSize else { return false }
         layoutIfNeeded()
-        let size = contentView.systemLayoutSizeFitting(
-            CGSize(width: reported.width, height: UIView.layoutFittingCompressedSize.height),
-            withHorizontalFittingPriority: selfSizesWidth ? .fittingSizeLevel : .required,
-            verticalFittingPriority: .fittingSizeLevel
-        )
+        let size = fittingSize(width: reported.width, height: reported.height)
         return abs(ceil(size.height) - reported.height) > 0.5 || (selfSizesWidth && abs(ceil(size.width) - reported.width) > 0.5)
     }
 
