@@ -177,6 +177,33 @@ struct PickerCommerceTests {
         #expect(button.showsMenuAsPrimaryAction)
         #expect(button.changesSelectionAsPrimaryAction)
     }
+
+    /// A reused card can switch to a product with no variants. UIKit asserts
+    /// (`-[UIMenu establishInitialDefaultSingleSelection]`) when a button that
+    /// changes selection gets a single-selection menu with no children, so the
+    /// picker must not hand it one. TestFlight 1.0.1 (5) crashed here.
+    @Test func optionsBecomingEmptyDoesNotCrash() async throws {
+        let harness = RenderHarness()
+        try harness.render(Self.variantMenu)
+        let vm: CPickerViewModel = try #require(harness.viewModel("root.variantMenu"))
+        let button = try #require(harness.find(UIButton.self))
+        // UIKit only runs the automatic selection when the button is on screen.
+        var root: UIView = button
+        while let parent = root.superview { root = parent }
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.addSubview(root)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        try vm.variableStore.setValue(name: "item", value: ["handle": "oil", "variants": [Any]()])
+        try await Task.sleep(for: .milliseconds(150))  // options arrive on the main queue
+        #expect(vm.currentOptions.isEmpty)
+        #expect(button.menu == nil)
+
+        try vm.variableStore.setValue(name: "item", value: ["handle": "mask", "variant": "100", "variants": [["value": "50", "label": "50 ml"], ["value": "100", "label": "100 ml"]]])
+        try await Task.sleep(for: .milliseconds(150))  // options arrive on the main queue
+        #expect(button.menu?.children.count == 2)
+    }
 }
 
 // MARK: - Tab bar badge colors
