@@ -207,6 +207,25 @@ final class BottomBarTests: XCTestCase {
         XCTAssertEqual(screen.view.safeAreaInsets.bottom, base + 70, accuracy: 0.5)
     }
 
+    func testHidingKeepsAKeyboardInset() throws {
+        let screen = try render(bottomBar: #"{ "component": \#(Self.buttonBar), "hidden": "{{barHidden}}" }"#)
+        let window = show(UINavigationController(rootViewController: screen))
+        let bar = try XCTUnwrap(screen.bottomBar)
+        // The keyboard binding adds its inset on top of the bar's height.
+        let keyboard: CGFloat = 250
+        screen.additionalSafeAreaInsets.bottom += keyboard
+        settle(window, 0.1)
+        let keyboardBar = bar.containerView.convert(bar.containerView.bounds, to: screen.view)
+        XCTAssertEqual(keyboardBar.maxY, screen.view.bounds.maxY, accuracy: 0.5, "the keyboard does not move the bar")
+
+        try setVariable("barHidden", true)
+        settle(window, 0.6)
+        XCTAssertEqual(screen.additionalSafeAreaInsets.bottom, keyboard, accuracy: 0.5, "only the bar's height is removed")
+        try setVariable("barHidden", false)
+        settle(window, 0.6)
+        XCTAssertEqual(screen.additionalSafeAreaInsets.bottom, keyboard + 70, accuracy: 0.5)
+    }
+
     func testBarThatStartsHiddenTakesNoSpace() throws {
         let screen = try render(bottomBar: #"{ "component": \#(Self.buttonBar), "hidden": true }"#)
         let window = show(UINavigationController(rootViewController: screen))

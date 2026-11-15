@@ -298,6 +298,51 @@ final class NativeVisibilityTests: XCTestCase {
         _ = home
     }
 
+    // MARK: - Collection cells
+
+    func testOnlyOnScreenCollectionCellsAreVisible() throws {
+        let items = (0..<30).map { #"{"id":"i\#($0)"}"# }.joined(separator: ",")
+        let list = """
+        "children": [
+            { "type": "collection", "id": "list",
+              "content": {
+                "properties": { "data": "{{rows}}", "layout": { "type": "vertical", "itemSpacing": 0, "estimatedItemHeight": 200 } },
+                "layout": { "top": 0, "leading": 0, "trailing": 0, "bottom": 0 },
+                "template": { "id": "row", "type": "view",
+                  "content": { "layout": { "height": 200 },
+                    "children": [
+                      { "id": "cellProbe", "type": "native",
+                        "content": { "properties": { "module": "\(Self.module)" },
+                          "layout": { "leading": 0, "trailing": 0, "top": 0, "bottom": 0 } } }
+                    ] } }
+              } }
+        ]
+        """
+        let json = """
+        { "id": "feed", "type": "screen",
+          "content": { "variables": { "rows": { "type": "array", "initialValue": [\(items)] } }, \(list) } }
+        """
+        let component = try JSONDecoder().decode(DSL.Model.Component.Any.self, from: Data(json.utf8))
+        let screen = try XCTUnwrap(service.renderScreen(component) as? ScreenViewController)
+        _ = show(UINavigationController(rootViewController: screen))
+        waitUntil { probe.contexts.contains { $0.isVisible } }
+        drain(0.3)
+
+        func collectionView(in view: UIView) -> UICollectionView? {
+            (view as? UICollectionView) ?? view.subviews.lazy.compactMap(collectionView).first
+        }
+        let collection = try XCTUnwrap(collectionView(in: screen.view))
+        let firstVisible = probe.contexts.filter(\.isVisible)
+        XCTAssertFalse(firstVisible.isEmpty)
+        XCTAssertLessThan(firstVisible.count, 30, "cells below the fold are not visible")
+
+        collection.setContentOffset(CGPoint(x: 0, y: collection.contentSize.height - collection.bounds.height), animated: false)
+        collection.layoutIfNeeded()
+        drain(0.3)
+        XCTAssertTrue(firstVisible.allSatisfy { !$0.isVisible }, "scrolled-out cells report false")
+        XCTAssertTrue(probe.contexts.contains { $0.isVisible }, "cells now on screen report true")
+    }
+
     // MARK: - Snapshot
 
     func testOffscreenRenderIsNeverVisible() throws {
