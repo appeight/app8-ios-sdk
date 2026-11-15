@@ -49,6 +49,8 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     private var selfSizingHeightConstraint: NSLayoutConstraint?
     private var cellsSelfSizeWidth = false       // true when horizontal + estimatedItemWidth
     private var remeasureScheduled = false
+    /// Natural heights of self-sizing grid cells, by index path (see `gridRowHeight`).
+    private var gridNaturalHeights: [IndexPath: CGFloat] = [:]
     /// Offsets of scrollables nested in this collection's cells (e.g. horizontal shelves
     /// in a vertical list), so they survive cell reuse.
     private var nestedScrollCache = NestedScrollOffsetCache()
@@ -917,6 +919,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                 if Self.itemScrollKeys(self.sections) != Self.itemScrollKeys(newSections) {
                     self.nestedScrollCache.reset()
                 }
+                self.gridNaturalHeights.removeAll()
                 guard !self.sectionsStructurallyEqual(self.sections, newSections) else {
                     // Same shape, new item data (e.g. a cart line's quantity):
                     // push it into the live cells instead of a full reload.
@@ -1255,6 +1258,9 @@ extension CCollectionView: UICollectionViewDataSource {
             return collectionView.dequeueReusableCell(withReuseIdentifier: CCollectionCell.reuseId, for: indexPath)
         }
         cell.selfSizesWidth = cellsSelfSizeWidth
+        cell.gridRowHeight = selfSizingGridColumns(inSection: indexPath.section) != nil
+            ? { [weak self] indexPath, natural in self?.gridRowHeight(at: indexPath, natural: natural) ?? natural }
+            : nil
 
         let parentPath = viewModel.componentPath + ".cell[\(item.index)]"
 
@@ -1297,6 +1303,52 @@ extension CCollectionView: UICollectionViewDataSource {
         }
 
         return cell
+    }
+
+    // MARK: - Self-sizing grid rows
+
+    /// Columns of a self-sizing grid section (a `grid` layout without
+    /// `itemHeight` or `aspectRatio`, more than one column); nil otherwise.
+    private func selfSizingGridColumns(inSection section: Int) -> Int? {
+        guard let props = viewModel?.component.properties else { return nil }
+        let config: DSL.Model.Component.Collection.Layout?
+        switch props.layout?.type {
+        case .grid:
+            config = props.layout
+        case .vertical, .none:
+            // createMixedSectionsLayout: sectionLayouts[key] → defaultSectionLayout.
+            let key = sections[safe: section]?.key
+            config = key.flatMap { props.sectionLayouts?[$0] } ?? props.defaultSectionLayout
+        case .horizontal:
+            config = nil
+        }
+        guard let config, config.type == .grid, config.itemHeightValue == nil, config.aspectRatio == nil else { return nil }
+        let columns = config.columns ?? 2
+        return columns > 1 ? columns : nil
+    }
+
+    /// The height of the grid row holding `indexPath`: the tallest natural
+    /// height measured so far among its items (collections.md, "Self-sizing
+    /// grid rows"). A new or changed natural height relayouts once so the
+    /// row's other cells take it too.
+    private func gridRowHeight(at indexPath: IndexPath, natural: CGFloat) -> CGFloat {
+        guard let columns = selfSizingGridColumns(inSection: indexPath.section) else { return natural }
+        let previous = gridNaturalHeights[indexPath]
+        gridNaturalHeights[indexPath] = natural
+        let count = sections[safe: indexPath.section]?.items.count ?? 0
+        let start = indexPath.item / columns * columns
+        var rowHeight = natural
+        var hasSiblings = false
+        for item in start..<min(start + columns, count) where item != indexPath.item {
+            hasSiblings = true
+            if let height = gridNaturalHeights[IndexPath(item: item, section: indexPath.section)] {
+                rowHeight = max(rowHeight, height)
+            }
+        }
+        if hasSiblings, previous.map({ abs($0 - natural) > 0.5 }) ?? true {
+            scheduleRemeasure()
+        }
+        return rowHeight
     }
 
     /// One layout invalidation per run loop turn, however many cells changed size.
