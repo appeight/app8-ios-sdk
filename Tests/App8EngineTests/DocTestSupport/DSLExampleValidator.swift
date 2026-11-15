@@ -379,7 +379,8 @@ struct DSLExampleValidator {
             if json["tabId"] == nil && json["tabIndex"] == nil {
                 return .failed(error: ValidationError("selectTab action missing 'tabId' or 'tabIndex'"))
             }
-        case "updateVariable", "incrementVariable", "toggleArrayValue":
+        case "updateVariable", "incrementVariable", "toggleArrayValue", "appendToArray",
+             "insertArrayItem", "upsertArrayItem", "removeArrayItem", "incrementArrayItem":
             if json["variableName"] == nil {
                 return .failed(error: ValidationError("\(actionType) action missing 'variableName'"))
             }
@@ -403,12 +404,36 @@ struct DSLExampleValidator {
             if json["destination"] == nil {
                 return .failed(error: ValidationError("completeFlow action missing 'destination'"))
             }
+        case "forEach":
+            if json["items"] == nil || json["actions"] == nil {
+                return .failed(error: ValidationError("forEach action needs 'items' and 'actions'"))
+            }
+        case "with":
+            if json["values"] == nil || json["actions"] == nil {
+                return .failed(error: ValidationError("with action needs 'values' and 'actions'"))
+            }
+        case "request":
+            if json["url"] == nil {
+                return .failed(error: ValidationError("request action missing 'url'"))
+            }
+        case "reloadDatasource":
+            if json["source"] == nil {
+                return .failed(error: ValidationError("reloadDatasource action missing 'source'"))
+            }
         default:
             // Actions like dismiss, focusNext, focusPrevious, dismissKeyboard have no required fields
             break
         }
 
-        return .success(decodedAs: "Action (structural)")
+        // The engine must decode it too (field types, nested action lists).
+        do {
+            let data = try JSONSerialization.data(withJSONObject: json)
+            _ = try JSONDecoder().decode(DSL.Model.Action.self, from: data)
+        } catch {
+            return .failed(error: ValidationError("\(actionType) action does not decode: \(error)"))
+        }
+
+        return .success(decodedAs: "Action")
     }
 
     struct ValidationError: Error, CustomStringConvertible {
