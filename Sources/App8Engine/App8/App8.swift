@@ -215,6 +215,7 @@ final class A8: App8.DebugInstance {
                 do {
                     let model = try self.decoder.decode(DSL.Model.App.self, from: appData)
                     self.app = model
+                    context.appId = model.id
                     if let variables = model.variables {
                         await self.appService?.defineAppVariables(variables, appId: model.persistenceId)
                     }

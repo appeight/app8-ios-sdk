@@ -55,7 +55,7 @@ extension DSL.Model {
             case key(Key), custom(String)
             
             enum Key: String, Codable {
-                case screen, view, button, image, icon, striplet, label, textField, textView, list, scrollView, tabBarScreen, collection, map, stackView, shape, tableView, activityIndicator, toggle, slider, pageControl, picker, shimmer, datePicker, video
+                case screen, view, button, image, icon, striplet, label, textField, textView, list, scrollView, tabBarScreen, collection, map, stackView, shape, tableView, activityIndicator, toggle, slider, pageControl, picker, shimmer, datePicker, video, native
             }
             
             func isOneOf(_ keys: Key...) -> Bool {
@@ -197,6 +197,8 @@ extension DSL.Model.Component {
                 self.base = try ConcreteEntity<Shimmer.C>(from: decoder)
             case .key(.datePicker):
                 self.base = try ConcreteEntity<DatePicker.C>(from: decoder)
+            case .key(.native):
+                self.base = try ConcreteEntity<Native.C>(from: decoder)
             case .custom(let name):
                 // Pointers to custom types are handled above (no content).
                 // Reaching here means there IS content for an unsupported custom type.
@@ -280,6 +282,9 @@ extension DSL.Model.Component {
                 return entity.content
             }
             if let entity = base as? ConcreteEntity<DatePicker.C> {
+                return entity.content
+            }
+            if let entity = base as? ConcreteEntity<Native.C> {
                 return entity.content
             }
             return nil

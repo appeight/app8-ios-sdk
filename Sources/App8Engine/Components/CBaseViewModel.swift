@@ -414,6 +414,45 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         }
     }
 
+    /// Run `actions` with extra named values in scope, e.g. `event` for a
+    /// native module's events (`{{event.signature.id}}`). The values overlay the
+    /// component's scope: variable actions write through to the real
+    /// variables, navigation params and `emit` payloads read the overlay.
+    /// Same execution split as a collection's `onItemTap`.
+    func executeActions(_ actions: [DSL.Model.Action], scope values: [String: Any], label: String) {
+        var context = getVariableContext()
+        for (name, value) in values {
+            context = context.overlaying(name, value: value)
+        }
+        let handler = VariableActionHandler()
+        handler.logger = service.context.logger
+        for action in actions {
+            switch action.type {
+            case .updateVariable, .incrementVariable, .updateMultipleVariables, .resetVariables, .toggleArrayValue, .appendToArray, .incrementArrayItem:
+                do {
+                    try handler.execute(action: action, store: variableStore, context: context)
+                } catch {
+                    service.context.logger.error("Failed to execute \(label) action: \(error)")
+                }
+            default:
+                executeAction(action, context: context)
+            }
+        }
+    }
+
+    /// Post an engine-originated event (not an authored `emit`) on the
+    /// instance event bus, tagged with this component.
+    func dispatchToEventBus(name: String, payload: [String: Any]) {
+        service.context.eventBus.dispatch(App8Event(
+            name: name,
+            screenId: screenIdForEvents,
+            componentId: leafComponentId,
+            componentType: componentTypeKey,
+            locale: currentLocale,
+            payload: payload
+        ))
+    }
+
     /// Fire row-anchored tap analytics on behalf of a TableView row. Rows
     /// aren't full Component view models, so `fireTriggerAnalytics` (which
     /// attributes to the *enclosing* component) wouldn't tag events with the
@@ -471,12 +510,12 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     /// Resolve a `[String: AnyCodableValue]` against the variable scope:
     /// string values get `{{var}}` interpolation, other scalars pass through.
     /// Nested arrays/dicts are passed through unchanged (v1 limitation).
-    fileprivate func resolvePayload(_ raw: [String: AnyCodableValue]?) -> [String: Any] {
+    fileprivate func resolvePayload(_ raw: [String: AnyCodableValue]?, context: VariableContext? = nil) -> [String: Any] {
         guard let raw else { return [:] }
         var resolved: [String: Any] = [:]
         for (key, codable) in raw {
             if let s = codable.value as? String {
-                resolved[key] = resolveProperty(s)
+                resolved[key] = resolveProperty(s, context: context)
             } else {
                 resolved[key] = codable.value
             }
@@ -496,7 +535,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     ///
     /// Set by `App8Service.renderScreenSync` at render-root construction;
     /// see `screenRootId` there for the fallback rules.
-    fileprivate var screenIdForEvents: String {
+    var screenIdForEvents: String {
         if let dot = componentPath.firstIndex(of: ".") {
             return String(componentPath[..<dot])
         }
@@ -930,7 +969,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
 
         case .openURL:
             if let urlString = action.url {
-                let resolved = resolvePropertyToString(urlString)
+                let resolved = context.map { "\(resolveProperty(urlString, context: $0))" } ?? resolvePropertyToString(urlString)
                 if service.context.analyticsConfig.autoUrlEvents {
                     service.context.analyticsBus.dispatch(App8AnalyticsEvent(
                         name: App8AnalyticsEvent.Auto.urlOpened,
@@ -966,7 +1005,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 service.context.logger.warning("Action .emit missing `name` — dropped. componentPath='\(componentPath)'")
                 return
             }
-            let resolved = resolvePayload(action.payload)
+            let resolved = resolvePayload(action.payload, context: context)
             service.context.eventBus.dispatch(App8Event(
                 name: eventName,
                 screenId: screenIdForEvents,

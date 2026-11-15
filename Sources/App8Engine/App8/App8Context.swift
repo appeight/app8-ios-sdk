@@ -39,6 +39,10 @@ final class App8Context {
     /// form at navigation time. Set during app load from the animation registry.
     var animationResolver: ((String) -> DSL.Model.Animation.Inline?)?
 
+    /// `app.id` of the loaded app. Handed to native components
+    /// (`App8NativeContext.appId`). Set during app load.
+    var appId: String?
+
     init(
         logger: A8Log = A8Log(),
         appearance: App8Appearance = App8Appearance(),

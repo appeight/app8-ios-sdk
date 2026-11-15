@@ -836,6 +836,28 @@ extension App8Service: ComponentRenderer, ComponentService {
             view.configure(viewModel: viewModel, superview: superview, animated: false)
             return .init(view: view, type: component.type, viewModel: viewModel)
 
+        case .native:
+            let viewModel: CNativeViewModel
+            if let reuse = reuseViewModel as? CNativeViewModel {
+                viewModel = reuse
+            } else {
+                guard
+                    let entity: DSLComponent.Native.Entity = component.asConcreteEntity(),
+                    let newVM = CNativeViewModel(component: entity, service: self, componentPath: componentPath, parentVariableStore: parentVariableStore)
+                else {
+                    return errorResult()
+                }
+                viewModel = newVM
+                componentRegistry.register(id: componentPath, viewModel: viewModel)
+                viewModel.setComponentTypeKey(type.rawValue)
+            }
+            let view = CNativeView()
+            view.accessibilityIdentifier = component.id
+            componentRegistry.viewRegistry.register(id: componentPath, view: view)
+            superview.addSubview(view)
+            view.configure(viewModel: viewModel, superview: superview, animated: false)
+            return .init(view: view, type: component.type, viewModel: viewModel)
+
         default:
             return errorResult()
         }
