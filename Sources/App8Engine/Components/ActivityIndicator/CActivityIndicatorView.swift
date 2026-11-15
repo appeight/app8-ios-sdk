@@ -99,7 +99,7 @@ class CActivityIndicatorView: App8BaseView<DSL.Model.Component.ActivityIndicator
         if let indicatorStyle = style?.indicatorStyle {
             indicator.style = indicatorStyle.ui
         }
-        if let hex = style?.color, let color = UIColor(withHexString: hex) {
+        if let color = viewModel?.resolveColor(style?.color) {
             indicator.color = color
         }
     }

@@ -29,6 +29,9 @@ extension DSL.Model {
             var accessibility: DSL.Model.Accessibility? { get }
             /// Long-press context menu. Default nil; `Content<P,S>` provides it.
             var contextMenu: DSL.Model.ContextMenu? { get }
+            /// `properties.isHidden` (boolean as "true"/"false", or an
+            /// expression), read for every component type. Default nil.
+            var hiddenFlag: String? { get }
         }
         
         protocol Entity: Protocol {
@@ -55,7 +58,7 @@ extension DSL.Model {
             case key(Key), custom(String)
             
             enum Key: String, Codable {
-                case screen, view, button, image, icon, striplet, label, textField, textView, list, scrollView, tabBarScreen, collection, map, stackView, shape, tableView, activityIndicator, toggle, slider, pageControl, picker, shimmer, datePicker, video
+                case screen, view, button, image, icon, striplet, label, textField, textView, list, scrollView, tabBarScreen, collection, map, stackView, shape, tableView, activityIndicator, toggle, slider, pageControl, picker, shimmer, datePicker, video, native
             }
             
             func isOneOf(_ keys: Key...) -> Bool {
@@ -95,6 +98,43 @@ extension DSL.Model.Component.EntityContent {
     var interaction: DSL.Model.Interaction? { nil }
     var accessibility: DSL.Model.Accessibility? { nil }
     var contextMenu: DSL.Model.ContextMenu? { nil }
+    var hiddenFlag: String? { nil }
+}
+
+/// `properties.isHidden` on any component: a boolean or an expression string.
+enum HiddenFlagDecoding {
+    private enum Keys: String, CodingKey { case isHidden }
+
+    /// Reads `properties.isHidden` next to the typed properties.
+    static func decode<K: CodingKey>(from container: KeyedDecodingContainer<K>, propertiesKey: K) -> String? {
+        guard let props = try? container.nestedContainer(keyedBy: Keys.self, forKey: propertiesKey) else { return nil }
+        return props.decodeFlagIfPresent(forKey: .isHidden)
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// A boolean-or-expression field: a string as written, a boolean as
+    /// `"true"` / `"false"`, anything else nil.
+    func decodeFlagIfPresent(forKey key: Key) -> String? {
+        if let string = try? decodeIfPresent(String.self, forKey: key) { return string }
+        if let bool = try? decodeIfPresent(Bool.self, forKey: key) { return bool ? "true" : "false" }
+        return nil
+    }
+
+    /// A boolean/number-or-expression property (`isOn`, `value`,
+    /// `numberOfPages`, …): a string as written (an expression or a literal),
+    /// a JSON boolean as `"true"` / `"false"`, a JSON number as its decimal
+    /// text. Anything else throws the string decoding error.
+    func decodeScalarOrExpressionIfPresent(forKey key: Key) throws -> String? {
+        do {
+            return try decodeIfPresent(String.self, forKey: key)
+        } catch {
+            if let bool = try? decode(Bool.self, forKey: key) { return bool ? "true" : "false" }
+            if let int = try? decode(Int.self, forKey: key) { return String(int) }
+            if let double = try? decode(Double.self, forKey: key) { return String(double) }
+            throw error
+        }
+    }
 }
 
 extension DSL.Model.Component.Entity {
@@ -197,6 +237,8 @@ extension DSL.Model.Component {
                 self.base = try ConcreteEntity<Shimmer.C>(from: decoder)
             case .key(.datePicker):
                 self.base = try ConcreteEntity<DatePicker.C>(from: decoder)
+            case .key(.native):
+                self.base = try ConcreteEntity<Native.C>(from: decoder)
             case .custom(let name):
                 // Pointers to custom types are handled above (no content).
                 // Reaching here means there IS content for an unsupported custom type.
@@ -280,6 +322,9 @@ extension DSL.Model.Component {
                 return entity.content
             }
             if let entity = base as? ConcreteEntity<DatePicker.C> {
+                return entity.content
+            }
+            if let entity = base as? ConcreteEntity<Native.C> {
                 return entity.content
             }
             return nil

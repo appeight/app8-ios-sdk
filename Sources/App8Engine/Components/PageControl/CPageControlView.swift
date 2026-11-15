@@ -6,7 +6,7 @@ class CPageControlView: App8BaseView<DSL.Model.Component.PageControl.C>, CViewPr
     weak var materialView: MaterialView?
     let contentView = UIView()
     /// The iOS 26 media look (dark blurred capsule, white dots) for every
-    /// page control; DSL tint colors are not applied on iOS.
+    /// page control; the DSL tint colors, when set, color the dots.
     private let pageControl = MediaPageControl()
 
     override var intrinsicContentSource: UIView? { pageControl }
@@ -102,8 +102,10 @@ class CPageControlView: App8BaseView<DSL.Model.Component.PageControl.C>, CViewPr
         super.applyStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
         applyBaseStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
 
-        // pageIndicatorTintColor / currentPageIndicatorTintColor are ignored:
-        // the dots are always white on the dark capsule.
+        // A hex or a color expression resolved in this component's scope; an
+        // unset or invalid value keeps the default white dots.
+        pageControl.pageIndicatorTintColor = viewModel?.resolveColor(style?.pageIndicatorTintColor)
+        pageControl.currentPageIndicatorTintColor = viewModel?.resolveColor(style?.currentPageIndicatorTintColor)
     }
 }
 

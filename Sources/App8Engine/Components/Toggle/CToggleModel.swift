@@ -25,9 +25,9 @@ extension DSL.Model.Component {
 
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
-                isOn = try c.decodeIfPresent(String.self, forKey: .isOn)
+                isOn = try c.decodeScalarOrExpressionIfPresent(forKey: .isOn)
                 bindVariable = try c.decodeIfPresent(String.self, forKey: .bindVariable)
-                isEnabled = try c.decodeIfPresent(String.self, forKey: .isEnabled)
+                isEnabled = try c.decodeScalarOrExpressionIfPresent(forKey: .isEnabled)
             }
         }
     }

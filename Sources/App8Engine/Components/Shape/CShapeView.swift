@@ -184,12 +184,12 @@ class CShapeView: App8BaseView<DSL.Model.Component.Shape.C>, CViewProtocol {
             progressLayer.lineCap = cap
             progressLayer.strokeEnd = 1
             progressLayer.fillColor = (props.closed == true && props.fillColor != nil)
-                ? (UIColor(withHexString: props.fillColor!)?.resolvedColor(with: traitCollection).cgColor ?? UIColor.clear.cgColor)
+                ? (viewModel?.resolveColor(props.fillColor)?.resolvedColor(with: traitCollection).cgColor ?? UIColor.clear.cgColor)
                 : UIColor.clear.cgColor
 
             // Apply stroke color here too so it survives a layoutSubviews rebuild.
             if let hex = props.strokeColor {
-                progressLayer.strokeColor = UIColor(withHexString: hex)?
+                progressLayer.strokeColor = viewModel?.resolveColor(hex)?
                     .resolvedColor(with: traitCollection).cgColor
             }
         }
@@ -214,7 +214,7 @@ class CShapeView: App8BaseView<DSL.Model.Component.Shape.C>, CViewProtocol {
         switch props.kind {
         case .line:
             if let hex = props.strokeColor {
-                progressLayer.strokeColor = UIColor(withHexString: hex)?
+                progressLayer.strokeColor = viewModel?.resolveColor(hex)?
                     .resolvedColor(with: traitCollection).cgColor
             }
             CATransaction.begin()
@@ -225,22 +225,22 @@ class CShapeView: App8BaseView<DSL.Model.Component.Shape.C>, CViewProtocol {
 
         case .circle:
             progressLayer.fillColor = props.fillColor
-                .flatMap { UIColor(withHexString: $0) }?
+                .flatMap { viewModel?.resolveColor($0) }?
                 .resolvedColor(with: traitCollection).cgColor
                 ?? UIColor.clear.cgColor
             if let hex = props.strokeColor {
-                progressLayer.strokeColor = UIColor(withHexString: hex)?
+                progressLayer.strokeColor = viewModel?.resolveColor(hex)?
                     .resolvedColor(with: traitCollection).cgColor
             }
             fallthrough  // share strokeEnd animation logic
 
         case .arc, .bar:
             if let hex = props.trackColor {
-                trackLayer.strokeColor = UIColor(withHexString: hex)?
+                trackLayer.strokeColor = viewModel?.resolveColor(hex)?
                     .resolvedColor(with: traitCollection).cgColor
             }
             if let hex = props.strokeColor {
-                progressLayer.strokeColor = UIColor(withHexString: hex)?
+                progressLayer.strokeColor = viewModel?.resolveColor(hex)?
                     .resolvedColor(with: traitCollection).cgColor
             }
             let progressExpr: String? = props.progress?.value
@@ -276,7 +276,7 @@ class CShapeView: App8BaseView<DSL.Model.Component.Shape.C>, CViewProtocol {
 
         case .polyline:
             if let hex = props.strokeColor {
-                progressLayer.strokeColor = UIColor(withHexString: hex)?
+                progressLayer.strokeColor = viewModel?.resolveColor(hex)?
                     .resolvedColor(with: traitCollection).cgColor
             }
             CATransaction.begin()

@@ -99,11 +99,11 @@ extension DSL.Model.Component {
                     optionsExpression = nil
                 }
                 bindKey = try c.decodeIfPresent(String.self, forKey: .bindKey)
-                selectedValue = try c.decodeIfPresent(String.self, forKey: .selectedValue)
+                selectedValue = try c.decodeScalarOrExpressionIfPresent(forKey: .selectedValue)
                 bindVariable = try c.decodeIfPresent(String.self, forKey: .bindVariable)
                 displayMode = try c.decodeIfPresent(DisplayMode.self, forKey: .displayMode)
                 placeholder = try c.decodeIfPresent(String.self, forKey: .placeholder)
-                isEnabled = try c.decodeIfPresent(String.self, forKey: .isEnabled)
+                isEnabled = try c.decodeScalarOrExpressionIfPresent(forKey: .isEnabled)
             }
         }
     }

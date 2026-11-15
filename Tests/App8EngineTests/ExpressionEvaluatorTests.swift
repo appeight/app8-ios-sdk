@@ -662,7 +662,7 @@ final class FormattingFunctionTests: XCTestCase {
     }
 
     func testFormatDateNilInput() throws {
-        XCTAssertEqual(try evaluate("{{formatDate(null, 'short')}}") as? String, "")
+        XCTAssertNil(try evaluate("{{formatDate(null, 'short')}}"))
     }
 
     func testFormatDateISOWithTime() throws {
@@ -685,7 +685,7 @@ final class FormattingFunctionTests: XCTestCase {
     }
 
     func testFormatTimeNilInput() throws {
-        XCTAssertEqual(try evaluate("{{formatTime(null)}}") as? String, "")
+        XCTAssertNil(try evaluate("{{formatTime(null)}}"))
     }
 
     // MARK: - formatDuration
@@ -752,7 +752,7 @@ final class FormattingFunctionTests: XCTestCase {
     }
 
     func testAgeInYearsInvalidInput() throws {
-        XCTAssertEqual(try evaluate("{{ageInYears('not-a-date')}}") as? Int, 0)
+        XCTAssertNil(try evaluate("{{ageInYears('not-a-date')}}"))
     }
 
     // MARK: - daysBetween
@@ -771,7 +771,7 @@ final class FormattingFunctionTests: XCTestCase {
     }
 
     func testDaysBetweenInvalidInput() throws {
-        XCTAssertEqual(try evaluate("{{daysBetween('bad', '2026-01-12')}}") as? Int, 0)
+        XCTAssertNil(try evaluate("{{daysBetween('bad', '2026-01-12')}}"))
     }
 
     // MARK: - timeAgo
@@ -790,10 +790,20 @@ final class FormattingFunctionTests: XCTestCase {
     }
 
     func testTimeAgoInvalidInput() throws {
-        XCTAssertEqual(try evaluate("{{timeAgo('not-a-date')}}") as? String, "")
+        XCTAssertNil(try evaluate("{{timeAgo('not-a-date')}}"))
     }
 
     // MARK: - daysUntil
+
+    func testDaysUntilInvalidInput() throws {
+        XCTAssertNil(try evaluate("{{daysUntil('not-a-date')}}"))
+    }
+
+    func testDateFunctionsUnparseableGiveNullInText() throws {
+        // A null result compares equal to null, so authors can branch on it.
+        XCTAssertEqual(try evaluate("{{formatDate('garbage') == null ? 'n/a' : 'ok'}}") as? String, "n/a")
+        XCTAssertEqual(try evaluate("{{daysBetween('2026-01-12', 'bad') == null ? 'n/a' : 'ok'}}") as? String, "n/a")
+    }
 
     func testDaysUntilFuture() throws {
         let cal = Calendar.current

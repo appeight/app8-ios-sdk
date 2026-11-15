@@ -39,12 +39,28 @@ extension DSL.Model.Component.Image {
         }
         
         enum CodingKeys: String, CodingKey {
-            case type
+            case type, url, asset
         }
         
         init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.type = try container.decode(`Type`.self, forKey: .type)
+            guard let type = try container.decodeIfPresent(`Type`.self, forKey: .type) else {
+                // The documented form has no `type`: `url` (remote), `asset`
+                // (local asset name) or neither (an empty image, e.g. a
+                // material-only placeholder).
+                if container.contains(.url) {
+                    self.type = .remoteAsset
+                    self.model = .remoteAsset(try DSL.Model.Asset(from: decoder))
+                } else if let name = try container.decodeIfPresent(String.self, forKey: .asset) {
+                    self.type = .localAsset
+                    self.model = .asset(LocalAsset(name: name))
+                } else {
+                    self.type = .none
+                    self.model = .none
+                }
+                return
+            }
+            self.type = type
             switch self.type {
             case .localAsset:
                 self.model = .asset(try LocalAsset(from: decoder))

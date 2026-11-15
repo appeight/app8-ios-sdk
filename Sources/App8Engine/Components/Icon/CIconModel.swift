@@ -65,7 +65,7 @@ extension DSL.Model.Component.Icon {
             self.type = try container.decode(`Type`.self, forKey: .type)
             self.backgroundColor = try container.decodeIfPresent(DSL.Model.AnimatedValue<String>.self, forKey: .backgroundColor)
             self.tintColor = try container.decodeIfPresent(DSL.Model.AnimatedValue<String>.self, forKey: .tintColor)
-            self.isHidden = try container.decodeIfPresent(String.self, forKey: .isHidden)
+            self.isHidden = container.decodeFlagIfPresent(forKey: .isHidden)
             switch self.type {
             case .symbol:
                 self.model = .symbol(try Symbol(from: decoder))

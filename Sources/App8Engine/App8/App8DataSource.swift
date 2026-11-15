@@ -15,6 +15,12 @@ public protocol App8DataSource: AnyObject, Sendable {
     ///   - datasourceId: The datasource path (e.g., "datasources/listings")
     func getDatasource(screenId: String, datasourceId: String) async throws -> Data
 
+    /// Fetches a datasource again for the DSL `reloadDatasource` action. A
+    /// data source that caches must bypass or refresh its cache here: the
+    /// action asks for fresh data. `screenId` is empty for app variables.
+    /// Default: `getDatasource(screenId:datasourceId:)`.
+    func reloadDatasource(screenId: String, datasourceId: String) async throws -> Data
+
     /// Returns all available screen IDs if the datasource supports enumeration.
     /// Used for orphan screen detection in diagnostics.
     func getAllScreenIds() async throws -> [String]?
@@ -39,6 +45,12 @@ public protocol App8DataSource: AnyObject, Sendable {
     /// at boot. Default impl returns an empty bundle so pre-i18n data sources
     /// keep working unchanged.
     func getTranslations() async throws -> Data
+
+    /// Called before every DSL `request` action is sent. Return the request
+    /// to send — add credentials, rewrite the host, or return it unchanged.
+    /// Throwing rejects the request: the action's `onError` runs with
+    /// `response.status == 0`. The engine itself adds no auth.
+    func prepareRequest(_ request: URLRequest) async throws -> URLRequest
 }
 
 // MARK: - Default implementations for optional methods
@@ -47,6 +59,11 @@ extension App8DataSource {
     /// Default implementation throws notImplemented error
     public func getDatasource(screenId: String, datasourceId: String) async throws -> Data {
         throw DatasourceError.notImplemented
+    }
+
+    /// Default: the regular fetch (data sources without a cache are always fresh).
+    public func reloadDatasource(screenId: String, datasourceId: String) async throws -> Data {
+        try await getDatasource(screenId: screenId, datasourceId: datasourceId)
     }
 
     /// Default implementation returns nil (enumeration not supported)
@@ -72,6 +89,11 @@ extension App8DataSource {
     public func getTranslations() async throws -> Data {
         return Data(#"{"defaultLocale":"en","locales":{}}"#.utf8)
     }
+
+    /// Default: send the request unchanged.
+    public func prepareRequest(_ request: URLRequest) async throws -> URLRequest {
+        request
+    }
 }
 
 // MARK: - Data Sources (Internal protocols)
@@ -90,11 +112,13 @@ extension A8 {
         func getComponent(componentId: String) async throws -> Data
         func getAsset(assetId: String?, assetName: String?) async throws -> Data?
         func getDatasource(screenId: String, datasourceId: String) async throws -> Data
+        func reloadDatasource(screenId: String, datasourceId: String) async throws -> Data
         func getAllScreenIds() async throws -> [String]?
         func streamScreen(screenId: String) -> AsyncStream<Data>?
         func streamDatasource(screenId: String, datasourceId: String, componentPath: String?) -> AsyncStream<Data>?
         func streamStyles() -> AsyncStream<Data>?
         func getTranslations() async throws -> Data
+        func prepareRequest(_ request: URLRequest) async throws -> URLRequest
     }
 
     class DataSource: @unchecked Sendable, DataSourceProtocol {
@@ -134,6 +158,10 @@ extension A8 {
             try await ds.getDatasource(screenId: screenId, datasourceId: datasourceId)
         }
 
+        func reloadDatasource(screenId: String, datasourceId: String) async throws -> Data {
+            try await ds.reloadDatasource(screenId: screenId, datasourceId: datasourceId)
+        }
+
         func getAllScreenIds() async throws -> [String]? {
             try await ds.getAllScreenIds()
         }
@@ -153,14 +181,26 @@ extension A8 {
         func getTranslations() async throws -> Data {
             try await ds.getTranslations()
         }
+
+        func prepareRequest(_ request: URLRequest) async throws -> URLRequest {
+            try await ds.prepareRequest(request)
+        }
     }
 }
 
 /// Mirrors the public-protocol default so internal mocks that pre-date i18n
 /// keep compiling.
 extension A8.DataSourceProtocol {
+    func reloadDatasource(screenId: String, datasourceId: String) async throws -> Data {
+        try await getDatasource(screenId: screenId, datasourceId: datasourceId)
+    }
+
     func getTranslations() async throws -> Data {
         return Data(#"{"defaultLocale":"en","locales":{}}"#.utf8)
+    }
+
+    func prepareRequest(_ request: URLRequest) async throws -> URLRequest {
+        request
     }
 }
 

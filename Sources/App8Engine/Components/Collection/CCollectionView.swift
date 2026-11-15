@@ -97,6 +97,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     func configure(viewModel: CCollectionViewModel, superview: UIView? = nil, animated: Bool = true) {
         self.viewModel = viewModel
         guard let superview = superview ?? self.superview else { return }
+        renderSuperview = superview
 
         bindLayout(
             viewModel.layout,
@@ -135,7 +136,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         setupViewHierarchyIfNeeded()
 
         if let bgColorName = style?.backgroundColor, !(viewModel?.service.context.layoutMode.isEnabled == true) {
-            collectionView.backgroundColor = UIColor(withHexString: bgColorName)
+            collectionView.backgroundColor = viewModel?.resolveColor(bgColorName)
         }
     }
 
@@ -191,6 +192,33 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         }
     }
     
+    /// True when an ancestor (through stacks and views) is a vertical DSL
+    /// `scrollView`. Walks from the render superview, which is in place when
+    /// `configure` runs.
+    private var isInsideVerticalScrollView: Bool {
+        var view = renderSuperview ?? superview
+        while let current = view {
+            if let scroll = current as? CScrollViewView {
+                return scroll.scrollsVertically
+            }
+            if current is UICollectionView || current is UITableView { return false }
+            view = current.superview
+        }
+        return false
+    }
+
+    /// `layout.height`, a `top` + `bottom` pair or a height constraint.
+    private var hasOwnHeight: Bool {
+        guard let layout = viewModel?.component.layout else { return false }
+        if layout.height != nil { return true }
+        if layout.top != nil && layout.bottom != nil { return true }
+        let attributes = Set((layout.constraints ?? []).map(\.type))
+        return attributes.contains(.height) || (attributes.contains(.top) && attributes.contains(.bottom))
+    }
+
+    /// The superview handed to `configure` (the view may not be added yet).
+    private weak var renderSuperview: UIView?
+
     private func configureRefreshControl() {
         guard viewModel?.component.properties.pullToRefresh == true else { return }
         collectionView.refreshControl = refreshControl
@@ -228,7 +256,11 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             // (a zoom transition's interactive dismiss, an outer scroll view).
             collectionView.refusesVerticalPans = nativePaging
         } else {
-            let scrollEnabled = viewModel?.component.properties.layout?.scrollEnabled ?? true
+            // A vertical / grid collection inside a vertical scroll view, with no
+            // height of its own, lets the outer scroll view scroll: it sizes to
+            // its content like `scrollEnabled: false`.
+            let scrollEnabled = viewModel?.component.properties.layout?.scrollEnabled
+                ?? !(isInsideVerticalScrollView && !hasOwnHeight)
             collectionView.isScrollEnabled = scrollEnabled
             collectionView.keepsTopRestOnInsetChange = scrollEnabled && viewModel?.component.properties.inverted != true
             collectionView.alwaysBounceVertical = scrollEnabled
@@ -406,7 +438,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                 }
                 completion(true)
             }
-            if let hex = swipe.backgroundColor, let color = UIColor(withHexString: hex) {
+            if let color = viewModel?.swipeActionColor(at: indexPath, swipe.backgroundColor) {
                 action.backgroundColor = color
             }
             if let symbolName = swipe.systemImage {
@@ -619,6 +651,29 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         guard actual > 0, abs(actual - constraint.constant) > 0.5 else { return }
         constraint.constant = actual
         superview?.setNeedsLayout()
+        remeasureEnclosingCell()
+    }
+
+    /// A self-sizing collection inside a collection or table cell: the cell
+    /// was measured before this height was known, so ask the enclosing list
+    /// to measure its cells again (the cell grows with the content).
+    private func remeasureEnclosingCell() {
+        var view = superview
+        var inCell = false
+        while let current = view {
+            if current is UICollectionViewCell || current is UITableViewCell { inCell = true }
+            if inCell, let outer = current as? CCollectionView {
+                outer.scheduleRemeasure()
+                return
+            }
+            if inCell, let table = current as? UITableView {
+                DispatchQueue.main.async { [weak table] in
+                    UIView.performWithoutAnimation { table?.performBatchUpdates(nil) }
+                }
+                return
+            }
+            view = current.superview
+        }
     }
 
     override func didMoveToWindow() {
@@ -1002,6 +1057,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                     let estimatedHeight: CGFloat = itemsHeight + gapsHeight + insetsHeight
                     self.selfSizingHeightConstraint?.constant = estimatedHeight
                     self.superview?.setNeedsLayout()
+                    self.remeasureEnclosingCell()
                 }
 
                 // When swipe actions are defined, try to animate deletions via performBatchUpdates

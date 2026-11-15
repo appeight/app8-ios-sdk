@@ -100,6 +100,12 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         scrollView.addSubview(scrollContentView)
     }
 
+    /// Vertical (the default direction). Nested vertical collections size
+    /// to their content instead of scrolling inside this one.
+    var scrollsVertically: Bool {
+        (viewModel?.component.properties.direction ?? .vertical) == .vertical
+    }
+
     func configure(viewModel: CScrollViewViewModel, superview: UIView? = nil, animated: Bool = true) {
         self.viewModel = viewModel
         guard let superview = superview ?? self.superview else {
@@ -700,13 +706,8 @@ extension CScrollViewView: UIScrollViewDelegate {
             let context = VariableContext(store: viewModel.variableStore)
                 .overlaying("$crossed", value: crossed)
                 .overlaying("$offset", value: Double(offset))
-            let handler = VariableActionHandler()
             viewModel.dispatchTrigger(.onScrollThreshold) { action in
-                do {
-                    try handler.execute(action: action, store: viewModel.variableStore, context: context)
-                } catch {
-                    viewModel.service.context.logger.error("Failed to execute onScrollThreshold action: \(error)")
-                }
+                viewModel.executeAction(action, context: context)
             }
         }
     }

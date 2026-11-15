@@ -21,8 +21,8 @@ final class RenderHarness {
     /// `removeFromSuperview`; keep services alive past view teardown.
     private static var retainedServices: [App8Service] = []
 
-    init(size: CGSize = CGSize(width: 390, height: 844), inWindow: Bool = true) {
-        service = App8Service(publicDataSource: HarnessStubDataSource(), context: App8Context())
+    init(size: CGSize = CGSize(width: 390, height: 844), inWindow: Bool = true, dataSource: App8DataSource? = nil) {
+        service = App8Service(publicDataSource: dataSource ?? HarnessStubDataSource(), context: App8Context())
         superview = UIView(frame: CGRect(origin: .zero, size: size))
         if inWindow {
             let window = UIWindow(frame: CGRect(origin: .zero, size: size))

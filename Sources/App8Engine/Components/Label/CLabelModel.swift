@@ -28,7 +28,7 @@ extension DSL.Model.Component {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
                 text = try c.decodeIfPresent(LocalizedString.self, forKey: .text) ?? .literal("")
                 backgroundColor = try c.decodeIfPresent(DSL.Model.AnimatedValue<String>.self, forKey: .backgroundColor)
-                isHidden = try c.decodeIfPresent(String.self, forKey: .isHidden)
+                isHidden = c.decodeFlagIfPresent(forKey: .isHidden)
                 numberOfLines = try c.decodeIfPresent(Int.self, forKey: .numberOfLines)
                 spans = try c.decodeIfPresent([Span].self, forKey: .spans)
             }

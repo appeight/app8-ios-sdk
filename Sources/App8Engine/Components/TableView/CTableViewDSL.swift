@@ -94,7 +94,21 @@ extension DSL.Model.Component {
                 let showsIndicator: Bool?
                 /// Leading inset for row separators. Defaults to 0.
                 let separatorInset: CGFloat?
+                /// Boolean or expression; see components.md "Visibility".
+                let isHidden: String?
+
+                private enum CodingKeys: String, CodingKey { case tableStyle, showsIndicator, separatorInset, isHidden }
+
+                init(from decoder: Decoder) throws {
+                    let c = try decoder.container(keyedBy: CodingKeys.self)
+                    tableStyle = try c.decodeIfPresent(TableStyle.self, forKey: .tableStyle)
+                    showsIndicator = try c.decodeIfPresent(Bool.self, forKey: .showsIndicator)
+                    separatorInset = try c.decodeIfPresent(CGFloat.self, forKey: .separatorInset)
+                    isHidden = c.decodeFlagIfPresent(forKey: .isHidden)
+                }
             }
+
+            var hiddenFlag: String? { properties.isHidden }
 
             enum TableStyle: String, SafeEnumCodable, Sendable {
                 case plain, grouped, insetGrouped

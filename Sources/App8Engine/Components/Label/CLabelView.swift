@@ -432,7 +432,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             if let family = span.fontFamily, let font = UIFont(name: family, size: baseSize) {
                 attributed.addAttribute(.font, value: font, range: range)
             }
-            if let hex = span.color, let color = UIColor(withHexString: hex) {
+            if let color = viewModel?.resolveColor(span.color) {
                 attributed.addAttribute(.foregroundColor, value: color, range: range)
             }
         }

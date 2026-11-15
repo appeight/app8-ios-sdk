@@ -9,6 +9,11 @@ import Foundation
 public final class DependencyExtractor: Sendable {
     public init() {}
 
+    /// Pseudo-variable that `now()` / `today()` depend on. The engine signals
+    /// it when a screen appears and on every `timer` tick, so clock-reading
+    /// expressions (and computed variables) re-evaluate then.
+    public static let clockDependency = "$now"
+
     /// Extract all variable names referenced in an expression
     public func extractDependencies(from node: ExpressionNode) -> Set<String> {
         var dependencies = Set<String>()
@@ -29,6 +34,9 @@ public final class DependencyExtractor: Sendable {
             extractDependenciesRecursive(from: operand, into: &dependencies)
 
         case .functionCall(let name, let arguments):
+            if name == "now" || name == "today" {
+                dependencies.insert(Self.clockDependency)
+            }
             let higherOrderFunctions: Set<String> = ["filter", "map", "find", "first"]
             if higherOrderFunctions.contains(name), arguments.count >= 2 {
                 // Array argument — extract dependencies normally

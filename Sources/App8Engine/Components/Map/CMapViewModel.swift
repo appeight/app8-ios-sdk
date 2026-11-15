@@ -472,13 +472,8 @@ final class CMapViewModel: CBaseViewModel<MapContent> {
         } catch {
             service.context.logger.error("Failed to define annotation action variables: \(error)")
         }
-        let handler = VariableActionHandler()
         dispatchTrigger(.onAnnotationTap) { action in
-            do {
-                try handler.execute(action: action, store: actionStore, context: VariableContext(store: actionStore))
-            } catch {
-                service.context.logger.error("Failed to execute onAnnotationTap action: \(error)")
-            }
+            executeAction(action, context: VariableContext(store: actionStore), store: actionStore)
         }
     }
 

@@ -95,6 +95,9 @@ final class ModalViewController: UIViewController {
         transitionManager?.installInteractiveDismiss(on: view)
     }
 
+    /// Set when a `dismiss` request arrives; later requests are ignored here.
+    private var isDismissing = false
+
     private func subscribeToNavigationRequests() {
         NotificationCenter.default.addObserver(
             self,
@@ -113,6 +116,15 @@ final class ModalViewController: UIViewController {
 
         // Only handle requests while this modal is presented.
         guard isBeingPresented || presentingViewController != nil else { return }
+
+        // The flow coordinator dismisses modals (and holds later requests until
+        // the dismissal is done). From here on this modal is leaving: requests
+        // that follow belong to the presenting screen.
+        if case .dismiss = request.type {
+            isDismissing = true
+            return
+        }
+        guard !isDismissing, !isBeingDismissed else { return }
 
         Task { @MainActor in
             do {
@@ -143,7 +155,7 @@ final class ModalViewController: UIViewController {
             }
 
         case .dismiss:
-            dismissModal(animated: true)
+            break   // see handleNavigationRequest
 
         case .completeFlow, .switchFlow, .presentModal, .selectTab:
             // Handled by FlowCoordinator / TabBarScreenViewController, not the modal.

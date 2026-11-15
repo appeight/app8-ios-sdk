@@ -52,9 +52,13 @@ extension DSL.Model {
 
         init(from decoder: Decoder) throws {
             let container = try decoder.singleValueContainer()
-            if let list = try? container.decode([Action].self) {
-                self.actions = list
+            do {
+                self.actions = try container.decode([Action].self)
                 return
+            } catch {
+                // An array whose element fails: report that element's error
+                // (its real path), not "expected an object, found array".
+                if (try? container.decode([AnyCodableValue].self)) != nil { throw error }
             }
             let single = try container.decode(Action.self)
             self.actions = [single]

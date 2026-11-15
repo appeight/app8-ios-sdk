@@ -229,6 +229,9 @@ struct CollectionContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulC
     let variables: [String: VariableDefinition]?
     let navigationBar: DSL.Model.NavigationBar?
 
+    /// `properties.isHidden`.
+    let hiddenFlag: String?
+
     // Event triggers
     let onEvent: [DSL.Model.EventTrigger]?
 
@@ -260,6 +263,7 @@ struct CollectionContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulC
         let c = try decoder.container(keyedBy: CodingKeys.self)
 
         properties = try c.decode(Properties.self, forKey: .properties)
+        hiddenFlag = HiddenFlagDecoding.decode(from: c, propertiesKey: .properties)
         style = try c.decodeIfPresent(Style.self, forKey: .style)
         layout = try c.decodeIfPresent(DSL.Model.Layout.self, forKey: .layout)
         // The collection layout (`type: vertical|horizontal|grid`, spacing, item

@@ -1,8 +1,9 @@
 import UIKit
 
 /// Page dots in the iOS 26 style for media: a blurred dark capsule behind
-/// white dots, the current dot fully white and the others at half opacity.
-/// It reads on any photo, so it ignores tint colors. Same metrics as the web
+/// white dots, the current dot fully white and the others at half opacity,
+/// so it reads on any photo. A tint color, when set, replaces the white of
+/// that kind of dot. Same metrics as the web
 /// renderer: a 26 pt tall capsule, `pages * 16 + 10` wide, 7 pt dots 9 pt apart.
 final class MediaPageControl: UIControl {
 
@@ -26,6 +27,16 @@ final class MediaPageControl: UIControl {
             updateDotColors()
             accessibilityValue = pageDescription
         }
+    }
+
+    /// Color of the other dots; nil keeps white at half opacity.
+    var pageIndicatorTintColor: UIColor? {
+        didSet { if pageIndicatorTintColor != oldValue { updateDotColors() } }
+    }
+
+    /// Color of the current dot; nil keeps white.
+    var currentPageIndicatorTintColor: UIColor? {
+        didSet { if currentPageIndicatorTintColor != oldValue { updateDotColors() } }
     }
 
     var hidesForSinglePage = true {
@@ -97,8 +108,10 @@ final class MediaPageControl: UIControl {
         let current = displayedPage
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.2)
+        let currentColor = currentPageIndicatorTintColor ?? .white
+        let otherColor = pageIndicatorTintColor ?? UIColor.white.withAlphaComponent(0.5)
         for (index, dot) in dots.enumerated() {
-            dot.backgroundColor = UIColor.white.withAlphaComponent(index == current ? 1 : 0.5).cgColor
+            dot.backgroundColor = (index == current ? currentColor : otherColor).cgColor
         }
         CATransaction.commit()
     }

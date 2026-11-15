@@ -39,6 +39,19 @@ final class App8Context {
     /// form at navigation time. Set during app load from the animation registry.
     var animationResolver: ((String) -> DSL.Model.Animation.Inline?)?
 
+    /// `app.id` of the loaded app. Handed to native components
+    /// (`App8NativeContext.appId`). Set during app load.
+    var appId: String?
+
+    /// Session the DSL `request` action sends through. Tests swap in a
+    /// session with a stub `URLProtocol`.
+    var urlSession: URLSession = .shared
+
+    /// Set while a `dismiss` action's modal dismissal is in flight. Navigation
+    /// requests posted after it (a `dismiss` followed by `navigation` in one
+    /// action list) wait for it, then run on the presenting screen's stack.
+    var pendingDismissal: Task<Void, Never>?
+
     init(
         logger: A8Log = A8Log(),
         appearance: App8Appearance = App8Appearance(),

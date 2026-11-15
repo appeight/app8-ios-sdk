@@ -18,7 +18,7 @@ extension DSL.Model.Component {
 
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
-                isAnimating = try c.decodeIfPresent(String.self, forKey: .isAnimating)
+                isAnimating = try c.decodeScalarOrExpressionIfPresent(forKey: .isAnimating)
                 hidesWhenStopped = try c.decodeIfPresent(Bool.self, forKey: .hidesWhenStopped)
             }
         }

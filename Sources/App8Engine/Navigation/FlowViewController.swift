@@ -268,6 +268,34 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
         }
     }
 
+    /// Dismisses the presented modal and returns once it is gone (immediately
+    /// when nothing is presented). Waits for an in-flight presentation first:
+    /// UIKit drops a dismissal requested mid-transition without calling its
+    /// completion. Time limits keep a stuck transition from holding up
+    /// navigation forever.
+    func dismissModalAndWait(animated: Bool = true) async {
+        guard presentedModal != nil, let presented = presentedViewController else {
+            presentedModal = nil
+            return
+        }
+        let step: UInt64 = 20_000_000
+        var deadline = Date().addingTimeInterval(2)
+        while presented.isBeingPresented, Date() < deadline {
+            try? await Task.sleep(nanoseconds: step)
+        }
+        var completed = false
+        dismiss(animated: animated) { completed = true }
+        deadline = Date().addingTimeInterval(2)
+        while !completed, presentedViewController === presented, Date() < deadline {
+            try? await Task.sleep(nanoseconds: step)
+        }
+        if !completed, presentedViewController === presented {
+            context.logger.warning("dismiss: the modal did not finish dismissing; continuing")
+        }
+        presentedModal = nil
+        NotificationCenter.default.post(name: .app8ScreenContextChanged, object: nil)
+    }
+
     /// Map a declarative `SheetDetent` to a UIKit sheet detent. `fixed`/`fraction`
     /// become custom detents (heights are clamped to the container by UIKit).
     private static func uiDetent(for detent: DSL.Model.Action.SheetDetent) -> UISheetPresentationController.Detent {

@@ -19,6 +19,8 @@ enum CommonComponentProps {
     private static var cancellableKey: UInt8 = 0
 
     static func bind(view: UIView, viewModel: ComponentViewModelAbstract) {
+        bindHidden(view: view, viewModel: viewModel)
+
         let interaction = viewModel.interactionProps
         let accessibility = viewModel.accessibilityProps
 
@@ -46,6 +48,38 @@ enum CommonComponentProps {
             }
 
         objc_setAssociatedObject(view, &cancellableKey, cancellable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    private static var hiddenCancellableKey: UInt8 = 0
+
+    /// `properties.isHidden` on any component: hidden views are not drawn,
+    /// get no touches, are skipped by accessibility and take no space in a
+    /// stack view (UIStackView collapses hidden arranged subviews).
+    private static func bindHidden(view: UIView, viewModel: ComponentViewModelAbstract) {
+        let hasStateFlag = viewModel.declaresStateHiddenFlag
+        guard hasStateFlag || !(viewModel.hiddenFlag ?? "").isEmpty else { return }
+        func update(_ view: UIView, _ viewModel: ComponentViewModelAbstract) {
+            guard let flag = viewModel.hiddenFlag?.trimmingCharacters(in: .whitespaces), !flag.isEmpty else {
+                // A state without `isHidden` keeps the base value (none: shown).
+                if hasStateFlag, view.isHidden { view.isHidden = false }
+                return
+            }
+            let hidden = flag.contains("{{")
+                ? viewModel.resolvePropertyToBool(flag) ?? false
+                : flag.lowercased() == "true" || flag == "1"
+            if view.isHidden != hidden { view.isHidden = hidden }
+        }
+        update(view, viewModel)
+        // Re-resolve on variable changes (expressions) and state changes
+        // (a state override may set or clear `isHidden`).
+        let cancellable = viewModel.variablesChanged.map { _ in () }
+            .merge(with: viewModel.stateChanged)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak view, weak viewModel] _ in
+                guard let view, let viewModel else { return }
+                update(view, viewModel)
+            }
+        objc_setAssociatedObject(view, &hiddenCancellableKey, cancellable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 
     private static func apply(

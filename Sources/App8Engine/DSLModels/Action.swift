@@ -53,14 +53,60 @@ extension DSL.Model {
         var animated: Bool?       // For setState action: whether to animate (default: true)
 
         // Variable operations
-        var variableName: String?              // Variable name for single-variable actions
+        /// Variable name for single-variable actions. `variableName` is the
+        /// documented key; `variable` decodes as an undocumented alias so a
+        /// bundle behaves the same on every platform.
+        @VariableNameKey var variableName: String?
+        /// The `variable` alias, read only by `VariableNameKey` decoding.
+        private let variable: String?
         var value: AnyCodableValue?            // Value (can contain expressions as strings)
         var key: String?                       // updateVariable on an object variable: set only this key (string/expression)
-        var by: Double?                        // Increment/decrement amount
+        /// incrementVariable / incrementArrayItem amount: a number or an expression (`"{{line.quantity}}"`).
+        var by: AnyCodableValue?
         var matchBy: String?                   // For toggleArrayValue / incrementArrayItem: key to match when array contains objects (e.g. "id")
         var field: String?                     // For incrementArrayItem: numeric field to adjust (default "quantity")
         var updates: [String: AnyCodableValue]? // For updateMultipleVariables
         var scope: VariableScope?              // Target scope for resetVariables
+        /// insertArrayItem: position (default 0, negative counts from the end).
+        /// removeArrayItem: position of the element to remove.
+        /// forEach: name the element's index is bound to inside `actions`.
+        /// One key, read per action type, so it decodes as any JSON value.
+        var index: AnyCodableValue?
+        /// upsertArrayItem: where a new element goes when nothing matches (`start` | `end`, default `end`).
+        var position: String?
+
+        /// The variable an action writes.
+        var targetVariable: String? { variableName }
+
+        // Control flow
+        /// forEach: the array to iterate (expression or literal array).
+        var items: AnyCodableValue?
+        /// forEach: name the element is bound to inside `actions` (default `item`).
+        var `as`: String?
+        /// forEach / with: nested actions (one action or an array).
+        var actions: ActionList?
+        /// with: names evaluated once and bound for `actions`.
+        var values: [String: AnyCodableValue]?
+
+        // HTTP request
+        /// request: GET (default), POST, PUT, PATCH, DELETE.
+        var method: String?
+        /// request: header values (strings, `{{}}` allowed).
+        var headers: [String: String]?
+        /// request: JSON body (object / array / expressions), sent as application/json.
+        var body: AnyCodableValue?
+        /// request: variable that receives `{ status, body, headers }`.
+        var resultVariable: String?
+        /// request / reloadDatasource: run on success (request: 2xx, with
+        /// `response` in scope). One action or an array.
+        var onSuccess: ActionList?
+        /// request / reloadDatasource: run on failure (request: any other
+        /// status, or status 0 for a network failure / timeout / host rejection).
+        var onError: ActionList?
+
+        // Datasources
+        /// reloadDatasource: the datasource path (`datasources/items`).
+        var source: String?
 
         // Tab selection
         var tabIndex: Int?                         // Index of tab to select (0-based)
@@ -124,6 +170,9 @@ extension DSL.Model {
             case toggleArrayValue         // Add/remove value from array
             case appendToArray            // Append value to end of array variable
             case incrementArrayItem       // Add `by` to a numeric field of the object matched by `matchBy`; inserts / removes it
+            case insertArrayItem          // Insert `value` at `index` (default 0; negative counts from the end)
+            case upsertArrayItem          // Replace the element matched by `matchBy`, else add it
+            case removeArrayItem          // Remove elements matched by `matchBy`/`value`, or the one at `index`
             case updateMultipleVariables  // Batch update multiple variables
             case resetVariables           // Reset variables to initial values
 
@@ -146,6 +195,26 @@ extension DSL.Model {
             // registered via `App8.Instance.subscribe(...)`. The engine itself
             // does nothing else; the host is expected to handle it.
             case emit
+
+            // Control flow
+            case forEach                  // Run `actions` once per element of `items`
+            case with                     // Bind `values` as names, then run `actions`
+
+            // HTTP + datasources
+            case request                  // HTTP request; `onSuccess` / `onError` see `response`
+            case reloadDatasource         // Refetch `source` and update every variable bound to it
+
+            /// Variable-store actions run by `VariableActionHandler`.
+            var isVariableAction: Bool {
+                switch self {
+                case .updateVariable, .incrementVariable, .toggleArrayValue, .appendToArray,
+                     .incrementArrayItem, .insertArrayItem, .upsertArrayItem, .removeArrayItem,
+                     .updateMultipleVariables, .resetVariables:
+                    return true
+                default:
+                    return false
+                }
+            }
         }
 
         /// Presentation style for navigation
@@ -210,5 +279,28 @@ extension DSL.Model {
             case app        // App-level variables
             case all        // All scopes
         }
+    }
+}
+
+extension DSL.Model {
+    /// Decodes `variableName`, falling back to the sibling `variable` key.
+    @propertyWrapper
+    public struct VariableNameKey: Decodable, Sendable {
+        public var wrappedValue: String?
+        public init(wrappedValue: String?) { self.wrappedValue = wrappedValue }
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// Synthesized `Action` decoding calls this for `variableName`: the
+    /// documented key wins, then the `variable` alias, else nil.
+    func decode(_ type: DSL.Model.VariableNameKey.Type, forKey key: Key) throws -> DSL.Model.VariableNameKey {
+        if let name = try decodeIfPresent(String.self, forKey: key) {
+            return .init(wrappedValue: name)
+        }
+        if let alias = Key(stringValue: "variable"), let name = try decodeIfPresent(String.self, forKey: alias) {
+            return .init(wrappedValue: name)
+        }
+        return .init(wrappedValue: nil)
     }
 }

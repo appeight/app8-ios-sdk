@@ -134,7 +134,15 @@ final class ScreenViewController: BaseViewController {
         attachLeftTitleViewIfNeeded()
         installSearchFillIfNeeded()
         applySearchFillTopGap()
-        navigationController?.navigationBar.tintColor = navigationBarConfig?.tintColor.flatMap(UIColor.init(withHexString:))
+        navigationController?.navigationBar.tintColor = resolveColor(navigationBarConfig?.tintColor)
+        pulseClock()
+    }
+
+    /// `now()` / `today()` re-evaluate when the screen appears.
+    private func pulseClock() {
+        var store: VariableStoreProtocol? = titleViewVariableStore
+        while let parent = store?.getParentStore() { store = parent }
+        (store as? VariableStore)?.pulseClock()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -279,7 +287,7 @@ final class ScreenViewController: BaseViewController {
                 title = rawTitle
             }
             // A titleView would replace the large title; large titles keep the label color.
-            if !usesLargeTitle, let colorHex = config.titleColor, let color = UIColor(withHexString: colorHex) {
+            if !usesLargeTitle, let color = resolveColor(config.titleColor) {
                 let titleLabel = UILabel()
                 titleLabel.text = title
                 titleLabel.textColor = color
@@ -332,7 +340,7 @@ final class ScreenViewController: BaseViewController {
         if let placeholder = config.placeholder {
             controller.searchBar.placeholder = resolveString(placeholder)
         }
-        if let hex = config.tintColor, let color = UIColor(withHexString: hex) {
+        if let color = resolveColor(config.tintColor) {
             controller.searchBar.tintColor = color
         }
         if let name = config.bindVariable,
@@ -505,6 +513,19 @@ final class ScreenViewController: BaseViewController {
         return (try? PropertyResolver().resolveToString(raw, context: VariableContext(store: store))) ?? raw
     }
 
+    /// A bar color field (hex or color expression) resolved in the screen's
+    /// scope; a non-hex result leaves the field unset and logs `style.color.invalid`.
+    private func resolveColor(_ raw: String?) -> UIColor? {
+        guard let raw, !raw.isEmpty else { return nil }
+        guard raw.contains("{{") else { return UIColor(withHexString: raw) }
+        let value = resolveString(raw).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard DSL.Model.Style.Color.Hex.isValidHexString(value), let color = UIColor(withHexString: value) else {
+            context.logger.warning("style.color.invalid: '\(raw)' resolved to '\(value)', not a hex color — field left unset. screen='\(screenId)'")
+            return nil
+        }
+        return color
+    }
+
     private func makeBarButton(from barAction: DSL.Model.BarAction, compact: Bool = false) -> UIBarButtonItem {
         // Create a native UIBarButtonItem so iOS 26 Liquid Glass automatically applies
         // the shared circular glass background. Wrapping in a customView would bypass it.
@@ -535,7 +556,7 @@ final class ScreenViewController: BaseViewController {
             break
         }
 
-        if let colorHex = barAction.color, let color = UIColor(withHexString: colorHex) {
+        if let color = resolveColor(barAction.color) {
             item.tintColor = color
         }
 
@@ -547,7 +568,7 @@ final class ScreenViewController: BaseViewController {
         NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
     }
 
-    private func executeBarAction(_ action: DSL.Model.Action) {
+    func executeBarAction(_ action: DSL.Model.Action) {
         switch action.type {
         case .dismiss:
             let request = NavigationRequest(type: .dismiss)
@@ -570,7 +591,13 @@ final class ScreenViewController: BaseViewController {
             }
 
         default:
-            context.logger.warning("Unsupported bar action type: \(action.type)")
+            // Every other action (showAlert, request, updateVariable, …) runs
+            // in the screen's scope through the full action executor.
+            if let actionHandler {
+                actionHandler(action)
+            } else {
+                context.logger.warning("Unsupported bar action type: \(action.type)")
+            }
         }
     }
 }
