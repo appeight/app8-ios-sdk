@@ -156,8 +156,13 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     /// no expressions). A result that is not a hex color leaves the field
     /// unset and logs `style.color.invalid`.
     func resolveColorExpressions(in style: Component.Style) -> (style: Component.Style, signature: String) {
-        guard var resolvable = style as? DSL.Model.Style.StylePointerResolvable else { return (style, "") }
-        var signature = ""
+        // Component-specific color fields (toggle `onTintColor`, slider tints,
+        // …) are plain strings resolved at apply time by `resolveColor(_:)`;
+        // their results join the signature so the style re-emits when they change.
+        var signature = Self.colorExpressionStrings(in: style)
+            .map { "\($0)=\(resolvePropertyToString($0));" }
+            .joined()
+        guard var resolvable = style as? DSL.Model.Style.StylePointerResolvable else { return (style, signature) }
         resolvable.resolveStylePointers { [self] id in
             guard DSL.Model.Style.`Any`.isColorExpression(id) else { return nil }
             let value = resolvePropertyToString(id).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -173,8 +178,50 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 content: DSL.Model.Style.Color.Themed(color)
             )
         }
-        guard let resolved = resolvable as? Component.Style else { return (style, "") }
+        guard let resolved = resolvable as? Component.Style else { return (style, signature) }
         return (resolved, signature)
+    }
+
+    /// Plain string fields of `style` that hold a color expression, found by
+    /// reflection (Wrapped color fields are handled as pointers instead).
+    private static func colorExpressionStrings(in style: Any) -> [String] {
+        var found: [String] = []
+        func walk(_ value: Any, depth: Int) {
+            guard depth < 6 else { return }
+            for child in Mirror(reflecting: value).children {
+                guard let label = child.label, !label.hasPrefix("_") else { continue }
+                let unwrapped: Any? = Mirror(reflecting: child.value).displayStyle == .optional
+                    ? Mirror(reflecting: child.value).children.first?.value : child.value
+                guard let unwrapped else { continue }
+                if let string = unwrapped as? String {
+                    if label.lowercased().contains("color"),
+                       DSL.Model.Style.`Any`.isColorExpression(string) {
+                        found.append(string)
+                    }
+                } else if Mirror(reflecting: unwrapped).displayStyle == .struct {
+                    walk(unwrapped, depth: depth + 1)
+                }
+            }
+        }
+        walk(style, depth: 0)
+        return found
+    }
+
+    /// Resolves a component-specific color field (a hex string or a color
+    /// expression) in this component's scope. A result that is not a hex color
+    /// returns nil and logs `style.color.invalid`, as for style colors.
+    func resolveColor(_ raw: String?, context: VariableContext? = nil) -> UIColor? {
+        guard let raw, !raw.isEmpty else { return nil }
+        guard DSL.Model.Style.`Any`.isColorExpression(raw) else { return UIColor(withHexString: raw) }
+        let value = ((try? propertyResolver.resolveToString(raw, context: context ?? getVariableContext())) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard DSL.Model.Style.Color.Hex.isValidHexString(value),
+              let color = UIColor(withHexString: value) else {
+            warnOnce(key: "style.color.invalid:\(componentPath):\(raw):\(value)",
+                     "style.color.invalid: '\(raw)' resolved to '\(value)', not a hex color — field left unset. componentPath='\(componentPath)'")
+            return nil
+        }
+        return color
     }
 
     var properties: AnyPublisher<Component.Properties, Never> {

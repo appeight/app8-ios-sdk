@@ -101,10 +101,10 @@ class CToggleView: App8BaseView<DSL.Model.Component.Toggle.C>, CViewProtocol {
         super.applyStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
         applyBaseStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
 
-        if let hex = style?.onTintColor, let color = UIColor(withHexString: hex) {
+        if let color = viewModel?.resolveColor(style?.onTintColor) {
             toggle.onTintColor = color
         }
-        if let hex = style?.thumbTintColor, let color = UIColor(withHexString: hex) {
+        if let color = viewModel?.resolveColor(style?.thumbTintColor) {
             toggle.thumbTintColor = color
         }
     }

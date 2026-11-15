@@ -397,6 +397,14 @@ final class CCollectionViewModel: CBaseViewModel<CollectionContent> {
         executeAction(action, context: VariableContext(store: cellStore), store: cellStore)
     }
 
+    /// A swipe action's `backgroundColor` (hex or expression), resolved in the row's scope.
+    func swipeActionColor(at indexPath: IndexPath, _ raw: String?) -> UIColor? {
+        guard let raw, indexPath.section < currentSections.count,
+              indexPath.item < currentSections[indexPath.section].items.count else { return nil }
+        let cellStore = createCellVariableStore(for: currentSections[indexPath.section].items[indexPath.item])
+        return resolveColor(raw, context: VariableContext(store: cellStore))
+    }
+
     // MARK: - Selection
 
     func handleSelection(at indexPath: IndexPath) {

@@ -78,6 +78,53 @@ final class StyleVisibilityLayoutTests: XCTestCase {
         XCTAssertNil(label.currentStyle?.text?.color)
     }
 
+    func testComponentColorFieldsAcceptExpressions() throws {
+        harness = RenderHarness()
+        try harness.render("""
+        {
+            "id": "root", "type": "view",
+            "content": {
+                "variables": {
+                    "on": { "type": "boolean", "initialValue": false },
+                    "tone": { "type": "string", "initialValue": "nope" }
+                },
+                "layout": { "width": 390, "height": 844 },
+                "children": [
+                    { "id": "toggle", "type": "toggle",
+                      "content": {
+                        "style": { "onTintColor": "{{on ? '#FF0000' : '#00FF00'}}", "thumbTintColor": "{{tone}}" },
+                        "layout": { "top": 0, "leading": 0 } } },
+                    { "id": "slider", "type": "slider",
+                      "content": {
+                        "style": { "minimumTrackTintColor": "{{on ? '#112233' : '#445566'}}" },
+                        "layout": { "top": 60, "leading": 0, "width": 200 } } },
+                    { "id": "spinner", "type": "activityIndicator",
+                      "content": {
+                        "style": { "color": "{{on ? '#ABCDEF' : '#123456'}}" },
+                        "layout": { "top": 120, "leading": 0 } } }
+                ]
+            }
+        }
+        """)
+        drain(harness)
+        let root = try XCTUnwrap(harness.viewModel("root", as: CViewModel.self))
+        let toggle = try XCTUnwrap(harness.find(UISwitch.self, in: try XCTUnwrap(view("root.toggle"))))
+        let slider = try XCTUnwrap(harness.find(UISlider.self, in: try XCTUnwrap(view("root.slider"))))
+        let spinner = try XCTUnwrap(harness.find(UIActivityIndicatorView.self, in: try XCTUnwrap(view("root.spinner"))))
+        XCTAssertEqual(toggle.onTintColor?.hexString, "#00FF00")
+        XCTAssertEqual(slider.minimumTrackTintColor?.hexString, "#445566")
+        XCTAssertEqual(spinner.color.hexString, "#123456")
+        XCTAssertNil(toggle.thumbTintColor, "a non-hex result leaves the field unset")
+
+        try root.variableStore.setValue(name: "on", value: true)
+        try root.variableStore.setValue(name: "tone", value: "#0000FF")
+        drain(harness)
+        XCTAssertEqual(toggle.onTintColor?.hexString, "#FF0000")
+        XCTAssertEqual(slider.minimumTrackTintColor?.hexString, "#112233")
+        XCTAssertEqual(spinner.color.hexString, "#ABCDEF")
+        XCTAssertEqual(toggle.thumbTintColor?.hexString, "#0000FF")
+    }
+
     // MARK: S2 isHidden on every component
 
     func testIsHiddenOnButtonImageAndCollectionCollapsesStack() throws {
@@ -209,5 +256,39 @@ final class StyleVisibilityLayoutTests: XCTestCase {
         let inner = try XCTUnwrap(harness.find(UICollectionView.self, in: list))
         XCTAssertFalse(inner.isScrollEnabled, "the outer scroll view scrolls instead")
         XCTAssertEqual(list.frame.height, 40 + 70 + 30 + 2 * 10, accuracy: 1)
+    }
+
+    func testNonScrollingCollectionInsideCellGrowsTheCell() throws {
+        harness = RenderHarness()
+        try harness.render("""
+        {
+            "id": "root", "type": "view",
+            "content": {
+                "variables": { "groups": { "type": "array", "initialValue": [
+                    { "id": "g1", "rows": [ { "h": 40 }, { "h": 70 }, { "h": 30 } ] }
+                ] } },
+                "layout": { "width": 390, "height": 844 },
+                "children": [
+                    { "id": "outer", "type": "collection",
+                      "content": {
+                        "properties": { "data": "{{groups}}", "layout": { "type": "vertical" } },
+                        "layout": { "leading": 0, "trailing": 0, "top": 0, "bottom": 0 },
+                        "template": { "id": "card", "type": "view", "content": { "children": [
+                          { "id": "inner", "type": "collection",
+                            "content": {
+                              "properties": { "data": "{{item.rows}}", "layout": { "type": "vertical", "itemSpacing": 10, "scrollEnabled": false } },
+                              "layout": { "leading": 0, "trailing": 0, "top": 0, "bottom": 0 },
+                              "template": { "type": "view", "content": { "layout": { "height": "{{item.h}}" } } } } }
+                        ] } } } }
+                ]
+            }
+        }
+        """)
+        for _ in 0..<8 { drain(harness) }
+        let outerView = try XCTUnwrap(view("root.outer") as? CCollectionView)
+        let outer = try XCTUnwrap(harness.find(UICollectionView.self, in: outerView))
+        outer.layoutIfNeeded()
+        let cell = try XCTUnwrap(outer.cellForItem(at: IndexPath(item: 0, section: 0)))
+        XCTAssertEqual(cell.frame.height, 40 + 70 + 30 + 2 * 10, accuracy: 1, "the cell grows to the nested collection's content")
     }
 }

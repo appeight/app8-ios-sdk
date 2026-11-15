@@ -378,8 +378,8 @@ final class CMapView: App8BaseView<MapContent>, CViewProtocol, MKMapViewDelegate
         if let polyline = overlay as? MKPolyline {
             let renderer = MKPolylineRenderer(polyline: polyline)
 
-            if let colorHex = viewModel?.currentStyle?.routeColor {
-                renderer.strokeColor = UIColor(withHexString: colorHex)
+            if let color = viewModel?.resolveColor(viewModel?.currentStyle?.routeColor) {
+                renderer.strokeColor = color
             } else {
                 renderer.strokeColor = .systemBlue
             }

@@ -291,7 +291,7 @@ class CPickerView: App8BaseView<DSL.Model.Component.Picker.C>, CViewProtocol {
             }
         }
 
-        if let hex = style?.selectedSegmentTintColor, let color = UIColor(withHexString: hex) {
+        if let color = viewModel?.resolveColor(style?.selectedSegmentTintColor) {
             segmentedControl?.selectedSegmentTintColor = color
         }
     }

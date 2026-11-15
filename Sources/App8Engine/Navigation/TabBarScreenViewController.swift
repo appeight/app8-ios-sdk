@@ -81,15 +81,36 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     }
 
     private func configureTabBarAppearance() {
-        if let tintColorHex = tabBarContent.tintColor,
-           let tintColor = UIColor(withHexString: tintColorHex) {
+        if let tintColor = resolveColor(tabBarContent.tintColor) {
             tabBar.tintColor = tintColor
         }
 
-        if let unselectedColorHex = tabBarContent.unselectedColor,
-           let unselectedColor = UIColor(withHexString: unselectedColorHex) {
+        if let unselectedColor = resolveColor(tabBarContent.unselectedColor) {
             tabBar.unselectedItemTintColor = unselectedColor
         }
+    }
+
+    /// A tab bar color field (hex or color expression) resolved against app
+    /// variables; a non-hex result leaves the field unset and logs `style.color.invalid`.
+    private func resolveColor(_ raw: String?) -> UIColor? {
+        guard let raw, !raw.isEmpty else { return nil }
+        guard raw.contains("{{") else { return UIColor(withHexString: raw) }
+        let variables = VariableContext(store: appService.appVariableStore)
+        let value = ((try? PropertyResolver().resolveToString(raw, context: variables)) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard DSL.Model.Style.Color.Hex.isValidHexString(value), let color = UIColor(withHexString: value) else {
+            context.logger.warning("style.color.invalid: '\(raw)' resolved to '\(value)', not a hex color — field left unset. tabBarScreen")
+            return nil
+        }
+        return color
+    }
+
+    /// True when a bar or tab color is an expression (re-applied on app variable changes).
+    private var hasColorExpressions: Bool {
+        let fields = [tabBarContent.tintColor, tabBarContent.unselectedColor,
+                      tabBarContent.badgeColor, tabBarContent.badgeTextColor]
+            + tabBarContent.tabs.map(\.badgeColor)
+        return fields.contains { $0?.contains("{{") == true }
     }
 
     /// Set up all tabs — must be called after init to load screens asynchronously.
@@ -137,21 +158,34 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     /// Badge background (`badgeColor`, per tab over the bar's) and text color
     /// (`badgeTextColor`) on the tab's `UITabBarItem`, normal and selected.
     private func applyBadgeColors(to item: UITabBarItem, tab: DSL.Model.Tab) {
-        if let hex = tab.badgeColor ?? tabBarContent.badgeColor, let color = UIColor(withHexString: hex) {
+        if let color = resolveColor(tab.badgeColor ?? tabBarContent.badgeColor) {
             item.badgeColor = color
         }
-        if let hex = tabBarContent.badgeTextColor, let color = UIColor(withHexString: hex) {
+        if let color = resolveColor(tabBarContent.badgeTextColor) {
             item.setBadgeTextAttributes([.foregroundColor: color], for: .normal)
             item.setBadgeTextAttributes([.foregroundColor: color], for: .selected)
         }
     }
 
     private func bindBadges() {
-        guard tabBarContent.tabs.contains(where: { $0.badge != nil }) else { return }
+        let colorExpressions = hasColorExpressions
+        guard colorExpressions || tabBarContent.tabs.contains(where: { $0.badge != nil }) else { return }
         updateBadges()
         badgeSubscription = appService.appVariableStore.anyVariableChanged
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.updateBadges() }
+            .sink { [weak self] _ in
+                self?.updateBadges()
+                if colorExpressions { self?.reapplyColors() }
+            }
+    }
+
+    /// Re-resolves the bar and badge colors after an app variable change.
+    private func reapplyColors() {
+        configureTabBarAppearance()
+        for tab in tabBarContent.tabs {
+            guard let nav = tabNavigationControllers[tab.id] else { continue }
+            applyBadgeColors(to: nav.tabBarItem, tab: tab)
+        }
     }
 
     private func updateBadges() {

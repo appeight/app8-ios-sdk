@@ -207,7 +207,7 @@ class CIconView: App8BaseView<DSL.Model.Component.Icon.C>, CViewProtocol {
         tintColorAnimation = props.tintColor?.animation?.inlineOrNil
 
         let bgHex: String? = props.backgroundColor?.value
-        let bgColor: UIColor? = bgHex.flatMap { UIColor(withHexString: $0) }
+        let bgColor: UIColor? = viewModel.resolveColor(bgHex)
         if lastBackgroundColor.map({ $0 == bgColor }) != true {
             lastBackgroundColor = .some(bgColor)
             let isFirstApply = !hasAppliedBackgroundColorOnce

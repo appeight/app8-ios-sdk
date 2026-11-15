@@ -136,7 +136,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         setupViewHierarchyIfNeeded()
 
         if let bgColorName = style?.backgroundColor, !(viewModel?.service.context.layoutMode.isEnabled == true) {
-            collectionView.backgroundColor = UIColor(withHexString: bgColorName)
+            collectionView.backgroundColor = viewModel?.resolveColor(bgColorName)
         }
     }
 
@@ -438,7 +438,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                 }
                 completion(true)
             }
-            if let hex = swipe.backgroundColor, let color = UIColor(withHexString: hex) {
+            if let color = viewModel?.swipeActionColor(at: indexPath, swipe.backgroundColor) {
                 action.backgroundColor = color
             }
             if let symbolName = swipe.systemImage {
@@ -651,6 +651,29 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         guard actual > 0, abs(actual - constraint.constant) > 0.5 else { return }
         constraint.constant = actual
         superview?.setNeedsLayout()
+        remeasureEnclosingCell()
+    }
+
+    /// A self-sizing collection inside a collection or table cell: the cell
+    /// was measured before this height was known, so ask the enclosing list
+    /// to measure its cells again (the cell grows with the content).
+    private func remeasureEnclosingCell() {
+        var view = superview
+        var inCell = false
+        while let current = view {
+            if current is UICollectionViewCell || current is UITableViewCell { inCell = true }
+            if inCell, let outer = current as? CCollectionView {
+                outer.scheduleRemeasure()
+                return
+            }
+            if inCell, let table = current as? UITableView {
+                DispatchQueue.main.async { [weak table] in
+                    UIView.performWithoutAnimation { table?.performBatchUpdates(nil) }
+                }
+                return
+            }
+            view = current.superview
+        }
     }
 
     override func didMoveToWindow() {
@@ -1034,6 +1057,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                     let estimatedHeight: CGFloat = itemsHeight + gapsHeight + insetsHeight
                     self.selfSizingHeightConstraint?.constant = estimatedHeight
                     self.superview?.setNeedsLayout()
+                    self.remeasureEnclosingCell()
                 }
 
                 // When swipe actions are defined, try to animate deletions via performBatchUpdates

@@ -104,13 +104,13 @@ class CSliderView: App8BaseView<DSL.Model.Component.Slider.C>, CViewProtocol {
         super.applyStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
         applyBaseStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
 
-        if let hex = style?.minimumTrackTintColor, let color = UIColor(withHexString: hex) {
+        if let color = viewModel?.resolveColor(style?.minimumTrackTintColor) {
             slider.minimumTrackTintColor = color
         }
-        if let hex = style?.maximumTrackTintColor, let color = UIColor(withHexString: hex) {
+        if let color = viewModel?.resolveColor(style?.maximumTrackTintColor) {
             slider.maximumTrackTintColor = color
         }
-        if let hex = style?.thumbTintColor, let color = UIColor(withHexString: hex) {
+        if let color = viewModel?.resolveColor(style?.thumbTintColor) {
             slider.thumbTintColor = color
         }
     }

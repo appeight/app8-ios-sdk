@@ -119,7 +119,7 @@ class CDatePickerView: App8BaseView<DSL.Model.Component.DatePicker.C>, CViewProt
         super.applyStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
         applyBaseStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
 
-        if let hex = style?.tintColor, let color = UIColor(withHexString: hex) {
+        if let color = viewModel?.resolveColor(style?.tintColor) {
             datePicker.tintColor = color
         }
     }
