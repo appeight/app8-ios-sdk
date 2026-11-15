@@ -23,6 +23,8 @@ final class NativeVisibilityTests: XCTestCase {
         var contexts: [App8NativeContext] = []
         var changes: [[Bool]] = []
         var initialValues: [Bool] = []
+        /// Every change in delivery order: (context index, value).
+        var log: [(Int, Bool)] = []
 
         func register() {
             App8.registerNativeComponent(NativeVisibilityTests.module) { [unowned self] context in
@@ -34,6 +36,7 @@ final class NativeVisibilityTests: XCTestCase {
                     XCTAssertTrue(Thread.isMainThread)
                     XCTAssertEqual(context.isVisible, visible, "isVisible is updated before the callback")
                     self.changes[index].append(visible)
+                    self.log.append((index, visible))
                 }
                 let view = UIView()
                 view.backgroundColor = .red
@@ -151,6 +154,11 @@ final class NativeVisibilityTests: XCTestCase {
 
     // MARK: - Push / pop
 
+    /// Position of a change in the delivery log.
+    private func logIndex(_ context: Int, _ value: Bool, after: Int = -1) -> Int? {
+        probe.log.indices.first { $0 > after && probe.log[$0] == (context, value) }
+    }
+
     func testPushOverAndPopBack() throws {
         let home = try renderScreen("home")
         let nav = UINavigationController(rootViewController: home)
@@ -159,60 +167,96 @@ final class NativeVisibilityTests: XCTestCase {
 
         let detail = try renderScreen("detail")
         nav.pushViewController(detail, animated: true)
-        // false as the push starts, before it completes.
-        XCTAssertEqual(probe.changes[0], [true, false], "pushed-over screen reports false when the transition starts")
         waitUntil { probe.contexts[1].isVisible }
+        XCTAssertEqual(probe.changes[0], [true, false], "pushed-over screen reports false")
         XCTAssertEqual(probe.changes[1], [true])
+        let homeOff = try XCTUnwrap(logIndex(0, false))
+        let detailOn = try XCTUnwrap(logIndex(1, true))
+        XCTAssertLessThan(homeOff, detailOn, "false as the push starts, true once it completes")
 
         nav.popViewController(animated: true)
-        XCTAssertEqual(probe.changes[1], [true, false], "popped screen reports false at the start of the pop")
         waitUntil { probe.contexts[0].isVisible }
+        XCTAssertEqual(probe.changes[1], [true, false], "popped screen reports false")
         XCTAssertEqual(probe.changes[0], [true, false, true])
+        let detailOff = try XCTUnwrap(logIndex(1, false))
+        let homeBack = try XCTUnwrap(logIndex(0, true, after: homeOff))
+        XCTAssertLessThan(detailOff, homeBack, "false at the start of the pop, before the screen below returns")
         waitUntil { screenVariable("home", "appearCount") == 2 }
         XCTAssertEqual(screenVariable("home", "appearCount"), 2)
         XCTAssertEqual(screenVariable("home", "disappearCount"), 1)
     }
 
-    // MARK: - Modal
-
-    func testModalCoversTheScreenBelow() throws {
+    /// A swipe-back released early: `false` when it starts, `true` again once
+    /// the cancelled animation settles. UIKit sends `viewWillDisappear`, then
+    /// `viewWillAppear` + `viewDidAppear`; the screen below never completes
+    /// its appearance and stays not visible.
+    func testCancelledInteractiveTransition() throws {
         let home = try renderScreen("home")
         let nav = UINavigationController(rootViewController: home)
         _ = show(nav)
         waitUntil { probe.contexts.first?.isVisible == true }
+        let detail = try renderScreen("detail")
+        nav.pushViewController(detail, animated: false)
+        waitUntil { probe.contexts[1].isVisible }
 
-        for style in [UIModalPresentationStyle.pageSheet, .fullScreen] {
-            let sheet = UINavigationController(rootViewController: try renderScreen("sheet\(style.rawValue)"))
-            sheet.modalPresentationStyle = style
-            let before = probe.changes[0].count
-            nav.present(sheet, animated: true)
-            XCTAssertEqual(probe.changes[0].count, before + 1, "covered as the presentation starts (\(style.rawValue))")
-            XCTAssertEqual(probe.changes[0].last, false)
-            let sheetIndex = probe.contexts.count - 1
-            waitUntil { probe.contexts[sheetIndex].isVisible }
-            XCTAssertTrue(probe.contexts[sheetIndex].isVisible)
-            XCTAssertFalse(probe.contexts[0].isVisible, "still covered while the modal is up")
+        detail.beginAppearanceTransition(false, animated: true)
+        home.beginAppearanceTransition(true, animated: true)
+        XCTAssertFalse(probe.contexts[1].isVisible, "false as the swipe starts")
+        // Cancelled.
+        home.beginAppearanceTransition(false, animated: true)
+        home.endAppearanceTransition()
+        detail.beginAppearanceTransition(true, animated: true)
+        detail.endAppearanceTransition()
+        XCTAssertEqual(probe.changes[1], [true, false, true], "true again once the cancelled swipe settles")
+        XCTAssertEqual(probe.changes[0], [true, false], "the screen below stays not visible")
+    }
 
-            nav.dismiss(animated: true)
-            XCTAssertFalse(probe.contexts[sheetIndex].isVisible, "dismissed screen is false at the start")
-            waitUntil { probe.contexts[0].isVisible }
-            XCTAssertTrue(probe.contexts[0].isVisible, "uncovered after the dismissal completes (\(style.rawValue))")
-        }
-        XCTAssertEqual(probe.changes[0], [true, false, true, false, true], "never the same value twice")
+    // MARK: - Modal
+
+    /// A navigation controller whose presented controller the test sets: the
+    /// hostless test runner has no window scene, so UIKit never runs real
+    /// presentation transitions there.
+    private final class CoveringNavigationController: UINavigationController {
+        var covering: UIViewController?
+        override var presentedViewController: UIViewController? { covering ?? super.presentedViewController }
+    }
+
+    func testModalCoversTheScreenBelow() throws {
+        let home = try renderScreen("home")
+        let nav = CoveringNavigationController(rootViewController: home)
+        _ = show(nav)
+        waitUntil { probe.contexts.first?.isVisible == true }
+
+        // Present: the presented screen's `viewWillAppear` covers the one below at once.
+        let sheet = try renderScreen("sheet")
+        let sheetNav = UINavigationController(rootViewController: sheet)
+        nav.covering = sheetNav
+        sheet.beginAppearanceTransition(true, animated: true)
+        XCTAssertEqual(probe.changes[0], [true, false], "covered as the presentation starts")
+        sheet.endAppearanceTransition()
+        XCTAssertFalse(probe.contexts[0].isVisible, "still covered while the modal is up")
+
+        // Dismiss: the screen below is uncovered once the dismissal completes.
+        sheet.beginAppearanceTransition(false, animated: true)
+        XCTAssertFalse(probe.contexts[0].isVisible)
+        nav.covering = nil
+        sheet.endAppearanceTransition()
+        XCTAssertEqual(probe.changes[0], [true, false, true], "uncovered after the dismissal, never the same value twice")
     }
 
     func testAlertDoesNotCoverTheScreen() throws {
         let home = try renderScreen("home")
-        let nav = UINavigationController(rootViewController: home)
+        let nav = CoveringNavigationController(rootViewController: home)
         _ = show(nav)
         waitUntil { probe.contexts.first?.isVisible == true }
-        let alert = UIAlertController(title: "A", message: nil, preferredStyle: .alert)
-        nav.present(alert, animated: false)
-        drain()
+        nav.covering = UIAlertController(title: "A", message: nil, preferredStyle: .alert)
+        NativeVisibility.evaluateNow()
         XCTAssertTrue(probe.contexts[0].isVisible)
         XCTAssertFalse(NativeVisibility.isCovered(home))
-        alert.dismiss(animated: false)
-        drain()
+        nav.covering = UIViewController()
+        XCTAssertTrue(NativeVisibility.isCovered(home), "any other modal covers it")
+        nav.covering = nil
+        NativeVisibility.evaluateNow()
         XCTAssertEqual(probe.changes[0], [true])
     }
 
@@ -232,8 +276,15 @@ final class NativeVisibilityTests: XCTestCase {
         XCTAssertFalse(probe.contexts[1].isVisible, "a tab that is not selected is not visible")
 
         tabs.selectedIndex = 1
-        waitUntil { probe.contexts[1].isVisible }
-        XCTAssertFalse(probe.contexts[0].isVisible)
+        waitUntil { probe.contexts[0].isVisible == false }
+        XCTAssertFalse(probe.contexts[1].isVisible, "not before the switch completes")
+        // The hostless runner never completes the switch's appearance
+        // transition; finish it the way UIKit does.
+        let tabB = try XCTUnwrap(second.topViewController)
+        if !probe.contexts[1].isVisible {
+            tabB.beginAppearanceTransition(true, animated: false)
+            tabB.endAppearanceTransition()
+        }
         XCTAssertTrue(probe.contexts[1].isVisible)
         XCTAssertEqual(probe.changes[0], [true, false])
         XCTAssertEqual(probe.changes[1], [true])
