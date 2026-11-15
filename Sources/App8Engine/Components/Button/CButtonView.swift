@@ -170,6 +170,11 @@ class CButtonView: App8BaseView<DSL.Model.Component.Button.C>, CViewProtocol {
                 if let color { outgoing.foregroundColor = color }
                 return outgoing
             }
+            // A configuration title wraps by default; `numberOfLines: 1` (or a
+            // truncating lineBreakMode) keeps it on one line with an ellipsis.
+            if textModel.numberOfLines == 1 {
+                configuration.titleLineBreakMode = textModel.lineBreakMode?.ui ?? .byTruncatingTail
+            }
         }
 
         button.configuration = configuration
