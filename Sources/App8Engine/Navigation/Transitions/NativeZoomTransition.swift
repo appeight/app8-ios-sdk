@@ -184,28 +184,46 @@ enum NativeZoomTransition {
     }
 
     /// `none`: never. `down`: a mostly vertical, downward drag. `any`: any drag
-    /// the content under the finger cannot use itself (a zoomed scroll view, or
-    /// a horizontal pan over a horizontal scroller).
+    /// the content under the finger cannot use itself (a zoomed scroll view, a
+    /// horizontal pan a horizontal scroller can still scroll with, or the
+    /// pull-down of a stretchy-top scroll view).
     private static func shouldBeginDismiss(
         gesture: DSL.Model.ScreenTransition.DismissGesture,
         context: UIViewController.Transition.ZoomOptions.InteractionContext,
         zoomedView: UIView?
     ) -> Bool {
-        let velocity = CGPoint(x: context.velocity.dx, y: context.velocity.dy)
+        shouldBeginDismiss(
+            gesture: gesture,
+            location: context.location,
+            velocity: CGPoint(x: context.velocity.dx, y: context.velocity.dy),
+            willBegin: context.willBegin,
+            zoomedView: zoomedView
+        )
+    }
+
+    /// `interactiveDismissShouldBegin` decision, testable without a live
+    /// transition. `location` is in `zoomedView`'s coordinates.
+    static func shouldBeginDismiss(
+        gesture: DSL.Model.ScreenTransition.DismissGesture,
+        location: CGPoint,
+        velocity: CGPoint,
+        willBegin: Bool,
+        zoomedView: UIView?
+    ) -> Bool {
         switch gesture {
         case .none:
             return false
         case .down:
             return velocity.y > 0 && abs(velocity.y) > abs(velocity.x)
         case .any:
-            guard context.willBegin else { return true }
+            guard willBegin else { return true }
             let horizontal = abs(velocity.x) > abs(velocity.y)
             // A pan from the leading edge always dismisses, even over a pager.
             if let root = zoomedView, horizontal {
                 let rtl = root.effectiveUserInterfaceLayoutDirection == .rightToLeft
                 // `location` is where the pan is recognized, a few points past
                 // its start; allow for that travel.
-                let x = context.location.x
+                let x = location.x
                 let edge = App8CollectionView.edgeWidth + 24
                 if rtl ? (velocity.x < 0 && x > root.bounds.width - edge)
                        : (velocity.x > 0 && x < edge) {
@@ -213,12 +231,15 @@ enum NativeZoomTransition {
                 }
             }
             guard let root = zoomedView,
-                  let hit = root.hitTest(context.location, with: nil) else { return true }
+                  let hit = root.hitTest(location, with: nil) else { return true }
             var view: UIView? = hit
             while let current = view, current !== root.superview {
                 if let scroll = current as? UIScrollView {
                     if scroll.zoomScale > scroll.minimumZoomScale + 0.01 { return false }
-                    if horizontal, scroll.contentSize.width > scroll.bounds.width + 1 { return false }
+                    // Only a scroller that can still move this way keeps the pan:
+                    // a pager on its first page leaves a back drag to the
+                    // full-width pop (as UIKit's content pop does).
+                    if horizontal, canScrollHorizontally(scroll, velocityX: velocity.x) { return false }
                     // A stretchy-top scroll view uses the pull-down at its top.
                     if !horizontal, velocity.y > 0, let zooming = scroll as? App8ZoomingScrollView, zooming.claimsPullDown {
                         return false
@@ -228,5 +249,20 @@ enum NativeZoomTransition {
             }
             return true
         }
+    }
+
+    /// Whether a horizontal drag with this velocity can still scroll `scroll`:
+    /// a drag to the right needs content to the left of the visible bounds, a
+    /// drag to the left content to the right (pure geometry, so it holds for
+    /// right-to-left layouts, whose collection views flip the content).
+    static func canScrollHorizontally(_ scroll: UIScrollView, velocityX: CGFloat) -> Bool {
+        guard scroll.isScrollEnabled else { return false }
+        let inset = scroll.adjustedContentInset
+        let minX = -inset.left
+        let maxX = scroll.contentSize.width + inset.right - scroll.bounds.width
+        guard maxX > minX + 1 else { return false }
+        if velocityX > 0 { return scroll.contentOffset.x > minX + 0.5 }
+        if velocityX < 0 { return scroll.contentOffset.x < maxX - 0.5 }
+        return true
     }
 }
