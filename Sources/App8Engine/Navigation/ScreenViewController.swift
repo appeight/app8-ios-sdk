@@ -362,7 +362,7 @@ final class ScreenViewController: BaseViewController {
         // Never move `searchBarPlacementBarButtonItem` into the navigation bar's
         // left items: UIKit raises NSInvalidArgumentException ("only supported
         // in UIToolbar") — observed on iPhone with iOS 26.2 — which crashed any
-        // screen using `fillsBar` (demostore shop/cart/account). The field
+        // screen using `fillsBar` (the list screens of a tab app). The field
         // stays in its integrated (trailing) slot and is widened in place.
         let width = controller.searchBar.widthAnchor.constraint(equalToConstant: 0)
         width.isActive = true

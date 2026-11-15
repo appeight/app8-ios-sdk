@@ -5,7 +5,7 @@
 //  Self-sizing grid rows (collections.md, "Self-sizing grid rows"): without
 //  `itemHeight` / `aspectRatio` a grid item is as tall as its content, each
 //  row is as tall as its tallest item, and the other items stretch to it.
-//  The DemoStore product card hangs its ADD TO BAG footer off a `>=` gap, so
+//  A product card hangs its ADD TO BAG footer off a `>=` gap, so
 //  its height is ambiguous; cells used to be fitted against the proposed frame
 //  (the 470pt `estimatedItemHeight`) and kept ~180pt of empty space above the
 //  button. They must take the content's natural (smallest) height instead.
@@ -64,7 +64,7 @@ final class GridRowSizingTests: XCTestCase {
         """
     }
 
-    /// A grid section in `sectionLayouts` (the DemoStore collection screen).
+    /// A grid section in `sectionLayouts` (a collection screen).
     private static var sectionGridJSON: String {
         """
         { "type": "view", "id": "root",

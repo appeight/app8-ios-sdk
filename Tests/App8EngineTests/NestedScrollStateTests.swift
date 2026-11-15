@@ -132,7 +132,7 @@ final class NestedScrollStateTests: XCTestCase {
         )
     }
 
-    // MARK: - End to end: shelves in a reused vertical list (DemoStore shop shape)
+    // MARK: - End to end: shelves in a reused vertical list (home-feed shape)
 
     private func shopJSON(productCount: (Int) -> Int = { _ in 10 }) -> String {
         let sections = (0..<20).map { s -> String in
@@ -229,7 +229,7 @@ final class NestedScrollStateTests: XCTestCase {
         XCTAssertEqual(restored.contentOffset.x, 300, accuracy: 0.5, "shelf offset must be restored for its section")
     }
 
-    /// DemoStore/Demo Brand B shape: hero sections carry no products, product
+    /// Home-feed shape: hero sections carry no products, product
     /// sections differ in count. A reused outer cell is reparented to another
     /// section's store, and its nested `data: {{item.products}}` collection must
     /// re-resolve, or it keeps the previous section's items (blank after a hero).

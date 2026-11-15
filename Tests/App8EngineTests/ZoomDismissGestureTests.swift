@@ -3,7 +3,7 @@
 //  App8EngineTests
 //
 //  `interactiveDismissShouldBegin` for a zoom-pushed screen shaped like the
-//  DemoStore product page: a stretchy-top vertical scroll view whose top child
+//  A detail page: a stretchy-top vertical scroll view whose top child
 //  is a 500 pt horizontal paging gallery. A back drag over the gallery on its
 //  first page, at rest, starts the full-width pop; any drag the gallery can
 //  use (it is moving, has content that way, or the drag is forward) stays
@@ -136,7 +136,7 @@ struct ZoomDismissGestureTests {
     }
 
     // UIKit asks with `willBegin == false` for a back drag over the pager's
-    // later page (measured in Shoppu, SDK 0.5.2: the old early `return true`
+    // later page (measured on device, SDK 0.5.2: the old early `return true`
     // popped the screen instead of paging back).
     @Test func uikitDefaultDoesNotOverrideTheGallerysClaim() {
         let (later, _) = makeScreen(page: 1)

@@ -2,7 +2,7 @@
 //  WishlistCollectionTests.swift
 //  App8EngineTests
 //
-//  The DemoStore Wishlist tab, end to end: a collection whose section reads
+//  A saved-items tab, end to end: a collection whose section reads
 //  `{{filter(allProducts, wishlist.includes(item.handle))}}`, a heart button in
 //  each card that toggles `wishlist`, an empty-state label, and a large
 //  navigation-bar title, in a real tab bar.
@@ -29,7 +29,7 @@ final class WishlistCollectionTests: XCTestCase {
         .map { #"{"id":"p\#($0)","handle":"h\#($0)","title":"Product \#($0)"}"# }
         .joined(separator: ",")
 
-    /// The collection + empty label of the wishlist screen (DemoStore
+    /// The collection + empty label of the wishlist screen (a demo app's
     /// screens/wishlist.json, with inline templates instead of components).
     private static func children(products: String = "{{filter(allProducts, wishlist.includes(item.handle))}}") -> String { """
     [

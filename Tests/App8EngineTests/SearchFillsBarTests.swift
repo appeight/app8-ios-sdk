@@ -2,7 +2,7 @@ import XCTest
 import UIKit
 @testable import App8Engine
 
-/// Regression for the demostore shop/cart/account "hang": the preview host
+/// Regression for the tab-app list screens "hang": the preview host
 /// never produced a render because the app crashed. `navigationBar.search`
 /// with `placement: integrated` + `fillsBar: true` moved
 /// `searchBarPlacementBarButtonItem` into `leftBarButtonItems`, which UIKit
@@ -57,7 +57,7 @@ final class SearchFillsBarTests: XCTestCase {
         ] as [String: Any]]
     }
 
-    /// demostore shop: integrated + fillsBar search inside a tab crashed the
+    /// A tab screen: integrated + fillsBar search inside a tab crashed the
     /// host (NSInvalidArgumentException "only supported in UIToolbar").
     func testFillsBarSearchInTabDoesNotThrow() async throws {
         let env: [String: Any] = ["bundle": [
@@ -82,7 +82,7 @@ final class SearchFillsBarTests: XCTestCase {
         try await Self.startAndSettle(try BundleDataSource(envelope: env))
     }
 
-    /// DemoStore shop: the fillsBar field is centred with equal side gaps,
+    /// A tab screen: the fillsBar field is centred with equal side gaps,
     /// floats 10pt below the status bar, and content starts 10pt below it.
     func testFillsBarSearchGeometry() async throws {
         guard #available(iOS 26.0, *), UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iOS 26 iPhone layout") }
@@ -115,7 +115,7 @@ final class SearchFillsBarTests: XCTestCase {
         XCTAssertEqual(frame.minY, safeTop + 10, accuracy: 0.5, "top gap \(frame)")
         XCTAssertEqual(screen.view.safeAreaInsets.top, frame.maxY + 10, accuracy: 0.5, "content top")
     }
-    /// DemoStore shop -> product (push) and back (pop): the shop's fillsBar
+    /// List -> detail (push) and back (pop): the list's fillsBar
     /// gap moves the shared navigation bar, so the bar has to stay where it is
     /// across the transition. It used to be dropped by the pushed screen, and
     /// UIKit applied that only once the transition finished: the back button

@@ -3,7 +3,7 @@
 //  App8EngineTests
 //
 //  A reused collection cell must be measured at its NEW item's size. Item
-//  templates with `layout.height: "{{item.height}}"` (the DemoStore shop:
+//  templates with `layout.height: "{{item.height}}"` (a home feed:
 //  a 36pt strip, a 500pt hero, product rows…) used to keep the previous
 //  item's height after reuse, because the dimension expression re-resolved
 //  on a later main-queue hop, after the collection had measured the cell.
