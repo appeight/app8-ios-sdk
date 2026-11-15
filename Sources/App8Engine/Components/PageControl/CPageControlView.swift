@@ -5,7 +5,9 @@ class CPageControlView: App8BaseView<DSL.Model.Component.PageControl.C>, CViewPr
 
     weak var materialView: MaterialView?
     let contentView = UIView()
-    private let pageControl = UIPageControl()
+    /// The iOS 26 media look (dark blurred capsule, white dots) for every
+    /// page control; DSL tint colors are not applied on iOS.
+    private let pageControl = MediaPageControl()
 
     override var intrinsicContentSource: UIView? { pageControl }
 
@@ -68,14 +70,14 @@ class CPageControlView: App8BaseView<DSL.Model.Component.PageControl.C>, CViewPr
         let props = vm.currentProperties
 
         if let expr = props.numberOfPages {
-            if let val = vm.resolvePropertyToFloat(expr) {
-                pageControl.numberOfPages = Int(val)
+            if let val = vm.resolvePropertyToFloat(expr), val.isFinite {
+                pageControl.numberOfPages = max(0, Int(val))
             }
         }
 
         if let expr = props.currentPage {
-            if let val = vm.resolvePropertyToFloat(expr) {
-                pageControl.currentPage = Int(val)
+            if let val = vm.resolvePropertyToFloat(expr), val.isFinite {
+                pageControl.currentPage = Int(val.rounded())
             }
         }
 
@@ -100,12 +102,8 @@ class CPageControlView: App8BaseView<DSL.Model.Component.PageControl.C>, CViewPr
         super.applyStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
         applyBaseStyle(style, animated: animated, duration: duration, options: options, useSpring: useSpring)
 
-        if let hex = style?.pageIndicatorTintColor, let color = UIColor(withHexString: hex) {
-            pageControl.pageIndicatorTintColor = color
-        }
-        if let hex = style?.currentPageIndicatorTintColor, let color = UIColor(withHexString: hex) {
-            pageControl.currentPageIndicatorTintColor = color
-        }
+        // pageIndicatorTintColor / currentPageIndicatorTintColor are ignored:
+        // the dots are always white on the dark capsule.
     }
 }
 
