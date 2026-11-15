@@ -656,13 +656,14 @@ public final class ExpressionEvaluator {
             return 0
 
         // MARK: Formatting — Date & Time
+        // Every date function gives null for an input that does not parse (variables.md).
 
         case "formatDate":
             guard (1...2).contains(arguments.count) else {
                 throw ExpressionError.parseError("formatDate() expects 1 or 2 arguments")
             }
             let dateVal = try evaluate(arguments[0], context: context)
-            guard let date = parseDate(dateVal) else { return "" }
+            guard let date = parseDate(dateVal) else { return nil }
             let style = arguments.count == 2 ? toString(try evaluate(arguments[1], context: context)) : "medium"
             let fmt = DateFormatter()
             fmt.locale = self.locale
@@ -681,7 +682,7 @@ public final class ExpressionEvaluator {
                 throw ExpressionError.parseError("formatTime() expects 1 or 2 arguments")
             }
             let dateVal = try evaluate(arguments[0], context: context)
-            guard let date = parseDate(dateVal) else { return "" }
+            guard let date = parseDate(dateVal) else { return nil }
             let timeFormat = arguments.count == 2 ? toString(try evaluate(arguments[1], context: context)) : "12h"
             let fmt = DateFormatter()
             fmt.locale = self.locale
@@ -719,7 +720,7 @@ public final class ExpressionEvaluator {
                 throw ExpressionError.parseError("ageInYears() expects 1 argument")
             }
             let dateVal = try evaluate(arguments[0], context: context)
-            guard let birthdate = parseDate(dateVal) else { return 0 }
+            guard let birthdate = parseDate(dateVal) else { return nil }
             let years = Calendar.current.dateComponents([.year], from: birthdate, to: Date()).year ?? 0
             return max(0, years)
 
@@ -729,7 +730,7 @@ public final class ExpressionEvaluator {
             }
             let startVal = try evaluate(arguments[0], context: context)
             let endVal   = try evaluate(arguments[1], context: context)
-            guard let start = parseDate(startVal), let end = parseDate(endVal) else { return 0 }
+            guard let start = parseDate(startVal), let end = parseDate(endVal) else { return nil }
             let days = Calendar.current.dateComponents([.day], from: start, to: end).day ?? 0
             return Swift.abs(days)
 
@@ -738,7 +739,7 @@ public final class ExpressionEvaluator {
                 throw ExpressionError.parseError("timeAgo() expects 1 argument")
             }
             let dateVal = try evaluate(arguments[0], context: context)
-            guard let date = parseDate(dateVal) else { return "" }
+            guard let date = parseDate(dateVal) else { return nil }
             let seconds = Int(Date().timeIntervalSince(date))
             if seconds < 60 { return "just now" }
             let minutes = seconds / 60
@@ -783,7 +784,7 @@ public final class ExpressionEvaluator {
                 throw ExpressionError.parseError("daysUntil() expects 1 argument")
             }
             let dateVal = try evaluate(arguments[0], context: context)
-            guard let future = parseDate(dateVal) else { return 0 }
+            guard let future = parseDate(dateVal) else { return nil }
             let today = Calendar.current.startOfDay(for: Date())
             let target = Calendar.current.startOfDay(for: future)
             return Calendar.current.dateComponents([.day], from: today, to: target).day ?? 0
