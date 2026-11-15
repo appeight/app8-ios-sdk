@@ -357,6 +357,10 @@ extension App8Service: ComponentRenderer, ComponentService {
         view.traitOverrides = root.traitOverrides
         view.configure(viewModel: viewModel, superview: root.rootContainerView, animated: false)
 
+        if let bottomBar = entity.content.bottomBar {
+            root.installBottomBar(bottomBar, service: self, viewModel: viewModel, parentPath: screenRootId)
+        }
+
         UIView.performWithoutAnimation { [weak root] in
             root?.view.layoutIfNeeded()
         }

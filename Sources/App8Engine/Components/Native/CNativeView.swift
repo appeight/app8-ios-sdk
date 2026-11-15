@@ -18,6 +18,10 @@ final class CNativeView: App8BaseView<NativeContent>, CViewProtocol {
     private(set) var hostedView: UIView?
     private var lastProps: NSDictionary?
     private var variablesCancellable: AnyCancellable?
+    private var visibilityTracker: NativeVisibilityTracker?
+
+    /// Whether the component is on screen (see `NativeVisibility`).
+    var isComponentVisible: Bool { visibilityTracker?.isVisible ?? false }
 
     var layoutModeId: String? { viewModel?.componentPath.split(separator: ".").last.map(String.init) }
     var layoutModeContext: App8LayoutMode? { viewModel?.service.context.layoutMode }
@@ -42,6 +46,29 @@ final class CNativeView: App8BaseView<NativeContent>, CViewProtocol {
         )
         bindStyle(viewModel.style, animation: viewModel.animation)
         configureContent(viewModel: viewModel)
+        visibilityTracker = NativeVisibilityTracker(view: self) { [weak self] visible in
+            self?.visibilityChanged(visible)
+        }
+        if window != nil { NativeVisibility.invalidate() }
+    }
+
+    override func willMove(toWindow newWindow: UIWindow?) {
+        // Leaving the window (screen torn down, re-render, cell removed):
+        // `false` while the view is still intact.
+        if newWindow == nil { visibilityTracker?.setNotVisible() }
+        super.willMove(toWindow: newWindow)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // Joining a window: wait for the screen lifecycle (screens are built
+        // before they show); the next pass decides.
+        if window != nil { NativeVisibility.invalidate() }
+    }
+
+    private func visibilityChanged(_ visible: Bool) {
+        nativeContext?.updateVisibility(visible)
+        viewModel?.handleVisibilityChange(visible)
     }
 
     private func configureContent(viewModel: CNativeViewModel) {

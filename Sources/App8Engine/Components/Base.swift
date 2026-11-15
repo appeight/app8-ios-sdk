@@ -37,6 +37,9 @@ extension DSL.Model.Component {
         /// Navigation bar configuration (for screens only)
         let navigationBar: M.NavigationBar?
 
+        /// Content pinned to the bottom of the screen (for screens only)
+        let bottomBar: M.BottomBar?
+
         /// Per-component transition context. On a **screen root** this is the
         /// screen's default `ScreenTransition` (used when navigating *to* this
         /// screen and the navigation action declares no transition of its own;
@@ -96,6 +99,7 @@ extension DSL.Model.Component {
             case triggers
             case variables
             case navigationBar
+            case bottomBar
             case transition
             case hidesTabBar
             case swipeBackEnabled
@@ -173,6 +177,7 @@ extension DSL.Model.Component {
             states           = try c.decodeIfPresent([String: M.State<Properties, StyleContent>].self, forKey: .states)
             variables        = try c.decodeIfPresent([String: VariableDefinition].self, forKey: .variables)
             navigationBar    = try c.decodeIfPresent(M.NavigationBar.self, forKey: .navigationBar)
+            bottomBar        = try c.decodeIfPresent(M.BottomBar.self, forKey: .bottomBar)
             transition       = try c.decodeIfPresent(M.ComponentTransition.self, forKey: .transition)
             hidesTabBar      = try c.decodeIfPresent(Bool.self, forKey: .hidesTabBar)
             swipeBackEnabled = try c.decodeIfPresent(Bool.self, forKey: .swipeBackEnabled)

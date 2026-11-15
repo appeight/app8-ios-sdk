@@ -67,7 +67,10 @@ enum CommonComponentProps {
             let hidden = flag.contains("{{")
                 ? viewModel.resolvePropertyToBool(flag) ?? false
                 : flag.lowercased() == "true" || flag == "1"
-            if view.isHidden != hidden { view.isHidden = hidden }
+            if view.isHidden != hidden {
+                view.isHidden = hidden
+                NativeVisibility.invalidate()
+            }
         }
         update(view, viewModel)
         // Re-resolve on variable changes (expressions) and state changes

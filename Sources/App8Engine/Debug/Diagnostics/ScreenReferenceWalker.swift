@@ -164,6 +164,13 @@ struct ScreenReferenceWalker {
             }
         }
 
+        if let viewContent = content as? DSL.Model.Component.Content<DSL.Model.Component.View.Properties, DSL.Model.Style.View>,
+           let bottomBar = viewContent.bottomBar {
+            if let child = bottomBar.component {
+                refs.append(contentsOf: walkComponent(child, screenId: screenId, path: "\(componentPath).bottomBar"))
+            }
+        }
+
         // Walk Collection template definitions and state views — these hold full
         // component subtrees that are not part of `content.children`.
         if let collectionEntity = component.base as? DSL.Model.Component.ConcreteEntity<CollectionContent> {

@@ -56,6 +56,27 @@ public final class App8NativeContext {
     /// Set by the view to receive new props when the variables they read change.
     public var onPropsChange: (([String: Any]) -> Void)?
 
+    /// Whether the component is on screen now: its screen is the topmost
+    /// screen of the selected tab and nothing is presented over it, the app is
+    /// in the foreground, and the view is in a shown window, not hidden, not
+    /// in an offscreen (snapshot) render and not in an off-screen list cell.
+    ///
+    /// Starts `false`: views are built before their screen is shown. Start
+    /// cameras, players, sensors and timers when it turns `true`, stop them
+    /// when it turns `false`.
+    public private(set) var isVisible: Bool = false
+
+    /// Called on the main thread when `isVisible` changes: `true` once the
+    /// appear transition has finished, `false` as a disappear transition
+    /// starts. Never called twice in a row with the same value.
+    ///
+    /// ```swift
+    /// context.onVisibilityChange = { [weak camera] visible in
+    ///     visible ? camera?.start() : camera?.stop()
+    /// }
+    /// ```
+    public var onVisibilityChange: ((Bool) -> Void)?
+
     private let emitHandler: @MainActor (String, [String: Any]) -> Void
 
     init(
@@ -77,6 +98,13 @@ public final class App8NativeContext {
     /// the instance event bus.
     public func emit(_ event: String, _ payload: [String: Any] = [:]) {
         emitHandler(event, payload)
+    }
+
+    /// Called by the engine when the component's visibility changed.
+    func updateVisibility(_ visible: Bool) {
+        guard visible != isVisible else { return }
+        isVisible = visible
+        onVisibilityChange?(visible)
     }
 
     /// Called by the engine when resolved props changed.

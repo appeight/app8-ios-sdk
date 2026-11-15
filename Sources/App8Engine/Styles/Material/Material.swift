@@ -5,6 +5,11 @@ extension DSL.Model.Style {
 
         private(set) var layers: [`Any`]
 
+        /// A material made of the given layers (e.g. a single `fill`).
+        init(layers: [`Any`]) {
+            self.layers = layers.filter(\.isMaterial)
+        }
+
         /// JSON value is a flat array of `any Style.Protocol`, e.g.
         /// `[ { "id":"a", "type":"fill", "content":{...} }, ... ]`.
         init(from decoder: any Decoder) throws {
