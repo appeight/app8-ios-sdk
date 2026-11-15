@@ -165,6 +165,10 @@ extension DSL.Model {
     struct NavigationBar: Decodable, Sendable {
         /// Title displayed in the navigation bar (ignored when titleView is set)
         let title: String?
+        /// Show `title` as an iOS large title (`prefersLargeTitles`) that
+        /// collapses into the inline title as the content scrolls. Android
+        /// ignores it (its variant is `topAppBar`).
+        let largeTitle: Bool?
         /// Custom DSL component rendered as the navigation bar title
         let titleView: Component.`Any`?
         /// Alignment for titleView: "left" places it as leftBarButtonItem, "center" (default) uses titleView

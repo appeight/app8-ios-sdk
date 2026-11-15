@@ -51,6 +51,9 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     private var remeasureScheduled = false
     /// Natural heights of self-sizing grid cells, by index path (see `gridRowHeight`).
     private var gridNaturalHeights: [IndexPath: CGFloat] = [:]
+    /// A cell's deferred remeasure ran while off-window; redo it on the next
+    /// `didMoveToWindow` with a window.
+    private var remeasureOnWindow = false
     /// Offsets of scrollables nested in this collection's cells (e.g. horizontal shelves
     /// in a vertical list), so they survive cell reuse.
     private var nestedScrollCache = NestedScrollOffsetCache()
@@ -215,6 +218,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         } else {
             let scrollEnabled = viewModel?.component.properties.layout?.scrollEnabled ?? true
             collectionView.isScrollEnabled = scrollEnabled
+            collectionView.keepsTopRestOnInsetChange = scrollEnabled && viewModel?.component.properties.inverted != true
             collectionView.alwaysBounceVertical = scrollEnabled
             collectionView.alwaysBounceHorizontal = false
             selfSizingHeightConstraint?.isActive = false
@@ -593,6 +597,13 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         superview?.setNeedsLayout()
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil, remeasureOnWindow else { return }
+        remeasureOnWindow = false
+        scheduleRemeasure()
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         if isSelfSizing {
@@ -960,6 +971,14 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                     self.collectionView.reloadData()
                 }
 
+                // Fewer items: keep the offset inside the shorter content.
+                let oldCount = oldSections.reduce(0) { $0 + $1.items.count }
+                let newCount = newSections.reduce(0) { $0 + $1.items.count }
+                if newCount < oldCount, self.collectionView.window != nil {
+                    self.collectionView.layoutIfNeeded()
+                    self.collectionView.clampOffsetToContent()
+                }
+
                 // A page requested before the items arrived (gallery opened at page N).
                 if self.pendingPageIndex != nil {
                     DispatchQueue.main.async { [weak self] in
@@ -1298,7 +1317,15 @@ extension CCollectionView: UICollectionViewDataSource {
         // Text and isHidden bind on a later main-queue hop, after UIKit has
         // measured the cell: measure again then, and relayout if it changed.
         DispatchQueue.main.async { [weak self, weak cell] in
-            guard let self, let cell, cell.window != nil, cell.needsRemeasure() else { return }
+            guard let self, let cell else { return }
+            // Off-window (a tab not selected yet, a screen rendered before it
+            // is shown): measure once the collection is on a window again,
+            // else the cell keeps the size it had before its text bound.
+            guard cell.window != nil else {
+                self.remeasureOnWindow = true
+                return
+            }
+            guard cell.needsRemeasure() else { return }
             self.scheduleRemeasure()
         }
 
@@ -1500,6 +1527,42 @@ extension CCollectionView: NestedScrollStateRestorable {
 /// mostly vertical drag, so an enclosing gesture (zoom dismiss) can take it.
 final class App8CollectionView: UICollectionView {
     var refusesVerticalPans = false
+
+    /// A vertical list that should stay at its top rest position when its
+    /// adjusted inset changes while nobody scrolled it: a tab's screen is laid
+    /// out off-window (no safe area, offset 0) or with its navigation bar still
+    /// hidden, and only then gets the status bar + bar (+ large title) inset.
+    /// UIKit keeps the old offset, so the first ~100pt (the screen's header)
+    /// sat under the bar until the user nudged the list.
+    var keepsTopRestOnInsetChange = false
+    /// Adjusted top inset, and its safe-area part, last seen.
+    private var lastAdjustedTop: CGFloat = 0
+    private var lastSystemTop: CGFloat = 0
+
+    override func adjustedContentInsetDidChange() {
+        super.adjustedContentInsetDidChange()
+        let newTop = adjustedContentInset.top
+        // Only a safe-area change (bars, status bar): a DSL `contentInsets.top`
+        // change keeps the offset it always had.
+        let systemTop = newTop - contentInset.top
+        defer { lastAdjustedTop = newTop; lastSystemTop = systemTop }
+        guard keepsTopRestOnInsetChange, abs(systemTop - lastSystemTop) > 0.5,
+              !isTracking, !isDragging, !isDecelerating,
+              abs(contentOffset.y + lastAdjustedTop) < 0.5 else { return }
+        contentOffset.y = -newTop
+    }
+
+    /// Bring the offset back inside the content after it shrank (items
+    /// removed while scrolled down): otherwise the list shows an empty
+    /// stretch past its end, or nothing at all, until the user scrolls.
+    func clampOffsetToContent() {
+        guard keepsTopRestOnInsetChange, !isTracking, !isDragging, !isDecelerating else { return }
+        let inset = adjustedContentInset
+        let maxY = max(-inset.top, contentSize.height + inset.bottom - bounds.height)
+        if contentOffset.y > maxY + 0.5 {
+            contentOffset.y = maxY
+        }
+    }
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         if refusesVerticalPans, gestureRecognizer === panGestureRecognizer {
