@@ -15,6 +15,12 @@ public protocol App8DataSource: AnyObject, Sendable {
     ///   - datasourceId: The datasource path (e.g., "datasources/listings")
     func getDatasource(screenId: String, datasourceId: String) async throws -> Data
 
+    /// Fetches a datasource again for the DSL `reloadDatasource` action. A
+    /// data source that caches must bypass or refresh its cache here: the
+    /// action asks for fresh data. `screenId` is empty for app variables.
+    /// Default: `getDatasource(screenId:datasourceId:)`.
+    func reloadDatasource(screenId: String, datasourceId: String) async throws -> Data
+
     /// Returns all available screen IDs if the datasource supports enumeration.
     /// Used for orphan screen detection in diagnostics.
     func getAllScreenIds() async throws -> [String]?
@@ -53,6 +59,11 @@ extension App8DataSource {
     /// Default implementation throws notImplemented error
     public func getDatasource(screenId: String, datasourceId: String) async throws -> Data {
         throw DatasourceError.notImplemented
+    }
+
+    /// Default: the regular fetch (data sources without a cache are always fresh).
+    public func reloadDatasource(screenId: String, datasourceId: String) async throws -> Data {
+        try await getDatasource(screenId: screenId, datasourceId: datasourceId)
     }
 
     /// Default implementation returns nil (enumeration not supported)
@@ -101,6 +112,7 @@ extension A8 {
         func getComponent(componentId: String) async throws -> Data
         func getAsset(assetId: String?, assetName: String?) async throws -> Data?
         func getDatasource(screenId: String, datasourceId: String) async throws -> Data
+        func reloadDatasource(screenId: String, datasourceId: String) async throws -> Data
         func getAllScreenIds() async throws -> [String]?
         func streamScreen(screenId: String) -> AsyncStream<Data>?
         func streamDatasource(screenId: String, datasourceId: String, componentPath: String?) -> AsyncStream<Data>?
@@ -146,6 +158,10 @@ extension A8 {
             try await ds.getDatasource(screenId: screenId, datasourceId: datasourceId)
         }
 
+        func reloadDatasource(screenId: String, datasourceId: String) async throws -> Data {
+            try await ds.reloadDatasource(screenId: screenId, datasourceId: datasourceId)
+        }
+
         func getAllScreenIds() async throws -> [String]? {
             try await ds.getAllScreenIds()
         }
@@ -175,6 +191,10 @@ extension A8 {
 /// Mirrors the public-protocol default so internal mocks that pre-date i18n
 /// keep compiling.
 extension A8.DataSourceProtocol {
+    func reloadDatasource(screenId: String, datasourceId: String) async throws -> Data {
+        try await getDatasource(screenId: screenId, datasourceId: datasourceId)
+    }
+
     func getTranslations() async throws -> Data {
         return Data(#"{"defaultLocale":"en","locales":{}}"#.utf8)
     }

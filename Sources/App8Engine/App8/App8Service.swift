@@ -86,7 +86,7 @@ final class App8Service: A8.DataSourceHolder {
     func reloadDatasource(_ source: String, screenId: String) async -> Bool {
         let value: Any
         do {
-            value = try await DatasourceResolver.fetch(source: source, screenId: screenId, dataSource: dataSource)
+            value = try await DatasourceResolver.fetch(source: source, screenId: screenId, dataSource: dataSource, reload: true)
         } catch {
             context.logger.warning("datasource.reload.failed: '\(source)': \(error)")
             return false

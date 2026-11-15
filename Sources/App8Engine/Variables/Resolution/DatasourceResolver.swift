@@ -58,8 +58,12 @@ enum DatasourceResolver {
     }
 
     /// Fetches and decodes one datasource (validated against its own schema).
-    static func fetch(source: String, screenId: String, dataSource: A8.DataSourceProtocol) async throws -> Any {
-        let data = try await dataSource.getDatasource(screenId: screenId, datasourceId: source)
+    /// `reload`: the `reloadDatasource` action, which asks the data source for
+    /// fresh bytes (`App8DataSource.reloadDatasource`) instead of the regular fetch.
+    static func fetch(source: String, screenId: String, dataSource: A8.DataSourceProtocol, reload: Bool = false) async throws -> Any {
+        let data = reload
+            ? try await dataSource.reloadDatasource(screenId: screenId, datasourceId: source)
+            : try await dataSource.getDatasource(screenId: screenId, datasourceId: source)
         let datasource = try JSONDecoder().decode(DatasourceDefinition.self, from: data)
         if let schema = datasource.schema {
             try SchemaValidator.validate(data: datasource.rawData, against: schema)

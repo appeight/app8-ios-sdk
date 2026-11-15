@@ -37,8 +37,44 @@ private final class CountingDataSource: App8DataSource, @unchecked Sendable {
     }
 }
 
+/// Caches `getDatasource` forever; only `reloadDatasource` returns new bytes.
+private final class CachingDataSource: App8DataSource, @unchecked Sendable {
+    private let lock = NSLock()
+    private var reloads = 0
+
+    func getApp() async throws -> Data { Data() }
+    func getStyles() async throws -> [Data] { [] }
+    func getComponents() async throws -> [Data] { [] }
+    func getComponent(componentId: String) async throws -> Data { Data() }
+    func getAsset(assetId: String?, assetName: String?) async throws -> Data? { nil }
+    func getScreen(screenId: String) async throws -> Data { Data() }
+
+    func getDatasource(screenId: String, datasourceId: String) async throws -> Data {
+        Data(#"{ "data": [ { "id": "cached" } ] }"#.utf8)
+    }
+
+    func reloadDatasource(screenId: String, datasourceId: String) async throws -> Data {
+        let n = lock.withLock { reloads += 1; return reloads }
+        return Data(#"{ "data": [ { "id": "fresh\#(n)" } ] }"#.utf8)
+    }
+}
+
 @MainActor
 final class DatasourceReloadTests: XCTestCase {
+
+    func testReloadUsesTheDataSourceReloadHook() async throws {
+        let harness = RenderHarness(dataSource: CachingDataSource())
+        let defs = try JSONDecoder().decode([String: VariableDefinition].self, from: Data("""
+        { "catalog": { "type": "array", "initialValue": [], "source": "datasources/items" } }
+        """.utf8))
+        harness.service.defineAppVariables(defs, appId: "reload-hook-\(UUID().uuidString)")
+        await waitFor { !ids(harness.service.appVariableStore.getValue(name: "catalog")).isEmpty }
+        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "catalog")), ["cached"], "first load: the regular fetch")
+
+        let ok = await harness.service.reloadDatasource("datasources/items", screenId: "")
+        XCTAssertTrue(ok)
+        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "catalog")), ["fresh1"], "reload bypasses the cache")
+    }
 
     /// Polls without blocking the main actor (async tests run on it).
     private func waitFor(_ condition: () -> Bool, timeout: TimeInterval = 3) async {
