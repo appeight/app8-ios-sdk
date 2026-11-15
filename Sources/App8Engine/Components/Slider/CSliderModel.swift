@@ -31,12 +31,12 @@ extension DSL.Model.Component {
 
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
-                value = try c.decodeIfPresent(String.self, forKey: .value)
+                value = try c.decodeScalarOrExpressionIfPresent(forKey: .value)
                 minimumValue = try c.decodeIfPresent(Float.self, forKey: .minimumValue)
                 maximumValue = try c.decodeIfPresent(Float.self, forKey: .maximumValue)
                 step = try c.decodeIfPresent(Float.self, forKey: .step)
                 bindVariable = try c.decodeIfPresent(String.self, forKey: .bindVariable)
-                isEnabled = try c.decodeIfPresent(String.self, forKey: .isEnabled)
+                isEnabled = try c.decodeScalarOrExpressionIfPresent(forKey: .isEnabled)
             }
         }
     }

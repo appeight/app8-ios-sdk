@@ -168,7 +168,14 @@ class CIconView: App8BaseView<DSL.Model.Component.Icon.C>, CViewProtocol {
 
         guard !(viewModel?.service.context.layoutMode.isEnabled == true) else { return }
 
-        imageView.tintColor = style?.color?.ui ?? style?.tint?.ui
+        // The `tintColor` property overrides the style tint: a style re-emit
+        // (e.g. a color expression in the style) must not reset it, and
+        // `applyIconContent` skips an unchanged property color.
+        if let propertyTint = lastTintColor ?? nil {
+            imageView.tintColor = propertyTint
+        } else {
+            imageView.tintColor = style?.color?.ui ?? style?.tint?.ui
+        }
 
         // Reconfigure content for the new symbolFontSize. Skipped during streamingUpdate,
         // which calls configureContent explicitly after bindStyle.

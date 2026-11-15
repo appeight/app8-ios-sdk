@@ -22,8 +22,8 @@ extension DSL.Model.Component {
 
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
-                numberOfPages = try c.decodeIfPresent(String.self, forKey: .numberOfPages)
-                currentPage = try c.decodeIfPresent(String.self, forKey: .currentPage)
+                numberOfPages = try c.decodeScalarOrExpressionIfPresent(forKey: .numberOfPages)
+                currentPage = try c.decodeScalarOrExpressionIfPresent(forKey: .currentPage)
                 bindVariable = try c.decodeIfPresent(String.self, forKey: .bindVariable)
                 hidesForSinglePage = try c.decodeIfPresent(Bool.self, forKey: .hidesForSinglePage)
             }

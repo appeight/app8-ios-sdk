@@ -18,7 +18,7 @@ extension DSL.Model.Component {
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
                 text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
-                isEnabled = try c.decodeIfPresent(String.self, forKey: .isEnabled)
+                isEnabled = try c.decodeScalarOrExpressionIfPresent(forKey: .isEnabled)
                 isSelected = try c.decodeIfPresent(String.self, forKey: .isSelected)
             }
         }

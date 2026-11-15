@@ -26,7 +26,7 @@ public final class VariableActionHandler {
             try handleUpdateVariable(action: action, store: store, context: context)
 
         case .incrementVariable:
-            try handleIncrementVariable(action: action, store: store)
+            try handleIncrementVariable(action: action, store: store, context: context)
 
         case .toggleArrayValue:
             try handleToggleArrayValue(action: action, store: store, context: context)
@@ -88,12 +88,24 @@ public final class VariableActionHandler {
         try store.setValue(name: variableName, value: resolvedValue)
     }
 
-    private func handleIncrementVariable(action: DSL.Model.Action, store: VariableStoreProtocol) throws {
+    /// `by`: a number or an expression; absent means 1. An expression that is
+    /// not a number throws.
+    private func incrementAmount(_ action: DSL.Model.Action, context: VariableContext) throws -> Double {
+        guard let raw = action.by?.value else { return 1 }
+        let resolved = try resolveValue(raw, context: context)
+        if let number = resolved as? Double { return number }
+        if let number = resolved as? Int { return Double(number) }
+        if let number = resolved as? NSNumber { return number.doubleValue }
+        if let text = resolved as? String, let number = Double(text.trimmingCharacters(in: .whitespaces)) { return number }
+        throw VariableError.typeMismatch(variable: action.targetVariable ?? "by", expected: .number, actual: "by = \(resolved)")
+    }
+
+    private func handleIncrementVariable(action: DSL.Model.Action, store: VariableStoreProtocol, context: VariableContext) throws {
         guard let variableName = action.targetVariable else {
             throw VariableError.undefinedVariable("No variable name specified in incrementVariable action")
         }
 
-        let incrementBy = action.by ?? 1.0
+        let incrementBy = try incrementAmount(action, context: context)
         logger?.debug("handleIncrementVariable: '\(variableName)' by \(incrementBy)")
 
         // Get current value
@@ -228,7 +240,7 @@ public final class VariableActionHandler {
             throw VariableError.undefinedVariable("No value specified in incrementArrayItem action for '\(variableName)'")
         }
         let field = action.field ?? "quantity"
-        let by = action.by ?? 1
+        let by = try incrementAmount(action, context: context)
         let resolved = try resolveValue(value.value, context: context)
         let object = resolved as? [String: Any]
         // A null / missing match key is a no-op (never matches, never inserts).

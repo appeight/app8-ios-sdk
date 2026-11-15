@@ -78,6 +78,8 @@ extension DSL.Model {
     protocol StateProtocol: StyleHolder, LayoutHolder, OptionalPropertiesHolder {
         var childStates: [String: String]? { get }
         var animation: Animation? { get }
+        /// `properties.isHidden` declared in this state (nil: keep the base value).
+        var hiddenFlag: String? { get }
     }
 
     /// Trigger types for user-definable state changes

@@ -56,22 +56,28 @@ enum CommonComponentProps {
     /// get no touches, are skipped by accessibility and take no space in a
     /// stack view (UIStackView collapses hidden arranged subviews).
     private static func bindHidden(view: UIView, viewModel: ComponentViewModelAbstract) {
-        guard let flag = viewModel.hiddenFlag?.trimmingCharacters(in: .whitespaces), !flag.isEmpty else { return }
-        guard flag.contains("{{") else {
-            view.isHidden = flag.lowercased() == "true" || flag == "1"
-            return
-        }
-        func update() {
-            let hidden = viewModel.resolvePropertyToBool(flag) ?? false
+        let hasStateFlag = viewModel.declaresStateHiddenFlag
+        guard hasStateFlag || !(viewModel.hiddenFlag ?? "").isEmpty else { return }
+        func update(_ view: UIView, _ viewModel: ComponentViewModelAbstract) {
+            guard let flag = viewModel.hiddenFlag?.trimmingCharacters(in: .whitespaces), !flag.isEmpty else {
+                // A state without `isHidden` keeps the base value (none: shown).
+                if hasStateFlag, view.isHidden { view.isHidden = false }
+                return
+            }
+            let hidden = flag.contains("{{")
+                ? viewModel.resolvePropertyToBool(flag) ?? false
+                : flag.lowercased() == "true" || flag == "1"
             if view.isHidden != hidden { view.isHidden = hidden }
         }
-        update()
-        let cancellable = viewModel.variablesChanged
+        update(view, viewModel)
+        // Re-resolve on variable changes (expressions) and state changes
+        // (a state override may set or clear `isHidden`).
+        let cancellable = viewModel.variablesChanged.map { _ in () }
+            .merge(with: viewModel.stateChanged)
             .receive(on: DispatchQueue.main)
             .sink { [weak view, weak viewModel] _ in
                 guard let view, let viewModel else { return }
-                let hidden = viewModel.resolvePropertyToBool(flag) ?? false
-                if view.isHidden != hidden { view.isHidden = hidden }
+                update(view, viewModel)
             }
         objc_setAssociatedObject(view, &hiddenCancellableKey, cancellable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }

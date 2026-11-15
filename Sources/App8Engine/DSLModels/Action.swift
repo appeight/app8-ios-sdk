@@ -61,7 +61,8 @@ extension DSL.Model {
         private let variable: String?
         var value: AnyCodableValue?            // Value (can contain expressions as strings)
         var key: String?                       // updateVariable on an object variable: set only this key (string/expression)
-        var by: Double?                        // Increment/decrement amount
+        /// incrementVariable / incrementArrayItem amount: a number or an expression (`"{{line.quantity}}"`).
+        var by: AnyCodableValue?
         var matchBy: String?                   // For toggleArrayValue / incrementArrayItem: key to match when array contains objects (e.g. "id")
         var field: String?                     // For incrementArrayItem: numeric field to adjust (default "quantity")
         var updates: [String: AnyCodableValue]? // For updateMultipleVariables

@@ -17,8 +17,13 @@ protocol ComponentViewModelAbstract: AnyObject {
     var interactionProps: DSL.Model.Interaction? { get }
     /// Universal accessibility metadata declared on this component's content.
     var accessibilityProps: DSL.Model.Accessibility? { get }
-    /// `properties.isHidden` (any component type).
+    /// `properties.isHidden` (any component type), from the current state
+    /// when it declares one, else the base content.
     var hiddenFlag: String? { get }
+    /// Fires when the component's state changes (state-aware `isHidden`).
+    var stateChanged: AnyPublisher<Void, Never> { get }
+    /// True when a state of this component declares `properties.isHidden`.
+    var declaresStateHiddenFlag: Bool { get }
 
     func resolvePropertyToBool(_ value: String) -> Bool?
     func resolvePropertyToFloat(_ value: String) -> CGFloat?
@@ -41,6 +46,8 @@ extension ComponentViewModelAbstract {
     var interactionProps: DSL.Model.Interaction? { nil }
     var accessibilityProps: DSL.Model.Accessibility? { nil }
     var hiddenFlag: String? { nil }
+    var stateChanged: AnyPublisher<Void, Never> { Empty().eraseToAnyPublisher() }
+    var declaresStateHiddenFlag: Bool { false }
     func resolvePropertyToBool(_ value: String) -> Bool? { nil }
     func resolvePropertyToFloat(_ value: String) -> CGFloat? { nil }
     func resolvePropertyToString(_ value: String) -> String { value }
@@ -248,7 +255,19 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     /// Universal accessibility metadata from this component's content (nil unless declared).
     var accessibilityProps: DSL.Model.Accessibility? { component.accessibility }
     /// `properties.isHidden` (nil unless declared).
-    var hiddenFlag: String? { component.hiddenFlag }
+    var hiddenFlag: String? {
+        if let name = stateManager.currentStateNameValue,
+           let flag = component.states?[name]?.hiddenFlag {
+            return flag
+        }
+        return component.hiddenFlag
+    }
+    var stateChanged: AnyPublisher<Void, Never> {
+        stateManager.currentState.dropFirst().map { _ in () }.eraseToAnyPublisher()
+    }
+    var declaresStateHiddenFlag: Bool {
+        component.states?.values.contains { $0.hiddenFlag != nil } ?? false
+    }
     /// `content.contextMenu` (nil unless declared).
     var contextMenuProps: DSL.Model.ContextMenu? { component.contextMenu }
     var componentService: ComponentService? { service }

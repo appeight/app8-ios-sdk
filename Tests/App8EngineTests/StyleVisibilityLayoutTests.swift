@@ -291,4 +291,116 @@ final class StyleVisibilityLayoutTests: XCTestCase {
         let cell = try XCTUnwrap(outer.cellForItem(at: IndexPath(item: 0, section: 0)))
         XCTAssertEqual(cell.frame.height, 40 + 70 + 30 + 2 * 10, accuracy: 1, "the cell grows to the nested collection's content")
     }
+
+    // MARK: Conformance follow-ups
+
+    func testLiteralBooleanAndNumberPropertiesRender() throws {
+        harness = RenderHarness()
+        try harness.render("""
+        {
+            "id": "root", "type": "view",
+            "content": {
+                "layout": { "width": 390, "height": 844 },
+                "children": [
+                    { "id": "toggle", "type": "toggle", "content": { "properties": { "isOn": true }, "layout": { "top": 0, "leading": 0 } } },
+                    { "id": "slider", "type": "slider", "content": { "properties": { "value": 0.6 }, "layout": { "top": 60, "leading": 0, "width": 200 } } },
+                    { "id": "dots", "type": "pageControl", "content": { "properties": { "numberOfPages": 4, "currentPage": 2 }, "layout": { "top": 120, "leading": 0 } } },
+                    { "id": "spinner", "type": "activityIndicator", "content": { "properties": { "isAnimating": true, "hidesWhenStopped": false }, "layout": { "top": 180, "leading": 0 } } }
+                ]
+            }
+        }
+        """)
+        drain(harness)
+        let toggle = try XCTUnwrap(harness.find(UISwitch.self, in: try XCTUnwrap(view("root.toggle"))))
+        let slider = try XCTUnwrap(harness.find(UISlider.self, in: try XCTUnwrap(view("root.slider"))))
+        let dots = try XCTUnwrap(harness.find(UIPageControl.self, in: try XCTUnwrap(view("root.dots"))))
+        let spinner = try XCTUnwrap(harness.find(UIActivityIndicatorView.self, in: try XCTUnwrap(view("root.spinner"))))
+        XCTAssertTrue(toggle.isOn)
+        XCTAssertEqual(slider.value, 0.6, accuracy: 0.001)
+        XCTAssertEqual(dots.numberOfPages, 4)
+        XCTAssertEqual(dots.currentPage, 2)
+        XCTAssertTrue(spinner.isAnimating)
+    }
+
+    func testIconTintColorPropertyExpressionSurvivesStyleUpdates() throws {
+        harness = RenderHarness()
+        try harness.render("""
+        {
+            "id": "root", "type": "view",
+            "content": {
+                "variables": {
+                    "tone": { "type": "string", "initialValue": "#38BDF8" },
+                    "on": { "type": "boolean", "initialValue": false }
+                },
+                "layout": { "width": 390, "height": 844 },
+                "children": [
+                    { "id": "star", "type": "icon",
+                      "content": {
+                        "properties": { "type": "symbol", "name": "star.fill", "tintColor": "{{tone}}" },
+                        "style": { "symbolFontSize": 28, "color": "{{on ? '#111111' : '#222222'}}" },
+                        "layout": { "top": 0, "leading": 0, "height": 32 } } }
+                ]
+            }
+        }
+        """)
+        drain(harness)
+        let root = try XCTUnwrap(harness.viewModel("root", as: CViewModel.self))
+        let image = try XCTUnwrap(harness.find(UIImageView.self, in: try XCTUnwrap(view("root.star"))))
+        XCTAssertEqual(image.tintColor.hexString, "#38BDF8")
+        // A style re-emit (its color expression changes) keeps the property tint.
+        try root.variableStore.setValue(name: "on", value: true)
+        drain(harness)
+        XCTAssertEqual(image.tintColor.hexString, "#38BDF8")
+        try root.variableStore.setValue(name: "tone", value: "#FF0000")
+        drain(harness)
+        XCTAssertEqual(image.tintColor.hexString, "#FF0000")
+    }
+
+    func testIsHiddenExpressionOnImageAndStateOverrideOnView() throws {
+        harness = RenderHarness()
+        try harness.render("""
+        {
+            "id": "root", "type": "view",
+            "content": {
+                "variables": { "hide": { "type": "boolean", "initialValue": true } },
+                "layout": { "width": 390, "height": 844 },
+                "children": [
+                    { "id": "stack", "type": "stackView",
+                      "content": {
+                        "properties": { "axis": "vertical", "spacing": 0 },
+                        "layout": { "top": 0, "leading": 0, "trailing": 0 },
+                        "children": [
+                          { "id": "head", "type": "view", "content": { "layout": { "height": 50 } } },
+                          { "id": "bar", "type": "image", "content": { "properties": { "isHidden": "{{hide}}" }, "layout": { "height": 30 } } },
+                          { "id": "chip", "type": "view",
+                            "content": {
+                              "layout": { "height": 20 },
+                              "states": { "gone": { "properties": { "isHidden": true } }, "shown": { "properties": { "isHidden": false } } },
+                              "defaultStateName": "{{hide ? 'gone' : 'shown'}}" } },
+                          { "id": "label", "type": "label",
+                            "content": {
+                              "properties": { "text": "x" },
+                              "layout": { "height": 10 },
+                              "states": { "gone": { "properties": { "isHidden": true } }, "shown": {} },
+                              "defaultStateName": "{{hide ? 'gone' : 'shown'}}" } }
+                        ] } }
+                ]
+            }
+        }
+        """)
+        drain(harness)
+        let root = try XCTUnwrap(harness.viewModel("root", as: CViewModel.self))
+        let bar = try XCTUnwrap(view("root.stack.bar"))
+        let chip = try XCTUnwrap(view("root.stack.chip"))
+        let label = try XCTUnwrap(view("root.stack.label"))
+        XCTAssertTrue(bar.isHidden, "image isHidden expression")
+        XCTAssertTrue(chip.isHidden, "view hidden by a state override")
+        XCTAssertTrue(label.isHidden, "a state with only isHidden in its properties")
+
+        try root.variableStore.setValue(name: "hide", value: false)
+        drain(harness)
+        XCTAssertFalse(bar.isHidden)
+        XCTAssertFalse(chip.isHidden)
+        XCTAssertFalse(label.isHidden, "a state without isHidden keeps the base value")
+    }
 }

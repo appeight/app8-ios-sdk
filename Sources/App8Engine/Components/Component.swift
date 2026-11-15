@@ -120,6 +120,21 @@ extension KeyedDecodingContainer {
         if let bool = try? decodeIfPresent(Bool.self, forKey: key) { return bool ? "true" : "false" }
         return nil
     }
+
+    /// A boolean/number-or-expression property (`isOn`, `value`,
+    /// `numberOfPages`, …): a string as written (an expression or a literal),
+    /// a JSON boolean as `"true"` / `"false"`, a JSON number as its decimal
+    /// text. Anything else throws the string decoding error.
+    func decodeScalarOrExpressionIfPresent(forKey key: Key) throws -> String? {
+        do {
+            return try decodeIfPresent(String.self, forKey: key)
+        } catch {
+            if let bool = try? decode(Bool.self, forKey: key) { return bool ? "true" : "false" }
+            if let int = try? decode(Int.self, forKey: key) { return String(int) }
+            if let double = try? decode(Double.self, forKey: key) { return String(double) }
+            throw error
+        }
+    }
 }
 
 extension DSL.Model.Component.Entity {

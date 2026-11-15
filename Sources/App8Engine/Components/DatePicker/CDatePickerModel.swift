@@ -43,7 +43,7 @@ extension DSL.Model.Component {
                 displayStyle = try c.decodeIfPresent(DisplayStyle.self, forKey: .displayStyle)
                 minimumDate = try c.decodeIfPresent(String.self, forKey: .minimumDate)
                 maximumDate = try c.decodeIfPresent(String.self, forKey: .maximumDate)
-                isEnabled = try c.decodeIfPresent(String.self, forKey: .isEnabled)
+                isEnabled = try c.decodeScalarOrExpressionIfPresent(forKey: .isEnabled)
             }
         }
     }

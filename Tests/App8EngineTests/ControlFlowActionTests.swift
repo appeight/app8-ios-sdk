@@ -44,6 +44,28 @@ final class ControlFlowActionTests: XCTestCase {
 
     private func value(_ name: String) -> Any? { root.variableStore.getValue(name: name) }
 
+    // MARK: increment amount
+
+    func testIncrementByAcceptsAnExpression() throws {
+        try root.variableStore.setValue(name: "cart", value: [["key": "a", "quantity": 1]])
+        try run(#"{ "type": "incrementArrayItem", "variableName": "cart", "matchBy": "key", "value": { "key": "a" }, "by": "{{people.length}}" }"#)
+        let cart = try XCTUnwrap(value("cart") as? [[String: Any]])
+        XCTAssertEqual(cart.first?["quantity"] as? Int, 3)
+    }
+
+    func testBadActionInAListReportsItsOwnPath() throws {
+        let json = #"{ "type": "forEach", "items": "{{lines}}", "actions": [ { "type": "appendToArray", "variableName": 5 } ] }"#
+        XCTAssertThrowsError(try JSONDecoder().decode(DSL.Model.Action.self, from: Data(json.utf8))) { error in
+            let path = (error as? DecodingError).flatMap { error -> [CodingKey]? in
+                switch error {
+                case .typeMismatch(_, let c), .valueNotFound(_, let c), .keyNotFound(_, let c), .dataCorrupted(let c): return c.codingPath
+                @unknown default: return nil
+                }
+            }?.map(\.stringValue) ?? []
+            XCTAssertEqual(path, ["actions", "Index 0", "variableName"], "the failing field, not the list")
+        }
+    }
+
     // MARK: variable alias
 
     func testVariableKeyIsAnAliasOfVariableName() throws {
