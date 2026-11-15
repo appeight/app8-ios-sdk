@@ -337,7 +337,7 @@ button that appears only while the field is focused. Never build a search bar fr
 | `placement` | string | `automatic` | `automatic`, `stacked` (own row under the title), `inline` (title row), `integrated` (iOS 26: the field fills the bar), `integratedButton` (iOS 26: a search button that expands), `integratedCentered` (iOS 26). iOS 26 values fall back to `inline` on older systems |
 | `hidesWhenScrolling` | boolean | `false` | Collapse the field as the content scrolls |
 | `tintColor` | Color | | Caret and cancel-button tint |
-| `fillsBar` | boolean | `false` | With `placement: "integrated"` (iOS 26): stretch the field across the bar from the leading edge instead of the compact trailing field. While focused it shortens to make room for the ✕ |
+| `fillsBar` | boolean | `false` | With `placement: "integrated"` (iOS 26): stretch the field across the bar from the leading edge instead of the compact trailing field. While focused it shortens to make room for the ✕. On the root screen of a navigation stack the bar also sits 10pt below the status bar; screens pushed over it keep that bar position so the bar never moves between screens |
 | `onSubmit` | Action \| Action[] | | Runs when the user taps the keyboard's search key |
 
 A screen with only `search` (no `title`) shows just the field. Do not set `hidden: true`
