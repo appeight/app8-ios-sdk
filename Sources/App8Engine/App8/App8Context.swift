@@ -39,24 +39,31 @@ final class App8Context {
     /// form at navigation time. Set during app load from the animation registry.
     var animationResolver: ((String) -> DSL.Model.Animation.Inline?)?
 
+    // Defaults are `nil` and the real objects are built in the body (which runs on
+    // the main actor) rather than as default argument values. Default argument
+    // expressions are evaluated in the *caller's* isolation, so defaulting these
+    // `@MainActor` types directly fails to compile for consumers building in Swift 5
+    // mode with strict concurrency (no `IsolatedDefaultValues` upcoming feature).
+    // `A8Log` is not `@MainActor`, so it can keep an inline default.
     init(
         logger: A8Log = A8Log(),
-        appearance: App8Appearance = App8Appearance(),
-        layoutMode: App8LayoutMode = App8LayoutMode(),
-        focusManager: FocusManager = FocusManager(),
-        keyboardService: KeyboardHeightServiceProtocol = KeyboardHeightService(),
-        translationStore: TranslationStore = TranslationStore(),
-        eventBus: App8EventBus = App8EventBus(),
-        analyticsBus: App8AnalyticsBus = App8AnalyticsBus()
+        appearance: App8Appearance? = nil,
+        layoutMode: App8LayoutMode? = nil,
+        focusManager: FocusManager? = nil,
+        keyboardService: KeyboardHeightServiceProtocol? = nil,
+        translationStore: TranslationStore? = nil,
+        eventBus: App8EventBus? = nil,
+        analyticsBus: App8AnalyticsBus? = nil
     ) {
+        let focusManager = focusManager ?? FocusManager()
         self.logger = logger
-        self.appearance = appearance
-        self.layoutMode = layoutMode
+        self.appearance = appearance ?? App8Appearance()
+        self.layoutMode = layoutMode ?? App8LayoutMode()
         self.focusManager = focusManager
-        self.keyboardService = keyboardService
-        self.translationStore = translationStore
-        self.eventBus = eventBus
-        self.analyticsBus = analyticsBus
+        self.keyboardService = keyboardService ?? KeyboardHeightService()
+        self.translationStore = translationStore ?? TranslationStore()
+        self.eventBus = eventBus ?? App8EventBus()
+        self.analyticsBus = analyticsBus ?? App8AnalyticsBus()
         focusManager.logger = logger
     }
 }
