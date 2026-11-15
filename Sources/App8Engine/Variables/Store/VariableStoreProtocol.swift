@@ -59,6 +59,17 @@ public extension VariableStoreProtocol {
     /// Non-local dependencies (parent-scope variables) are ignored during sorting since
     /// they are already available in the store's parent at definition time.
     func defineVariables(_ definitions: [String: VariableDefinition]) throws {
+        for (name, definition) in VariableDefinitionOrder.sorted(definitions) {
+            try defineVariable(name: name, definition: definition)
+        }
+    }
+}
+
+/// Definition order for a batch of variables: each computed variable (or
+/// expression `initialValue`) after the same-batch variables it reads, so it
+/// evaluates against defined values and its dependency edges exist.
+enum VariableDefinitionOrder {
+    static func sorted(_ definitions: [String: VariableDefinition]) -> [(String, VariableDefinition)] {
         let parser = ExpressionParser()
         let extractor = DependencyExtractor()
 
@@ -87,10 +98,8 @@ public extension VariableStoreProtocol {
             sorted.append((name, definition))
         }
 
-        for name in definitions.keys { visit(name) }
-
-        for (name, definition) in sorted {
-            try defineVariable(name: name, definition: definition)
-        }
+        // Sorted names: the same order on every run.
+        for name in definitions.keys.sorted() { visit(name) }
+        return sorted
     }
 }

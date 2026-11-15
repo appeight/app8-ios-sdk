@@ -19,7 +19,9 @@ final class App8Service: A8.DataSourceHolder {
     /// Defines `app.json` `variables` in the app scope. Ones already defined
     /// keep their value, so an app config reload doesn't wipe live state.
     @MainActor func defineAppVariables(_ definitions: [String: VariableDefinition], appId: String? = nil) {
-        for (name, definition) in definitions where !appVariableStore.hasVariable(name: name) {
+        // Computed app variables after the variables they read: defined
+        // first, a computed variable failed to evaluate and was dropped.
+        for (name, definition) in VariableDefinitionOrder.sorted(definitions) where !appVariableStore.hasVariable(name: name) {
             do {
                 try appVariableStore.defineVariable(name: name, definition: definition)
             } catch {

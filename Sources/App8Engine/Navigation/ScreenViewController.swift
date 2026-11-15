@@ -568,7 +568,7 @@ final class ScreenViewController: BaseViewController {
         NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
     }
 
-    private func executeBarAction(_ action: DSL.Model.Action) {
+    func executeBarAction(_ action: DSL.Model.Action) {
         switch action.type {
         case .dismiss:
             let request = NavigationRequest(type: .dismiss)
@@ -591,7 +591,13 @@ final class ScreenViewController: BaseViewController {
             }
 
         default:
-            context.logger.warning("Unsupported bar action type: \(action.type)")
+            // Every other action (showAlert, request, updateVariable, …) runs
+            // in the screen's scope through the full action executor.
+            if let actionHandler {
+                actionHandler(action)
+            } else {
+                context.logger.warning("Unsupported bar action type: \(action.type)")
+            }
         }
     }
 }
