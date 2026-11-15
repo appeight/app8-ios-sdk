@@ -125,6 +125,43 @@ final class StyleVisibilityLayoutTests: XCTestCase {
         XCTAssertEqual(toggle.thumbTintColor?.hexString, "#0000FF")
     }
 
+    func testPageControlTintColorsAcceptExpressions() throws {
+        harness = RenderHarness()
+        try harness.render("""
+        {
+            "id": "root", "type": "view",
+            "content": {
+                "variables": {
+                    "dark": { "type": "boolean", "initialValue": false },
+                    "dot": { "type": "string", "initialValue": "nope" }
+                },
+                "layout": { "width": 390, "height": 844 },
+                "children": [
+                    { "id": "dots", "type": "pageControl",
+                      "content": {
+                        "properties": { "numberOfPages": "3", "currentPage": "0" },
+                        "style": {
+                            "currentPageIndicatorTintColor": "{{dark ? '#111111' : '#FF0000'}}",
+                            "pageIndicatorTintColor": "{{dot}}"
+                        },
+                        "layout": { "top": 0, "centerX": 0 } } }
+                ]
+            }
+        }
+        """)
+        drain(harness)
+        let root = try XCTUnwrap(harness.viewModel("root", as: CViewModel.self))
+        let dots = try XCTUnwrap(harness.find(MediaPageControl.self, in: try XCTUnwrap(view("root.dots"))))
+        XCTAssertEqual(dots.currentPageIndicatorTintColor?.hexString, "#FF0000")
+        XCTAssertNil(dots.pageIndicatorTintColor, "a non-hex result leaves the field unset")
+
+        try root.variableStore.setValue(name: "dark", value: true)
+        try root.variableStore.setValue(name: "dot", value: "#00FF00")
+        drain(harness)
+        XCTAssertEqual(dots.currentPageIndicatorTintColor?.hexString, "#111111")
+        XCTAssertEqual(dots.pageIndicatorTintColor?.hexString, "#00FF00")
+    }
+
     // MARK: S2 isHidden on every component
 
     func testIsHiddenOnButtonImageAndCollectionCollapsesStack() throws {
@@ -313,7 +350,7 @@ final class StyleVisibilityLayoutTests: XCTestCase {
         drain(harness)
         let toggle = try XCTUnwrap(harness.find(UISwitch.self, in: try XCTUnwrap(view("root.toggle"))))
         let slider = try XCTUnwrap(harness.find(UISlider.self, in: try XCTUnwrap(view("root.slider"))))
-        let dots = try XCTUnwrap(harness.find(UIPageControl.self, in: try XCTUnwrap(view("root.dots"))))
+        let dots = try XCTUnwrap(harness.find(MediaPageControl.self, in: try XCTUnwrap(view("root.dots"))))
         let spinner = try XCTUnwrap(harness.find(UIActivityIndicatorView.self, in: try XCTUnwrap(view("root.spinner"))))
         XCTAssertTrue(toggle.isOn)
         XCTAssertEqual(slider.value, 0.6, accuracy: 0.001)
