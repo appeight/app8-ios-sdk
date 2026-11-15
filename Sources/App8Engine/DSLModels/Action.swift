@@ -61,6 +61,46 @@ extension DSL.Model {
         var field: String?                     // For incrementArrayItem: numeric field to adjust (default "quantity")
         var updates: [String: AnyCodableValue]? // For updateMultipleVariables
         var scope: VariableScope?              // Target scope for resetVariables
+        /// insertArrayItem: position (default 0, negative counts from the end).
+        /// removeArrayItem: position of the element to remove.
+        /// forEach: name the element's index is bound to inside `actions`.
+        /// One key, read per action type, so it decodes as any JSON value.
+        var index: AnyCodableValue?
+        /// upsertArrayItem: where a new element goes when nothing matches (`start` | `end`, default `end`).
+        var position: String?
+
+        /// The variable an action writes.
+        var targetVariable: String? { variableName }
+
+        // Control flow
+        /// forEach: the array to iterate (expression or literal array).
+        var items: AnyCodableValue?
+        /// forEach: name the element is bound to inside `actions` (default `item`).
+        var `as`: String?
+        /// forEach / with: nested actions (one action or an array).
+        var actions: ActionList?
+        /// with: names evaluated once and bound for `actions`.
+        var values: [String: AnyCodableValue]?
+
+        // HTTP request
+        /// request: GET (default), POST, PUT, PATCH, DELETE.
+        var method: String?
+        /// request: header values (strings, `{{}}` allowed).
+        var headers: [String: String]?
+        /// request: JSON body (object / array / expressions), sent as application/json.
+        var body: AnyCodableValue?
+        /// request: variable that receives `{ status, body, headers }`.
+        var resultVariable: String?
+        /// request / reloadDatasource: run on success (request: 2xx, with
+        /// `response` in scope). One action or an array.
+        var onSuccess: ActionList?
+        /// request / reloadDatasource: run on failure (request: any other
+        /// status, or status 0 for a network failure / timeout / host rejection).
+        var onError: ActionList?
+
+        // Datasources
+        /// reloadDatasource: the datasource path (`datasources/items`).
+        var source: String?
 
         // Tab selection
         var tabIndex: Int?                         // Index of tab to select (0-based)
@@ -124,6 +164,9 @@ extension DSL.Model {
             case toggleArrayValue         // Add/remove value from array
             case appendToArray            // Append value to end of array variable
             case incrementArrayItem       // Add `by` to a numeric field of the object matched by `matchBy`; inserts / removes it
+            case insertArrayItem          // Insert `value` at `index` (default 0; negative counts from the end)
+            case upsertArrayItem          // Replace the element matched by `matchBy`, else add it
+            case removeArrayItem          // Remove elements matched by `matchBy`/`value`, or the one at `index`
             case updateMultipleVariables  // Batch update multiple variables
             case resetVariables           // Reset variables to initial values
 
@@ -146,6 +189,26 @@ extension DSL.Model {
             // registered via `App8.Instance.subscribe(...)`. The engine itself
             // does nothing else; the host is expected to handle it.
             case emit
+
+            // Control flow
+            case forEach                  // Run `actions` once per element of `items`
+            case with                     // Bind `values` as names, then run `actions`
+
+            // HTTP + datasources
+            case request                  // HTTP request; `onSuccess` / `onError` see `response`
+            case reloadDatasource         // Refetch `source` and update every variable bound to it
+
+            /// Variable-store actions run by `VariableActionHandler`.
+            var isVariableAction: Bool {
+                switch self {
+                case .updateVariable, .incrementVariable, .toggleArrayValue, .appendToArray,
+                     .incrementArrayItem, .insertArrayItem, .upsertArrayItem, .removeArrayItem,
+                     .updateMultipleVariables, .resetVariables:
+                    return true
+                default:
+                    return false
+                }
+            }
         }
 
         /// Presentation style for navigation

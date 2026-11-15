@@ -39,6 +39,12 @@ extension DSL.Model.Style.Color {
         init(from decoder: any Decoder) throws {
             if let singleValueContainer = try? decoder.singleValueContainer(),
                let hexString = try? singleValueContainer.decode(String.self) {
+                if DSL.Model.Style.`Any`.isColorExpression(hexString) {
+                    // Resolved per component, in its scope (see `Any(colorExpression:)`).
+                    self.lightRef = Ref(id: hexString)
+                    self.source = .singleHex
+                    return
+                }
                 let hex = Hex(hexString)
                 self.light = hex
                 self.source = .singleHex
@@ -83,12 +89,17 @@ extension DSL.Model.Style.Color {
         }
         
         func isResolved() -> Bool {
-            return light.isNotNil || dark.isNotNil
+            return light.isNotNil || dark.isNotNil || isExpression
+        }
+
+        /// Holds a color expression, resolved per component.
+        var isExpression: Bool {
+            lightRef.map { DSL.Model.Style.`Any`.isColorExpression($0.id) } ?? false
         }
 
         func unresolvedPointerIds() -> [String] {
             var ids: [String] = []
-            if light == nil, let ref = lightRef { ids.append(ref.id) }
+            if light == nil, let ref = lightRef, !isExpression { ids.append(ref.id) }
             if dark == nil, let ref = darkRef { ids.append(ref.id) }
             return ids
         }

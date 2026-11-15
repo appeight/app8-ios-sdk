@@ -29,6 +29,9 @@ extension DSL.Model {
             var accessibility: DSL.Model.Accessibility? { get }
             /// Long-press context menu. Default nil; `Content<P,S>` provides it.
             var contextMenu: DSL.Model.ContextMenu? { get }
+            /// `properties.isHidden` (boolean as "true"/"false", or an
+            /// expression), read for every component type. Default nil.
+            var hiddenFlag: String? { get }
         }
         
         protocol Entity: Protocol {
@@ -95,6 +98,28 @@ extension DSL.Model.Component.EntityContent {
     var interaction: DSL.Model.Interaction? { nil }
     var accessibility: DSL.Model.Accessibility? { nil }
     var contextMenu: DSL.Model.ContextMenu? { nil }
+    var hiddenFlag: String? { nil }
+}
+
+/// `properties.isHidden` on any component: a boolean or an expression string.
+enum HiddenFlagDecoding {
+    private enum Keys: String, CodingKey { case isHidden }
+
+    /// Reads `properties.isHidden` next to the typed properties.
+    static func decode<K: CodingKey>(from container: KeyedDecodingContainer<K>, propertiesKey: K) -> String? {
+        guard let props = try? container.nestedContainer(keyedBy: Keys.self, forKey: propertiesKey) else { return nil }
+        return props.decodeFlagIfPresent(forKey: .isHidden)
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// A boolean-or-expression field: a string as written, a boolean as
+    /// `"true"` / `"false"`, anything else nil.
+    func decodeFlagIfPresent(forKey key: Key) -> String? {
+        if let string = try? decodeIfPresent(String.self, forKey: key) { return string }
+        if let bool = try? decodeIfPresent(Bool.self, forKey: key) { return bool ? "true" : "false" }
+        return nil
+    }
 }
 
 extension DSL.Model.Component.Entity {

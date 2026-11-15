@@ -394,12 +394,7 @@ final class CCollectionViewModel: CBaseViewModel<CollectionContent> {
         let item = section.items[indexPath.item]
 
         let cellStore = createCellVariableStore(for: item)
-        do {
-            let handler = VariableActionHandler()
-            try handler.execute(action: action, store: cellStore, context: VariableContext(store: cellStore))
-        } catch {
-            service.context.logger.error("Failed to execute swipe action: \(error)")
-        }
+        executeAction(action, context: VariableContext(store: cellStore), store: cellStore)
     }
 
     // MARK: - Selection
@@ -414,18 +409,8 @@ final class CCollectionViewModel: CBaseViewModel<CollectionContent> {
         // `{{item.foo}}` (incl. navigation params) reads the tapped row.
         let cellStore = createCellVariableStore(for: item)
         let cellContext = VariableContext(store: cellStore)
-        let handler = VariableActionHandler()
         dispatchTrigger(.onItemTap) { action in
-            switch action.type {
-            case .updateVariable, .incrementVariable, .updateMultipleVariables, .resetVariables, .toggleArrayValue, .appendToArray, .incrementArrayItem:
-                do {
-                    try handler.execute(action: action, store: cellStore, context: cellContext)
-                } catch {
-                    service.context.logger.error("Failed to execute onItemTap action: \(error)")
-                }
-            default:
-                executeAction(action, context: cellContext)
-            }
+            executeAction(action, context: cellContext, store: cellStore)
         }
 
         guard let selection = component.properties.selection,
@@ -486,13 +471,13 @@ final class CCollectionViewModel: CBaseViewModel<CollectionContent> {
     // MARK: - Actions
 
     func handleRefresh() {
-        dispatchTrigger(.onRefresh) { [self] in executeVariableAction($0) }
+        dispatchTrigger(.onRefresh) { [self] in executeAction($0) }
     }
 
     func handleLoadMore() {
         guard let pagination = component.properties.pagination,
               pagination.enabled == true else { return }
-        dispatchTrigger(.onLoadMore) { [self] in executeVariableAction($0) }
+        dispatchTrigger(.onLoadMore) { [self] in executeAction($0) }
     }
 
     // MARK: - Helpers

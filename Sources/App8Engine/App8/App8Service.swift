@@ -40,6 +40,68 @@ final class App8Service: A8.DataSourceHolder {
             }
             variablePersistence?.adopt(name: name, definition: definition)
         }
+        // `source` on app variables: load through the host data source now,
+        // without holding up the first screen. A persisted value (restored
+        // above) shows until the source arrives.
+        for (name, definition) in definitions {
+            guard let source = definition.source, appVariableStore.hasVariable(name: name) else { continue }
+            registerDatasourceBinding(source: source, name: name, type: definition.type, store: appVariableStore)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    let value = try await DatasourceResolver.load(source: source, type: definition.type, screenId: Self.appDatasourceScreenId, dataSource: self.dataSource)
+                    try self.appVariableStore.setValue(name: name, value: value)
+                } catch {
+                    self.context.logger.warning("datasource.load.failed: app variable '\(name)' from '\(source)': \(error)")
+                }
+            }
+        }
+    }
+
+    /// `screenId` handed to `getDatasource` for app-scope variables.
+    static let appDatasourceScreenId = ""
+
+    /// A variable whose value comes from a datasource (`source`).
+    private struct DatasourceBinding {
+        let source: String
+        let name: String
+        let type: VariableType
+        weak var store: (any VariableStoreProtocol)?
+    }
+
+    @MainActor private var datasourceBindings: [DatasourceBinding] = []
+
+    /// Remembers that `name` in `store` is fed by `source`, so
+    /// `reloadDatasource` can refresh it. Bindings die with their store.
+    @MainActor func registerDatasourceBinding(source: String, name: String, type: VariableType, store: VariableStoreProtocol) {
+        datasourceBindings.removeAll { $0.store == nil || ($0.store === store && $0.name == name) }
+        datasourceBindings.append(DatasourceBinding(source: source, name: name, type: type, store: store))
+    }
+
+    /// Fetches `source` once (`getDatasource` with `screenId`, the screen that
+    /// runs the action) and writes it into every live variable bound to it,
+    /// app and screen scope. Returns false when the fetch failed (variables
+    /// keep their values).
+    @MainActor @discardableResult
+    func reloadDatasource(_ source: String, screenId: String) async -> Bool {
+        let value: Any
+        do {
+            value = try await DatasourceResolver.fetch(source: source, screenId: screenId, dataSource: dataSource)
+        } catch {
+            context.logger.warning("datasource.reload.failed: '\(source)': \(error)")
+            return false
+        }
+        datasourceBindings.removeAll { $0.store == nil }
+        for binding in datasourceBindings where binding.source == source {
+            guard let store = binding.store else { continue }
+            do {
+                try DatasourceResolver.check(value, source: source, type: binding.type)
+                try store.setValue(name: binding.name, value: value)
+            } catch {
+                context.logger.warning("datasource.reload.failed: '\(source)' for '\(binding.name)': \(error)")
+            }
+        }
+        return true
     }
 
     /// Saves `persist: true` app variables (UserDefaults suite `app8.<appId>`).

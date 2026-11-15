@@ -135,6 +135,14 @@ final class ScreenViewController: BaseViewController {
         installSearchFillIfNeeded()
         applySearchFillTopGap()
         navigationController?.navigationBar.tintColor = navigationBarConfig?.tintColor.flatMap(UIColor.init(withHexString:))
+        pulseClock()
+    }
+
+    /// `now()` / `today()` re-evaluate when the screen appears.
+    private func pulseClock() {
+        var store: VariableStoreProtocol? = titleViewVariableStore
+        while let parent = store?.getParentStore() { store = parent }
+        (store as? VariableStore)?.pulseClock()
     }
 
     override func viewDidAppear(_ animated: Bool) {

@@ -24,6 +24,9 @@ extension DSL.Model.Component {
         /// Applies to every component type — see `M.Accessibility`.
         let accessibility: M.Accessibility?
 
+        /// `properties.isHidden`, read for every component type.
+        let hiddenFlag: String?
+
         /// Default state name - can be static ("normal") or expression ("{{condition ? 'a' : 'b'}}")
         let defaultStateName: String?
         var states: [String: M.State<Properties, StyleContent>]?
@@ -138,6 +141,7 @@ extension DSL.Model.Component {
                 style = try c.decodeIfPresent(StyleContent.self, forKey: .style)
             }
             
+            hiddenFlag       = HiddenFlagDecoding.decode(from: c, propertiesKey: .properties)
             layout           = try c.decodeIfPresent(M.Layout.self, forKey: .layout)
             if let rawActions = try c.decodeIfPresent([String: M.ActionList].self, forKey: .actions) {
                 var converted: [M.ActionTrigger: [M.Action]] = [:]

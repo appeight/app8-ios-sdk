@@ -97,6 +97,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     func configure(viewModel: CCollectionViewModel, superview: UIView? = nil, animated: Bool = true) {
         self.viewModel = viewModel
         guard let superview = superview ?? self.superview else { return }
+        renderSuperview = superview
 
         bindLayout(
             viewModel.layout,
@@ -191,6 +192,33 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         }
     }
     
+    /// True when an ancestor (through stacks and views) is a vertical DSL
+    /// `scrollView`. Walks from the render superview, which is in place when
+    /// `configure` runs.
+    private var isInsideVerticalScrollView: Bool {
+        var view = renderSuperview ?? superview
+        while let current = view {
+            if let scroll = current as? CScrollViewView {
+                return scroll.scrollsVertically
+            }
+            if current is UICollectionView || current is UITableView { return false }
+            view = current.superview
+        }
+        return false
+    }
+
+    /// `layout.height`, a `top` + `bottom` pair or a height constraint.
+    private var hasOwnHeight: Bool {
+        guard let layout = viewModel?.component.layout else { return false }
+        if layout.height != nil { return true }
+        if layout.top != nil && layout.bottom != nil { return true }
+        let attributes = Set((layout.constraints ?? []).map(\.type))
+        return attributes.contains(.height) || (attributes.contains(.top) && attributes.contains(.bottom))
+    }
+
+    /// The superview handed to `configure` (the view may not be added yet).
+    private weak var renderSuperview: UIView?
+
     private func configureRefreshControl() {
         guard viewModel?.component.properties.pullToRefresh == true else { return }
         collectionView.refreshControl = refreshControl
@@ -228,7 +256,11 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             // (a zoom transition's interactive dismiss, an outer scroll view).
             collectionView.refusesVerticalPans = nativePaging
         } else {
-            let scrollEnabled = viewModel?.component.properties.layout?.scrollEnabled ?? true
+            // A vertical / grid collection inside a vertical scroll view, with no
+            // height of its own, lets the outer scroll view scroll: it sizes to
+            // its content like `scrollEnabled: false`.
+            let scrollEnabled = viewModel?.component.properties.layout?.scrollEnabled
+                ?? !(isInsideVerticalScrollView && !hasOwnHeight)
             collectionView.isScrollEnabled = scrollEnabled
             collectionView.keepsTopRestOnInsetChange = scrollEnabled && viewModel?.component.properties.inverted != true
             collectionView.alwaysBounceVertical = scrollEnabled

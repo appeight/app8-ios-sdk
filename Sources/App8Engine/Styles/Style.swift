@@ -220,6 +220,20 @@ extension DSL.Model.Style {
         init<Content: Decodable & Sendable>(_ concreteEntity: ConcreteEntity<Content>) {
             base = concreteEntity
         }
+
+        /// A color expression (`"{{selected ? '#FFF' : '#000'}}"`) held as a
+        /// pointer whose id is the expression. The app-level resolver never
+        /// knows such an id; each component resolves it in its own scope
+        /// (`CBaseViewModel.resolveColorExpressions`).
+        init(colorExpression: String) {
+            base = Pointer(id: colorExpression, type: .key(.color), typeSpecified: false)
+            jsonStringRepresentation = nil
+        }
+
+        /// True for ids that hold a color expression rather than a style id.
+        static func isColorExpression(_ id: String) -> Bool {
+            id.contains("{{")
+        }
         
         func asConcreteEntity<Content: Decodable & Sendable>() -> ConcreteEntity<Content>? {
             return base as? ConcreteEntity<Content>
@@ -301,6 +315,14 @@ extension DSL.Model.Style {
         static var none: Self { .init() }
 
         init(from decoder: any Decoder) throws {
+            if let string = try? decoder.singleValueContainer().decode(String.self),
+               `Any`.isColorExpression(string) {
+                // Only color fields (`Wrapped<Color.Themed>`) take expressions.
+                base = T.self == Color.Themed.self || T.self == Optional<Color.Themed>.self
+                    ? `Any`(colorExpression: string) : nil
+                directValue = nil
+                return
+            }
             if let styleAny = try? `Any`(from: decoder) {
                 base = styleAny
                 directValue = nil
@@ -316,7 +338,7 @@ extension DSL.Model.Style {
         /// Returns the unresolved pointer ID if this wrapped field still holds a pointer, or recurses into resolved content.
         func unresolvedPointerIds() -> [String] {
             if let pointer = base?.asPointer() {
-                return [pointer.id]
+                return `Any`.isColorExpression(pointer.id) ? [] : [pointer.id]
             }
             if let entity = base?.asEntity(),
                let resolvable = entity.content as? StylePointerResolvable {
@@ -345,6 +367,11 @@ extension DSL.Model.Style {
                     unwrapped.patchBase(entity)
                     base = unwrapped
                 }
+            } else if var direct = directValue as? StylePointerResolvable {
+                // Inline values (`"text": { "color": … }`) carry nested pointers
+                // and color expressions too.
+                direct.resolveStylePointers(resolver: resolver)
+                if let typed = direct as? T { directValue = typed }
             }
         }
     }

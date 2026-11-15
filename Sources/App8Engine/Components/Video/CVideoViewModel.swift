@@ -21,20 +21,8 @@ class CVideoViewModel: CBaseViewModel<DSL.Model.Component.Video.C> {
         for (name, value) in overlays {
             context = context.overlaying(name, value: value)
         }
-        let handler = VariableActionHandler()
         dispatchTrigger(trigger) { [weak self] action in
-            guard let self else { return }
-            switch action.type {
-            case .updateVariable, .incrementVariable, .updateMultipleVariables,
-                 .resetVariables, .toggleArrayValue, .appendToArray, .incrementArrayItem:
-                do {
-                    try handler.execute(action: action, store: self.variableStore, context: context)
-                } catch {
-                    self.service.context.logger.error("Failed to execute \(trigger.rawValue) action: \(error)")
-                }
-            default:
-                self.executeAction(action)
-            }
+            self?.executeAction(action, context: context)
         }
     }
 }

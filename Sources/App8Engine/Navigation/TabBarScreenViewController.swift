@@ -179,7 +179,10 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     @objc private func handleNavigationRequest(_ notification: Notification) {
         guard let request = notification.object as? NavigationRequest else { return }
 
+        // Wait for a dismissal the same action list started (see FlowCoordinator).
+        let gate = context.pendingDismissal
         Task { @MainActor in
+            await gate?.value
             do {
                 try await handleRequest(request)
             } catch {

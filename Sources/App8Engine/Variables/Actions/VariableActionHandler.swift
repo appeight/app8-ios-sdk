@@ -37,6 +37,15 @@ public final class VariableActionHandler {
         case .incrementArrayItem:
             try handleIncrementArrayItem(action: action, store: store, context: context)
 
+        case .insertArrayItem:
+            try handleInsertArrayItem(action: action, store: store, context: context)
+
+        case .upsertArrayItem:
+            try handleUpsertArrayItem(action: action, store: store, context: context)
+
+        case .removeArrayItem:
+            try handleRemoveArrayItem(action: action, store: store, context: context)
+
         case .updateMultipleVariables:
             try handleUpdateMultipleVariables(action: action, store: store, context: context)
 
@@ -51,7 +60,7 @@ public final class VariableActionHandler {
     // MARK: - Action Handlers
 
     private func handleUpdateVariable(action: DSL.Model.Action, store: VariableStoreProtocol, context: VariableContext) throws {
-        guard let variableName = action.variableName else {
+        guard let variableName = action.targetVariable else {
             throw VariableError.undefinedVariable("No variable name specified in updateVariable action")
         }
 
@@ -80,7 +89,7 @@ public final class VariableActionHandler {
     }
 
     private func handleIncrementVariable(action: DSL.Model.Action, store: VariableStoreProtocol) throws {
-        guard let variableName = action.variableName else {
+        guard let variableName = action.targetVariable else {
             throw VariableError.undefinedVariable("No variable name specified in incrementVariable action")
         }
 
@@ -118,7 +127,7 @@ public final class VariableActionHandler {
     private func handleToggleArrayValue(action: DSL.Model.Action, store: VariableStoreProtocol, context: VariableContext) throws {
         logger?.debug("handleToggleArrayValue called")
 
-        guard let variableName = action.variableName else {
+        guard let variableName = action.targetVariable else {
             throw VariableError.undefinedVariable("No variable name specified in toggleArrayValue action")
         }
 
@@ -169,7 +178,7 @@ public final class VariableActionHandler {
     }
 
     private func handleAppendToArray(action: DSL.Model.Action, store: VariableStoreProtocol, context: VariableContext) throws {
-        guard let variableName = action.variableName else {
+        guard let variableName = action.targetVariable else {
             throw VariableError.undefinedVariable("No variable name specified in appendToArray action")
         }
         guard let value = action.value else {
@@ -209,7 +218,7 @@ public final class VariableActionHandler {
     /// missing and `by > 0`) or just the key. An item whose field drops to 0 or
     /// below is removed — so one action covers add, +, − and remove.
     private func handleIncrementArrayItem(action: DSL.Model.Action, store: VariableStoreProtocol, context: VariableContext) throws {
-        guard let variableName = action.variableName else {
+        guard let variableName = action.targetVariable else {
             throw VariableError.undefinedVariable("No variable name specified in incrementArrayItem action")
         }
         guard let matchKey = action.matchBy else {
@@ -222,7 +231,10 @@ public final class VariableActionHandler {
         let by = action.by ?? 1
         let resolved = try resolveValue(value.value, context: context)
         let object = resolved as? [String: Any]
-        guard let key = object.map({ $0[matchKey] }) ?? resolved else { return }
+        // A null / missing match key is a no-op (never matches, never inserts).
+        let rawKey: Any?
+        if let object { rawKey = object[matchKey] } else { rawKey = resolved }
+        guard let key = rawKey, !(key is NSNull) else { return }
 
         var array = store.getValue(name: variableName) as? [Any] ?? []
         if let index = array.firstIndex(where: { ($0 as? [String: Any])?[matchKey].map { isEqual($0, key) } ?? false }),
@@ -243,6 +255,104 @@ public final class VariableActionHandler {
             return
         }
         try store.setValue(name: variableName, value: array)
+    }
+
+    /// Inserts `value` at `index` (default 0 = prepend). The index clamps to
+    /// `[0, count]`; a negative index counts from the end (-1 = append).
+    private func handleInsertArrayItem(action: DSL.Model.Action, store: VariableStoreProtocol, context: VariableContext) throws {
+        guard let variableName = action.targetVariable else {
+            throw VariableError.undefinedVariable("No variable name specified in insertArrayItem action")
+        }
+        guard let value = action.value else {
+            throw VariableError.undefinedVariable("No value specified in insertArrayItem action for '\(variableName)'")
+        }
+        var array = try currentArray(variableName, store: store)
+        guard array.count < EngineLimits.maxArrayVariableCount else {
+            logger?.warning("insertArrayItem: '\(variableName)' already at the \(EngineLimits.maxArrayVariableCount)-element cap — insert dropped")
+            return
+        }
+        let resolved = try resolveValue(value.value, context: context)
+        var position = 0
+        if let raw = action.index?.value, let n = numberValue(try resolveValue(raw, context: context)) {
+            let i = Int(n)
+            position = i < 0 ? array.count + 1 + i : i
+        }
+        position = max(0, min(position, array.count))
+        array.insert(resolved, at: position)
+        try store.setValue(name: variableName, value: array)
+    }
+
+    /// Replaces the first element whose `matchBy` key equals `value[matchBy]`
+    /// with `value` exactly, else inserts `value` (`position`: `end` by default,
+    /// or `start`). A `value` without the key is a no-op.
+    private func handleUpsertArrayItem(action: DSL.Model.Action, store: VariableStoreProtocol, context: VariableContext) throws {
+        guard let variableName = action.targetVariable else {
+            throw VariableError.undefinedVariable("No variable name specified in upsertArrayItem action")
+        }
+        guard let matchKey = action.matchBy else {
+            throw VariableError.undefinedVariable("No matchBy specified in upsertArrayItem action for '\(variableName)'")
+        }
+        guard let value = action.value else {
+            throw VariableError.undefinedVariable("No value specified in upsertArrayItem action for '\(variableName)'")
+        }
+        guard let object = try resolveValue(value.value, context: context) as? [String: Any],
+              let key = object[matchKey], !(key is NSNull) else { return }
+        var array = try currentArray(variableName, store: store)
+        if let index = array.firstIndex(where: { ($0 as? [String: Any])?[matchKey].map { isEqual($0, key) } ?? false }) {
+            array[index] = object
+        } else {
+            guard array.count < EngineLimits.maxArrayVariableCount else { return }
+            if action.position == "start" {
+                array.insert(object, at: 0)
+            } else {
+                array.append(object)
+            }
+        }
+        try store.setValue(name: variableName, value: array)
+    }
+
+    /// `{ matchBy, value }`: removes every element whose `matchBy` key equals
+    /// `value` (or `value[matchBy]` when `value` is an object). `{ value }`
+    /// alone removes every element equal to it. `{ index }` removes the
+    /// element at that position (negative counts from the end).
+    private func handleRemoveArrayItem(action: DSL.Model.Action, store: VariableStoreProtocol, context: VariableContext) throws {
+        guard let variableName = action.targetVariable else {
+            throw VariableError.undefinedVariable("No variable name specified in removeArrayItem action")
+        }
+        var array = try currentArray(variableName, store: store)
+        if let value = action.value {
+            let resolved = try resolveValue(value.value, context: context)
+            if let matchKey = action.matchBy {
+                let rawKey: Any?
+                if let object = resolved as? [String: Any] { rawKey = object[matchKey] } else { rawKey = resolved }
+                guard let key = rawKey, !(key is NSNull) else { return }
+                array.removeAll { ($0 as? [String: Any])?[matchKey].map { isEqual($0, key) } ?? false }
+            } else {
+                array.removeAll { isEqual($0, resolved) }
+            }
+        } else if let raw = action.index?.value, let n = numberValue(try resolveValue(raw, context: context)) {
+            var i = Int(n)
+            if i < 0 { i += array.count }
+            guard array.indices.contains(i) else { return }
+            array.remove(at: i)
+        } else {
+            throw VariableError.undefinedVariable("removeArrayItem on '\(variableName)' needs 'value' or 'index'")
+        }
+        try store.setValue(name: variableName, value: array)
+    }
+
+    /// The array in `name`; nil / undefined value reads as empty.
+    private func currentArray(_ name: String, store: VariableStoreProtocol) throws -> [Any] {
+        let current = store.getValue(name: name)
+        if let array = current as? [Any] { return array }
+        if current == nil || current is NSNull { return [] }
+        throw VariableError.typeMismatch(variable: name, expected: .array, actual: String(describing: type(of: current as Any)))
+    }
+
+    private func numberValue(_ value: Any) -> Double? {
+        if let n = value as? NSNumber, !(value is Bool) { return n.doubleValue }
+        if let s = value as? String { return Double(s) }
+        return nil
     }
 
     private func handleUpdateMultipleVariables(action: DSL.Model.Action, store: VariableStoreProtocol, context: VariableContext) throws {

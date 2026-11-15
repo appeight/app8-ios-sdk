@@ -42,12 +42,16 @@ struct NativeContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulConte
     var style: Style?
     let layout: DSL.Model.Layout?
 
-    /// Always nil: native events are not engine triggers. See `eventActions`.
+    /// Always nil: native events are not engine triggers. See `eventActions`
+    /// and `eventAnalytics`.
     let actions: [DSL.Model.ActionTrigger: [DSL.Model.Action]]?
     let analytics: [DSL.Model.ActionTrigger: DSL.Model.AnalyticsBinding]?
 
     /// Actions keyed by the module's event name.
     let eventActions: [String: [DSL.Model.Action]]
+
+    /// Analytics bindings keyed by the module's event name (`analytics`).
+    let eventAnalytics: [String: DSL.Model.AnalyticsBinding]
 
     let defaultStateName: String?
     var states: [String: StateType]?
@@ -56,6 +60,7 @@ struct NativeContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulConte
     let onEvent: [DSL.Model.EventTrigger]?
     let interaction: DSL.Model.Interaction?
     let accessibility: DSL.Model.Accessibility?
+    let hiddenFlag: String?
 
     /// `[fallback]` when declared, else empty.
     var children: [DSL.Model.Component.`Any`] = []
@@ -64,12 +69,13 @@ struct NativeContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulConte
     var fallback: DSL.Model.Component.`Any`? { children.first }
 
     enum CodingKeys: String, CodingKey {
-        case properties, style, layout, actions, defaultStateName, states, triggers, variables, onEvent, interaction, accessibility, fallback
+        case properties, style, layout, actions, analytics, defaultStateName, states, triggers, variables, onEvent, interaction, accessibility, fallback
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         properties = try c.decode(Properties.self, forKey: .properties)
+        hiddenFlag = HiddenFlagDecoding.decode(from: c, propertiesKey: .properties)
         style = try Style.decode(fromContainer: c, key: .style)
         layout = try c.decodeIfPresent(DSL.Model.Layout.self, forKey: .layout)
 
@@ -80,6 +86,7 @@ struct NativeContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulConte
             }
         }
         self.eventActions = eventActions
+        eventAnalytics = try c.decodeIfPresent([String: DSL.Model.AnalyticsBinding].self, forKey: .analytics) ?? [:]
         actions = nil
         analytics = nil
 

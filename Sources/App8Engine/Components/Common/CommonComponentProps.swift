@@ -19,6 +19,8 @@ enum CommonComponentProps {
     private static var cancellableKey: UInt8 = 0
 
     static func bind(view: UIView, viewModel: ComponentViewModelAbstract) {
+        bindHidden(view: view, viewModel: viewModel)
+
         let interaction = viewModel.interactionProps
         let accessibility = viewModel.accessibilityProps
 
@@ -46,6 +48,32 @@ enum CommonComponentProps {
             }
 
         objc_setAssociatedObject(view, &cancellableKey, cancellable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    private static var hiddenCancellableKey: UInt8 = 0
+
+    /// `properties.isHidden` on any component: hidden views are not drawn,
+    /// get no touches, are skipped by accessibility and take no space in a
+    /// stack view (UIStackView collapses hidden arranged subviews).
+    private static func bindHidden(view: UIView, viewModel: ComponentViewModelAbstract) {
+        guard let flag = viewModel.hiddenFlag?.trimmingCharacters(in: .whitespaces), !flag.isEmpty else { return }
+        guard flag.contains("{{") else {
+            view.isHidden = flag.lowercased() == "true" || flag == "1"
+            return
+        }
+        func update() {
+            let hidden = viewModel.resolvePropertyToBool(flag) ?? false
+            if view.isHidden != hidden { view.isHidden = hidden }
+        }
+        update()
+        let cancellable = viewModel.variablesChanged
+            .receive(on: DispatchQueue.main)
+            .sink { [weak view, weak viewModel] _ in
+                guard let view, let viewModel else { return }
+                let hidden = viewModel.resolvePropertyToBool(flag) ?? false
+                if view.isHidden != hidden { view.isHidden = hidden }
+            }
+        objc_setAssociatedObject(view, &hiddenCancellableKey, cancellable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }
 
     private static func apply(

@@ -17,6 +17,8 @@ protocol ComponentViewModelAbstract: AnyObject {
     var interactionProps: DSL.Model.Interaction? { get }
     /// Universal accessibility metadata declared on this component's content.
     var accessibilityProps: DSL.Model.Accessibility? { get }
+    /// `properties.isHidden` (any component type).
+    var hiddenFlag: String? { get }
 
     func resolvePropertyToBool(_ value: String) -> Bool?
     func resolvePropertyToFloat(_ value: String) -> CGFloat?
@@ -38,6 +40,7 @@ extension ComponentViewModelAbstract {
     var variablesChanged: AnyPublisher<String, Never> { variableStore.anyVariableChanged }
     var interactionProps: DSL.Model.Interaction? { nil }
     var accessibilityProps: DSL.Model.Accessibility? { nil }
+    var hiddenFlag: String? { nil }
     func resolvePropertyToBool(_ value: String) -> Bool? { nil }
     func resolvePropertyToFloat(_ value: String) -> CGFloat? { nil }
     func resolvePropertyToString(_ value: String) -> String { value }
@@ -54,6 +57,11 @@ protocol ComponentService: AnyObject, ComponentRenderer, A8.DataSourceHolder {
 
     /// Resolve a template by name from the app's template registry
     @MainActor func resolveTemplate(named name: String) -> DSL.Model.Component.`Any`?
+
+    /// Records that `name` in `store` is fed by datasource `source`.
+    @MainActor func registerDatasourceBinding(source: String, name: String, type: VariableType, store: VariableStoreProtocol)
+    /// Refetches `source` and updates every variable bound to it; false on failure.
+    @MainActor func reloadDatasource(_ source: String, screenId: String) async -> Bool
 }
 
 @MainActor
@@ -123,8 +131,50 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         .eraseToAnyPublisher()
     }
 
+    /// The effective style with its color expressions resolved in this
+    /// component's scope. A style that has color expressions re-emits when a
+    /// variable changes and a resolved color differs.
     var style: AnyPublisher<Component.Style?, Never> {
-        stateManager.effectiveStyle.eraseToAnyPublisher()
+        stateManager.effectiveStyle
+            .map { [weak self] style -> AnyPublisher<Component.Style?, Never> in
+                guard let self, let style else { return Just(style).eraseToAnyPublisher() }
+                let first = self.resolveColorExpressions(in: style)
+                guard !first.signature.isEmpty else { return Just(style).eraseToAnyPublisher() }
+                return self.variableStore.anyVariableChanged
+                    .map { [weak self] _ in self?.resolveColorExpressions(in: style) ?? (style, "") }
+                    .prepend(first)
+                    .removeDuplicates { $0.signature == $1.signature }
+                    .map { Optional($0.style) }
+                    .eraseToAnyPublisher()
+            }
+            .switchToLatest()
+            .eraseToAnyPublisher()
+    }
+
+    /// Resolves every color expression in `style` against this component's
+    /// scope. `signature` lists the resolved colors (empty when the style has
+    /// no expressions). A result that is not a hex color leaves the field
+    /// unset and logs `style.color.invalid`.
+    func resolveColorExpressions(in style: Component.Style) -> (style: Component.Style, signature: String) {
+        guard var resolvable = style as? DSL.Model.Style.StylePointerResolvable else { return (style, "") }
+        var signature = ""
+        resolvable.resolveStylePointers { [self] id in
+            guard DSL.Model.Style.`Any`.isColorExpression(id) else { return nil }
+            let value = resolvePropertyToString(id).trimmingCharacters(in: .whitespacesAndNewlines)
+            signature += "\(id)=\(value);"
+            guard DSL.Model.Style.Color.Hex.isValidHexString(value),
+                  let color = UIColor(withHexString: value) else {
+                warnOnce(key: "style.color.invalid:\(componentPath):\(id):\(value)",
+                         "style.color.invalid: '\(id)' resolved to '\(value)', not a hex color — field left unset. componentPath='\(componentPath)'")
+                return nil
+            }
+            return DSL.Model.Style.ConcreteEntity<DSL.Model.Style.Color.Themed>(
+                DSL.Model.Style.Pointer(id: id, type: .key(.color), typeSpecified: true),
+                content: DSL.Model.Style.Color.Themed(color)
+            )
+        }
+        guard let resolved = resolvable as? Component.Style else { return (style, "") }
+        return (resolved, signature)
     }
 
     var properties: AnyPublisher<Component.Properties, Never> {
@@ -150,6 +200,8 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     var interactionProps: DSL.Model.Interaction? { component.interaction }
     /// Universal accessibility metadata from this component's content (nil unless declared).
     var accessibilityProps: DSL.Model.Accessibility? { component.accessibility }
+    /// `properties.isHidden` (nil unless declared).
+    var hiddenFlag: String? { component.hiddenFlag }
     /// `content.contextMenu` (nil unless declared).
     var contextMenuProps: DSL.Model.ContextMenu? { component.contextMenu }
     var componentService: ComponentService? { service }
@@ -164,7 +216,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     }
 
     var currentStyle: Component.Style? {
-        stateManager.currentEffectiveStyle
+        stateManager.currentEffectiveStyle.map { resolveColorExpressions(in: $0).style }
     }
 
     var currentProperties: Component.Properties {
@@ -196,6 +248,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
             service.context.logger.debug("Initializing \(variables.count) variables for component: \(componentPath)")
 
             var effectiveDefinitions: [String: VariableDefinition] = [:]
+            var datasourceSources: [String: VariableDefinition] = [:]
             for (name, definition) in variables {
                 if definition.persist == true {
                     service.context.logger.warning("variable.persist.scope: 'persist' on '\(name)' in '\(componentPath)' is ignored — only app variables persist")
@@ -203,6 +256,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 if definition.hasExternalSource,
                    let resolvedValue = parent.getValue(name: "__datasource_\(name)") {
                     effectiveDefinitions[name] = definition.withResolvedValue(resolvedValue)
+                    datasourceSources[name] = definition
                     service.context.logger.debug("Using resolved datasource for '\(name)'")
                 } else if definition.initialValue == nil, !definition.hasExternalSource,
                           let injectedValue = parent.getValue(name: name) {
@@ -221,6 +275,11 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 try variableStore.defineVariables(effectiveDefinitions)
             } catch {
                 service.context.logger.error("Failed to define variables for '\(componentPath)': \(error)")
+            }
+            // `reloadDatasource` refreshes these later.
+            for (name, definition) in datasourceSources {
+                guard let source = definition.source else { continue }
+                service.registerDatasourceBinding(source: source, name: name, type: definition.type, store: variableStore)
             }
         }
 
@@ -348,7 +407,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
 
     /// Execute a variable action
     func executeVariableAction(_ action: DSL.Model.Action) {
-        try? variableActionHandler.execute(action: action, store: variableStore, context: getVariableContext())
+        executeAction(action)
     }
 
     // MARK: - Gesture Bindings
@@ -403,14 +462,8 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     /// so author-declared analytics fire too.
     func dispatchTextChange(_ text: String) {
         let context = VariableContext(store: variableStore).overlaying("$value", value: text)
-        let handler = VariableActionHandler()
-        handler.logger = service.context.logger
         dispatchTrigger(.onTextChange) { [self] action in
-            do {
-                try handler.execute(action: action, store: variableStore, context: context)
-            } catch {
-                service.context.logger.error("Failed to execute onTextChange action: \(error)")
-            }
+            executeAction(action, context: context)
         }
     }
 
@@ -424,19 +477,8 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         for (name, value) in values {
             context = context.overlaying(name, value: value)
         }
-        let handler = VariableActionHandler()
-        handler.logger = service.context.logger
         for action in actions {
-            switch action.type {
-            case .updateVariable, .incrementVariable, .updateMultipleVariables, .resetVariables, .toggleArrayValue, .appendToArray, .incrementArrayItem:
-                do {
-                    try handler.execute(action: action, store: variableStore, context: context)
-                } catch {
-                    service.context.logger.error("Failed to execute \(label) action: \(error)")
-                }
-            default:
-                executeAction(action, context: context)
-            }
+            executeAction(action, context: context)
         }
     }
 
@@ -567,17 +609,24 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
 
         // Author-declared `analytics` binding for this trigger.
         if let binding = component.analytics?[trigger] {
-            let resolved = resolvePayload(binding.properties)
-            checkAuthorPropertyCollisions(resolved, bindingName: binding.name)
-            service.context.analyticsBus.dispatch(App8AnalyticsEvent(
-                name: normalizeAuthorAnalyticsName(binding.name),
-                screenId: screenIdForEvents,
-                componentId: leafComponentId,
-                componentType: componentTypeKey,
-                locale: currentLocale,
-                properties: resolved
-            ))
+            fireAnalyticsBinding(binding)
         }
+    }
+
+    /// Dispatch one author-declared analytics binding for this component.
+    /// `context` is the scope its `properties` resolve in (e.g. a native
+    /// event's payload as `event`); defaults to the component's scope.
+    func fireAnalyticsBinding(_ binding: DSL.Model.AnalyticsBinding, context: VariableContext? = nil) {
+        let resolved = resolvePayload(binding.properties, context: context)
+        checkAuthorPropertyCollisions(resolved, bindingName: binding.name)
+        service.context.analyticsBus.dispatch(App8AnalyticsEvent(
+            name: normalizeAuthorAnalyticsName(binding.name),
+            screenId: screenIdForEvents,
+            componentId: leafComponentId,
+            componentType: componentTypeKey,
+            locale: currentLocale,
+            properties: resolved
+        ))
     }
 
     /// Coerce an author-declared analytics binding name into the canonical
@@ -718,7 +767,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         let action = event.action
 
         if initialDelay == 0 {
-            executeAction(action)
+            runTimerTick(action)
 
             if repeats {
                 let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] timer in
@@ -727,7 +776,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                         return
                     }
                     Task { @MainActor in
-                        self.executeAction(action)
+                        self.runTimerTick(action)
                     }
                 }
                 activeTimers.append(timer)
@@ -736,7 +785,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
             let timer = Timer.scheduledTimer(withTimeInterval: initialDelay, repeats: false) { [weak self] _ in
                 guard let self = self else { return }
                 Task { @MainActor in
-                    self.executeAction(action)
+                    self.runTimerTick(action)
 
                     if repeats && !self.activeTimers.isEmpty {
                         let repeatTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] timer in
@@ -745,7 +794,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                                 return
                             }
                             Task { @MainActor in
-                                self.executeAction(action)
+                                self.runTimerTick(action)
                             }
                         }
                         self.activeTimers.append(repeatTimer)
@@ -754,6 +803,12 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
             }
             activeTimers.append(timer)
         }
+    }
+
+    /// A `timer` tick: refresh `now()` / `today()` readers, then run the action.
+    private func runTimerTick(_ action: DSL.Model.Action) {
+        service.appVariableStore.pulseClock()
+        executeAction(action)
     }
 
     /// Expand an action's transition reference into its concrete resolved form,
@@ -775,10 +830,61 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
 
     /// Execute an action directly (for event triggers). `context` overrides
     /// the store navigation params resolve against (e.g. a tapped cell's).
-    func executeAction(_ action: DSL.Model.Action, context: VariableContext? = nil) {
+    ///
+    /// `store` overrides the store variable actions write to (e.g. a tapped
+    /// cell's scoped store); it defaults to this component's store. Nested
+    /// action lists (`forEach`, `with`, `request` callbacks) run through here
+    /// with the same store and an extended `context`, so every action type
+    /// works at every depth.
+    func executeAction(_ action: DSL.Model.Action, context: VariableContext? = nil, store: VariableStoreProtocol? = nil) {
+        if action.type.isVariableAction {
+            let targetStore = store ?? variableStore
+            let ctx = context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext())
+            do {
+                try variableActionHandler.execute(action: action, store: targetStore, context: ctx)
+            } catch {
+                service.context.logger.error("Failed to execute \(action.type.rawValue) action in '\(componentPath)': \(error)")
+            }
+            return
+        }
         switch action.type {
-        case .updateVariable, .incrementVariable, .updateMultipleVariables, .resetVariables, .toggleArrayValue, .appendToArray, .incrementArrayItem:
-            executeVariableAction(action)
+        case .updateVariable, .incrementVariable, .updateMultipleVariables, .resetVariables, .toggleArrayValue,
+             .appendToArray, .incrementArrayItem, .insertArrayItem, .upsertArrayItem, .removeArrayItem:
+            break   // handled above
+
+        case .forEach:
+            runForEach(action, context: context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext()), store: store)
+
+        case .with:
+            let ctx = context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext())
+            var scoped = ctx
+            for (name, raw) in action.values ?? [:] {
+                scoped = scoped.overlaying(name, value: resolveActionValue(raw.value, context: ctx))
+            }
+            for nested in action.actions?.actions ?? [] {
+                executeAction(nested, context: scoped, store: store)
+            }
+
+        case .request:
+            runRequest(action, context: context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext()), store: store)
+
+        case .reloadDatasource:
+            guard let source = action.source, !source.isEmpty else {
+                service.context.logger.warning("reloadDatasource without 'source' — ignored. componentPath='\(componentPath)'")
+                return
+            }
+            let resolved = source.contains("{{") ? "\(resolveProperty(source, context: context))" : source
+            let ctx = context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext())
+            let onSuccess = action.onSuccess?.actions ?? []
+            let onError = action.onError?.actions ?? []
+            let screenId = screenIdForEvents
+            Task { @MainActor [weak self, service] in
+                let ok = await service.reloadDatasource(resolved, screenId: screenId)
+                guard let self else { return }
+                for child in ok ? onSuccess : onError {
+                    self.executeAction(child, context: ctx, store: store)
+                }
+            }
 
         case .setState:
             if let stateName = action.stateName {
@@ -1017,6 +1123,92 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
 
         case .executeFunction, .complete:
             break
+        }
+    }
+
+    // MARK: - Control flow + request
+
+    /// Resolves `{{…}}` in an action value, also inside objects / arrays.
+    func resolveActionValue(_ value: Any, context: VariableContext?) -> Any {
+        if let string = value as? String {
+            return string.contains("{{") ? resolveProperty(string, context: context) : string
+        }
+        if let dict = value as? [String: Any] {
+            return dict.mapValues { resolveActionValue($0, context: context) }
+        }
+        if let array = value as? [Any] {
+            return array.map { resolveActionValue($0, context: context) }
+        }
+        return value
+    }
+
+    /// `forEach`: runs `actions` once per element of `items`, in order, with
+    /// the element bound to `as` (default `item`) and, when set, its position
+    /// bound to `index`. A null or non-array `items` runs nothing.
+    private func runForEach(_ action: DSL.Model.Action, context: VariableContext, store: VariableStoreProtocol?) {
+        guard let raw = action.items?.value,
+              let elements = resolveActionValue(raw, context: context) as? [Any] else { return }
+        let name = action.as ?? "item"
+        let indexName = action.index?.value as? String
+        let nested = action.actions?.actions ?? []
+        for (position, element) in elements.prefix(EngineLimits.maxArrayVariableCount).enumerated() {
+            var scoped = context.overlaying(name, value: element)
+            if let indexName, !indexName.isEmpty {
+                scoped = scoped.overlaying(indexName, value: position)
+            }
+            for child in nested {
+                executeAction(child, context: scoped, store: store)
+            }
+        }
+    }
+
+    /// `request`: an HTTP call through the host's `prepareRequest` hook. The
+    /// rest of the action list does not wait for it. On completion
+    /// `resultVariable` is written, then `onSuccess` (2xx) or `onError`
+    /// (anything else; status 0 = network failure, timeout or host rejection)
+    /// run with `response` (`{ status, body, headers }`) in scope. When this
+    /// component is gone by then, the callbacks are dropped; an app-scope
+    /// `resultVariable` is still written.
+    private func runRequest(_ action: DSL.Model.Action, context: VariableContext, store: VariableStoreProtocol?) {
+        guard let rawURL = action.url else {
+            service.context.logger.warning("request without 'url' — ignored. componentPath='\(componentPath)'")
+            return
+        }
+        let urlString = "\(resolveActionValue(rawURL, context: context))"
+        let headers = (action.headers ?? [:]).mapValues { "\(resolveActionValue($0, context: context))" }
+        let body = action.body.map { resolveActionValue($0.value, context: context) }
+        let request = ActionHTTPRequest.make(method: action.method, url: urlString, headers: headers, body: body)
+        if request == nil {
+            service.context.logger.warning("request: '\(urlString)' is not an absolute http(s) URL. componentPath='\(componentPath)'")
+        }
+        let resultVariable = action.resultVariable.flatMap { $0.isEmpty ? nil : $0 }
+        let onSuccess = action.onSuccess?.actions ?? []
+        let onError = action.onError?.actions ?? []
+        let dataSource = service.dataSource
+        let session = service.context.urlSession
+        let appStore = service.appVariableStore
+        let logger = service.context.logger
+        Task { @MainActor [weak self] in
+            let response = await ActionHTTPRequest.perform(request, session: session) { try await dataSource.prepareRequest($0) }
+            let value = response.dictionary
+            guard let self else {
+                // The component is gone: drop the callbacks, keep app state.
+                if let resultVariable, appStore.hasVariable(name: resultVariable) {
+                    try? appStore.setValue(name: resultVariable, value: value)
+                }
+                return
+            }
+            if let resultVariable {
+                do {
+                    try (store ?? self.variableStore).setValue(name: resultVariable, value: value)
+                } catch {
+                    logger.error("request: could not write resultVariable '\(resultVariable)': \(error)")
+                }
+            }
+            let scoped = context.overlaying("response", value: value)
+            for child in response.isSuccess ? onSuccess : onError {
+                self.executeAction(child, context: scoped, store: store)
+            }
         }
     }
 }

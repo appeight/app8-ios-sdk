@@ -45,3 +45,22 @@ extension DSL.Model.Component {
         }
     }
 }
+
+extension DSL.Model.Component.View.Properties {
+    private enum CodingKeys: String, CodingKey {
+        case backgroundColor, cornerRadius, transformScale, transformTranslateX, transformTranslateY, isHidden, alpha
+    }
+
+    /// `isHidden` takes a boolean or an expression string.
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        backgroundColor = try c.decodeIfPresent(DSL.Model.AnimatedValue<String>.self, forKey: .backgroundColor)
+        cornerRadius = try c.decodeIfPresent(CGFloat.self, forKey: .cornerRadius)
+        transformScale = try c.decodeIfPresent(DSL.Model.AnimatedValue<String>.self, forKey: .transformScale)
+        transformTranslateX = try c.decodeIfPresent(DSL.Model.AnimatedValue<String>.self, forKey: .transformTranslateX)
+        transformTranslateY = try c.decodeIfPresent(DSL.Model.AnimatedValue<String>.self, forKey: .transformTranslateY)
+        isHidden = c.decodeFlagIfPresent(forKey: .isHidden)
+        alpha = try c.decodeIfPresent(DSL.Model.AnimatedValue<String>.self, forKey: .alpha)
+    }
+}

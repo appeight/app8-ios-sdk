@@ -40,6 +40,9 @@ final class CNativeViewModel: CBaseViewModel<NativeContent> {
     /// in scope as `event`.
     func handleModuleEvent(_ event: String, payload: [String: Any]) {
         dispatchToEventBus(name: "native.\(module).\(event)", payload: payload)
+        if let binding = component.eventAnalytics[event] {
+            fireAnalyticsBinding(binding, context: getVariableContext().overlaying("event", value: payload))
+        }
         guard let actions = component.eventActions[event], !actions.isEmpty else { return }
         executeActions(actions, scope: ["event": payload], label: "native '\(module)' \(event)")
     }

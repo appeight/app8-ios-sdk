@@ -39,6 +39,12 @@ public protocol App8DataSource: AnyObject, Sendable {
     /// at boot. Default impl returns an empty bundle so pre-i18n data sources
     /// keep working unchanged.
     func getTranslations() async throws -> Data
+
+    /// Called before every DSL `request` action is sent. Return the request
+    /// to send — add credentials, rewrite the host, or return it unchanged.
+    /// Throwing rejects the request: the action's `onError` runs with
+    /// `response.status == 0`. The engine itself adds no auth.
+    func prepareRequest(_ request: URLRequest) async throws -> URLRequest
 }
 
 // MARK: - Default implementations for optional methods
@@ -72,6 +78,11 @@ extension App8DataSource {
     public func getTranslations() async throws -> Data {
         return Data(#"{"defaultLocale":"en","locales":{}}"#.utf8)
     }
+
+    /// Default: send the request unchanged.
+    public func prepareRequest(_ request: URLRequest) async throws -> URLRequest {
+        request
+    }
 }
 
 // MARK: - Data Sources (Internal protocols)
@@ -95,6 +106,7 @@ extension A8 {
         func streamDatasource(screenId: String, datasourceId: String, componentPath: String?) -> AsyncStream<Data>?
         func streamStyles() -> AsyncStream<Data>?
         func getTranslations() async throws -> Data
+        func prepareRequest(_ request: URLRequest) async throws -> URLRequest
     }
 
     class DataSource: @unchecked Sendable, DataSourceProtocol {
@@ -153,6 +165,10 @@ extension A8 {
         func getTranslations() async throws -> Data {
             try await ds.getTranslations()
         }
+
+        func prepareRequest(_ request: URLRequest) async throws -> URLRequest {
+            try await ds.prepareRequest(request)
+        }
     }
 }
 
@@ -161,6 +177,10 @@ extension A8 {
 extension A8.DataSourceProtocol {
     func getTranslations() async throws -> Data {
         return Data(#"{"defaultLocale":"en","locales":{}}"#.utf8)
+    }
+
+    func prepareRequest(_ request: URLRequest) async throws -> URLRequest {
+        request
     }
 }
 

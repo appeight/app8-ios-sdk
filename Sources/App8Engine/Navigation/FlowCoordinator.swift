@@ -168,7 +168,28 @@ final class FlowCoordinator {
     @objc private func handleNavigationRequest(_ notification: Notification) {
         guard let request = notification.object as? NavigationRequest else { return }
 
+        // `dismiss` opens a gate (synchronously, before the next request in the
+        // same action list is posted); every later request waits for the modal
+        // to be gone and then runs on the presenting screen's stack.
+        if case .dismiss = request.type {
+            let previous = context.pendingDismissal
+            let gate = Task { @MainActor [weak self] in
+                await previous?.value
+                await self?.currentFlowViewController?.dismissModalAndWait()
+            }
+            context.pendingDismissal = gate
+            Task { @MainActor [weak self] in
+                await gate.value
+                if let self, self.context.pendingDismissal == gate {
+                    self.context.pendingDismissal = nil
+                }
+            }
+            return
+        }
+
+        let gate = context.pendingDismissal
         Task { @MainActor in
+            await gate?.value
             do {
                 try await handleRequest(request)
             } catch {
@@ -212,8 +233,8 @@ final class FlowCoordinator {
             emitVisibleContext()
 
         case .dismiss:
-            currentFlowViewController?.dismissModal(animated: true)
-            // Context is emitted in dismissModal's completion, after presentedModal clears.
+            // Handled in `handleNavigationRequest` (the dismissal gate).
+            await currentFlowViewController?.dismissModalAndWait()
 
         case .switchFlow:
             context.logger.warning("Action not yet implemented: \(request.type)")

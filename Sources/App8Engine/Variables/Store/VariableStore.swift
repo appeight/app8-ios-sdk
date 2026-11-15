@@ -130,6 +130,15 @@ public final class VariableStore: VariableStoreProtocol {
         return variables[name] != nil
     }
 
+    /// Clock tick: recompute everything that reads `now()` / `today()` and
+    /// tell subscribers (child scopes forward it). Sent when a screen appears
+    /// and on `timer` ticks; there is no continuous clock.
+    func pulseClock() {
+        let name = DependencyExtractor.clockDependency
+        try? updateDependentVariables(changedVariable: name)
+        anyVariableChangedSubject.send(name)
+    }
+
     public func setExternalValue(name: String, value: Any) {
         guard let variable = variables[name] else { return }
         do {

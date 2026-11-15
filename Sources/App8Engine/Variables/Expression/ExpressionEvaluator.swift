@@ -21,7 +21,10 @@ public final class ExpressionEvaluator {
         "uppercase", "lowercase", "trim", "replace", "split",
         "substring", "startsWith", "endsWith",
         // Array manipulation
-        "sort", "reverse", "join", "concat", "slice", "sum"
+        "sort", "reverse", "join", "concat", "slice", "sum",
+        "prepend", "append", "uniqueBy", "remove",
+        // Clock + date arithmetic
+        "now", "today", "addDays", "addHours", "startOfDay"
     ])
 
     public init() {}
@@ -504,6 +507,40 @@ public final class ExpressionEvaluator {
             }
             return result
 
+        case "prepend", "append":
+            guard arguments.count == 2 else {
+                throw ExpressionError.parseError("\(name)() expects 2 arguments (array, value)")
+            }
+            var arr = try evaluate(arguments[0], context: context) as? [Any] ?? []
+            let value = try evaluate(arguments[1], context: context) ?? NSNull()
+            if name == "prepend" { arr.insert(value, at: 0) } else { arr.append(value) }
+            return arr
+
+        case "uniqueBy":
+            guard arguments.count == 2 else {
+                throw ExpressionError.parseError("uniqueBy() expects 2 arguments (array, key)")
+            }
+            let arr = try evaluate(arguments[0], context: context) as? [Any] ?? []
+            let key = toString(try evaluate(arguments[1], context: context))
+            var seen: [Any?] = []
+            var result: [Any] = []
+            for element in arr {
+                let raw = (element as? [String: Any])?[key]
+                let keyValue: Any? = raw is NSNull ? nil : raw
+                if seen.contains(where: { isStrictlyEqual($0, keyValue) || ($0 == nil && keyValue == nil) }) { continue }
+                seen.append(keyValue)
+                result.append(element)
+            }
+            return result
+
+        case "remove":
+            guard arguments.count == 2 else {
+                throw ExpressionError.parseError("remove() expects 2 arguments (array, value)")
+            }
+            let arr = try evaluate(arguments[0], context: context) as? [Any] ?? []
+            let value = try evaluate(arguments[1], context: context)
+            return arr.filter { !isStrictlyEqual($0, value) && !isLooselyScalarEqual($0, value) }
+
         case "slice":
             guard (2...3).contains(arguments.count) else {
                 throw ExpressionError.parseError("slice() expects 2 or 3 arguments (array, start, end?)")
@@ -711,6 +748,35 @@ public final class ExpressionEvaluator {
             let days = hours / 24
             if days == 1 { return "yesterday" }
             return "\(days) days ago"
+
+        case "now":
+            return Self.isoString(Date())
+
+        case "today":
+            return Self.dateOnlyString(Date())
+
+        case "addDays", "addHours":
+            guard arguments.count == 2 else {
+                throw ExpressionError.parseError("\(name)() expects 2 arguments (date, n)")
+            }
+            let raw = try evaluate(arguments[0], context: context)
+            guard let date = parseDate(raw), let n = toNumber(try evaluate(arguments[1], context: context)) else { return nil }
+            if name == "addHours" {
+                return Self.isoString(date.addingTimeInterval(n * 3600))
+            }
+            let days = Int(n)   // whole days, truncated toward zero
+            if let s = raw as? String, Self.isDateOnly(s) {
+                guard let moved = Calendar.current.date(byAdding: .day, value: days, to: date) else { return nil }
+                return Self.dateOnlyString(moved)
+            }
+            return Self.isoString(date.addingTimeInterval(Double(days) * 86_400))
+
+        case "startOfDay":
+            guard arguments.count == 1 else {
+                throw ExpressionError.parseError("startOfDay() expects 1 argument")
+            }
+            guard let date = parseDate(try evaluate(arguments[0], context: context)) else { return nil }
+            return Self.isoString(Calendar.current.startOfDay(for: date))
 
         case "daysUntil":
             guard arguments.count == 1 else {
@@ -964,6 +1030,35 @@ public final class ExpressionEvaluator {
             return jsonSafe(wrapped)
         }
         return value
+    }
+
+    /// `YYYY-MM-DDTHH:mm:ssZ` in UTC, whole seconds.
+    static func isoString(_ date: Date) -> String {
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime]
+        fmt.timeZone = TimeZone(identifier: "UTC")
+        return fmt.string(from: Date(timeIntervalSince1970: floor(date.timeIntervalSince1970)))
+    }
+
+    /// `YYYY-MM-DD` in the device's time zone.
+    static func dateOnlyString(_ date: Date) -> String {
+        let fmt = DateFormatter()
+        fmt.calendar = Calendar(identifier: .gregorian)
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.timeZone = Calendar.current.timeZone
+        fmt.dateFormat = "yyyy-MM-dd"
+        return fmt.string(from: date)
+    }
+
+    static func isDateOnly(_ s: String) -> Bool {
+        s.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil
+    }
+
+    /// `==` for strings, numbers and booleans (used by `remove`).
+    private func isLooselyScalarEqual(_ left: Any?, _ right: Any?) -> Bool {
+        guard let left, let right, !(left is [Any]), !(left is [String: Any]),
+              !(right is [Any]), !(right is [String: Any]) else { return false }
+        return isLooselyEqual(left, right)
     }
 
     private func parseDate(_ value: Any?) -> Date? {
