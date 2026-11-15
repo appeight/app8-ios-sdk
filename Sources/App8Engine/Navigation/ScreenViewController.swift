@@ -84,10 +84,20 @@ final class ScreenViewController: BaseViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// `navigationBar.largeTitle` with a plain `title` to show large.
+    private var usesLargeTitle: Bool {
+        guard let config = navigationBarConfig, config.hidden != true, config.largeTitle == true else { return false }
+        return config.titleView == nil && config.title != nil
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         context.appearance.register(self)
         setupRootContainer()
+        // Every screen states its mode: a tab's navigation controller turns
+        // `prefersLargeTitles` on for its large-title root, and a pushed
+        // screen must not inherit it (`.automatic` would).
+        navigationItem.largeTitleDisplayMode = usesLargeTitle ? .always : .never
         configureNavigationBar()
         configureKeyboardDismissal()
         if let insets = additionalSafeAreaInsetsConfig {
@@ -97,7 +107,29 @@ final class ScreenViewController: BaseViewController {
         }
     }
 
+    override func willMove(toParent parent: UIViewController?) {
+        super.willMove(toParent: parent)
+        // `navigationController` is not set yet; the parent is.
+        if usesLargeTitle, let nav = parent as? UINavigationController, !nav.navigationBar.prefersLargeTitles {
+            nav.navigationBar.prefersLargeTitles = true
+        }
+    }
+
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
+        enableLargeTitlesIfNeeded()
+    }
+
+    /// Large titles are a navigation-bar switch (`prefersLargeTitles`); each
+    /// screen then picks its own `largeTitleDisplayMode`. Set as soon as the
+    /// screen joins its navigation controller, before it is first shown.
+    private func enableLargeTitlesIfNeeded() {
+        guard usesLargeTitle, let bar = navigationController?.navigationBar, !bar.prefersLargeTitles else { return }
+        bar.prefersLargeTitles = true
+    }
+
     override func viewWillAppear(_ animated: Bool) {
+        enableLargeTitlesIfNeeded()
         super.viewWillAppear(animated)
         attachLeftTitleViewIfNeeded()
         installSearchFillIfNeeded()
@@ -246,7 +278,8 @@ final class ScreenViewController: BaseViewController {
             } else {
                 title = rawTitle
             }
-            if let colorHex = config.titleColor, let color = UIColor(withHexString: colorHex) {
+            // A titleView would replace the large title; large titles keep the label color.
+            if !usesLargeTitle, let colorHex = config.titleColor, let color = UIColor(withHexString: colorHex) {
                 let titleLabel = UILabel()
                 titleLabel.text = title
                 titleLabel.textColor = color
@@ -394,6 +427,35 @@ final class ScreenViewController: BaseViewController {
         super.viewDidLayoutSubviews()
         updateSearchWidth()
         applyTopEdgeEffect()
+        attachLargeTitleScrollViewIfNeeded()
+    }
+
+    /// The large title collapses as the screen's main scroll view scrolls.
+    /// UIKit only finds it by itself near the top of the view hierarchy; a
+    /// DSL list sits several containers deep, so name it explicitly.
+    private func attachLargeTitleScrollViewIfNeeded() {
+        guard usesLargeTitle, contentScrollView(for: .top) == nil,
+              let scrollView = Self.firstVerticalScrollView(in: rootContainerView) else { return }
+        setContentScrollView(scrollView, for: .top)
+    }
+
+    /// Breadth-first: the outermost scroll view that scrolls vertically.
+    static func firstVerticalScrollView(in root: UIView) -> UIScrollView? {
+        var queue: [UIView] = [root]
+        while !queue.isEmpty {
+            let view = queue.removeFirst()
+            if let scrollView = view as? UIScrollView, !(scrollView is UITextView),
+               scrollView.isScrollEnabled, !scrollView.isPagingEnabled {
+                if let collection = scrollView as? UICollectionView {
+                    // A horizontal shelf scrolls in its own orthogonal scroller.
+                    if collection.alwaysBounceVertical { return collection }
+                } else {
+                    return scrollView
+                }
+            }
+            queue.append(contentsOf: view.subviews)
+        }
+        return nil
     }
 
     /// `navigationBar.topEdgeEffect`: styles the iOS 26 scroll-edge effect of
