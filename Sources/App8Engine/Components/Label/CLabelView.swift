@@ -529,6 +529,13 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             if let alignment = textModel.alignment {
                 paragraphStyle.alignment = alignment.ui
             }
+            // A paragraph style's lineBreakMode (default .byWordWrapping) wins
+            // over the label's, so a line-limited label lost its ellipsis as
+            // soon as it had a lineHeight. Carry the label's mode over.
+            // Unlimited labels keep word wrapping.
+            if (textModel.numberOfLines ?? 0) > 0 {
+                paragraphStyle.lineBreakMode = textModel.lineBreakMode?.ui ?? .byTruncatingTail
+            }
             attrs[.paragraphStyle] = paragraphStyle
         }
 
