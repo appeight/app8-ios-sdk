@@ -23,7 +23,7 @@ final class ControlFlowActionTests: XCTestCase {
             "content": {
                 "variables": {
                     "lines": { "type": "array", "initialValue": [ { "key": "a" }, { "key": "b" }, { "key": "a" } ] },
-                    "cart": { "type": "array", "initialValue": [ { "key": "a", "quantity": 1 } ] },
+                    "tasks": { "type": "array", "initialValue": [ { "key": "a", "quantity": 1 } ] },
                     "log": { "type": "array", "initialValue": [] },
                     "list": { "type": "array", "initialValue": ["x", "y"] },
                     "people": { "type": "array", "initialValue": [ { "id": 1, "name": "Ann", "age": 30 }, { "id": 2, "name": "Bo" } ] },
@@ -47,10 +47,10 @@ final class ControlFlowActionTests: XCTestCase {
     // MARK: increment amount
 
     func testIncrementByAcceptsAnExpression() throws {
-        try root.variableStore.setValue(name: "cart", value: [["key": "a", "quantity": 1]])
-        try run(#"{ "type": "incrementArrayItem", "variableName": "cart", "matchBy": "key", "value": { "key": "a" }, "by": "{{people.length}}" }"#)
-        let cart = try XCTUnwrap(value("cart") as? [[String: Any]])
-        XCTAssertEqual(cart.first?["quantity"] as? Int, 3)
+        try root.variableStore.setValue(name: "tasks", value: [["key": "a", "quantity": 1]])
+        try run(#"{ "type": "incrementArrayItem", "variableName": "tasks", "matchBy": "key", "value": { "key": "a" }, "by": "{{people.length}}" }"#)
+        let tasks = try XCTUnwrap(value("tasks") as? [[String: Any]])
+        XCTAssertEqual(tasks.first?["quantity"] as? Int, 3)
     }
 
     func testBadActionInAListReportsItsOwnPath() throws {
@@ -81,16 +81,16 @@ final class ControlFlowActionTests: XCTestCase {
         try run("""
         { "type": "forEach", "items": "{{lines}}", "as": "line", "index": "i",
           "actions": [
-            { "type": "incrementArrayItem", "variableName": "cart", "matchBy": "key", "value": { "key": "{{line.key}}" }, "by": 1 },
+            { "type": "incrementArrayItem", "variableName": "tasks", "matchBy": "key", "value": { "key": "{{line.key}}" }, "by": 1 },
             { "type": "appendToArray", "variableName": "log", "value": "{{i}}:{{line.key}}" }
           ] }
         """)
-        let cart = try XCTUnwrap(value("cart") as? [[String: Any]])
-        XCTAssertEqual(cart.count, 2)
-        XCTAssertEqual(cart[0]["key"] as? String, "a")
-        XCTAssertEqual(cart[0]["quantity"] as? Int, 3)
-        XCTAssertEqual(cart[1]["key"] as? String, "b")
-        XCTAssertEqual(cart[1]["quantity"] as? Int, 1)
+        let tasks = try XCTUnwrap(value("tasks") as? [[String: Any]])
+        XCTAssertEqual(tasks.count, 2)
+        XCTAssertEqual(tasks[0]["key"] as? String, "a")
+        XCTAssertEqual(tasks[0]["quantity"] as? Int, 3)
+        XCTAssertEqual(tasks[1]["key"] as? String, "b")
+        XCTAssertEqual(tasks[1]["quantity"] as? Int, 1)
         XCTAssertEqual(value("log") as? [String], ["0:a", "1:b", "2:a"])
     }
 
@@ -130,9 +130,9 @@ final class ControlFlowActionTests: XCTestCase {
 
     func testWithBindsValuesOnceForNestedActions() throws {
         try run("""
-        { "type": "with", "values": { "product": "{{people[1]}}", "qty": 2, "label": "n={{people.length}}" },
+        { "type": "with", "values": { "person": "{{people[1]}}", "count": 2, "label": "n={{people.length}}" },
           "actions": [
-            { "type": "appendToArray", "variableName": "log", "value": { "name": "{{product.name}}", "qty": "{{qty}}" } },
+            { "type": "appendToArray", "variableName": "log", "value": { "name": "{{person.name}}", "count": "{{count}}" } },
             { "type": "appendToArray", "variableName": "people", "value": { "id": 3 } },
             { "type": "appendToArray", "variableName": "log", "value": "{{label}}" }
           ] }
@@ -140,7 +140,7 @@ final class ControlFlowActionTests: XCTestCase {
         let log = try XCTUnwrap(value("log") as? [Any])
         let first = try XCTUnwrap(log.first as? [String: Any])
         XCTAssertEqual(first["name"] as? String, "Bo")
-        XCTAssertEqual(first["qty"] as? Int, 2)
+        XCTAssertEqual(first["count"] as? Int, 2)
         // `label` was evaluated before the append.
         XCTAssertEqual(log.last as? String, "n=2")
     }
@@ -190,10 +190,10 @@ final class ControlFlowActionTests: XCTestCase {
     }
 
     func testIncrementArrayItemNullKeyIsNoOp() throws {
-        try run(#"{ "type": "incrementArrayItem", "variableName": "cart", "matchBy": "key", "value": { "key": "{{cart[0].nokey}}" } }"#)
-        try run(#"{ "type": "incrementArrayItem", "variableName": "cart", "matchBy": "key", "value": { "title": "no key" } }"#)
-        let cart = try XCTUnwrap(value("cart") as? [[String: Any]])
-        XCTAssertEqual(cart.count, 1)
-        XCTAssertEqual(cart[0]["quantity"] as? Int, 1)
+        try run(#"{ "type": "incrementArrayItem", "variableName": "tasks", "matchBy": "key", "value": { "key": "{{tasks[0].nokey}}" } }"#)
+        try run(#"{ "type": "incrementArrayItem", "variableName": "tasks", "matchBy": "key", "value": { "title": "no key" } }"#)
+        let tasks = try XCTUnwrap(value("tasks") as? [[String: Any]])
+        XCTAssertEqual(tasks.count, 1)
+        XCTAssertEqual(tasks[0]["quantity"] as? Int, 1)
     }
 }

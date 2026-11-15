@@ -136,15 +136,15 @@ final class DatasourceReloadTests: XCTestCase {
     func testReloadUsesTheDataSourceReloadHook() async throws {
         let harness = RenderHarness(dataSource: CachingDataSource())
         let defs = try JSONDecoder().decode([String: VariableDefinition].self, from: Data("""
-        { "catalog": { "type": "array", "initialValue": [], "source": "datasources/items" } }
+        { "feed": { "type": "array", "initialValue": [], "source": "datasources/items" } }
         """.utf8))
         harness.service.defineAppVariables(defs, appId: "reload-hook-\(UUID().uuidString)")
-        await waitFor { !ids(harness.service.appVariableStore.getValue(name: "catalog")).isEmpty }
-        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "catalog")), ["cached"], "first load: the regular fetch")
+        await waitFor { !ids(harness.service.appVariableStore.getValue(name: "feed")).isEmpty }
+        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "feed")), ["cached"], "first load: the regular fetch")
 
         let ok = await harness.service.reloadDatasource("datasources/items", screenId: "")
         XCTAssertTrue(ok)
-        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "catalog")), ["fresh1"], "reload bypasses the cache")
+        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "feed")), ["fresh1"], "reload bypasses the cache")
     }
 
     /// Polls without blocking the main actor (async tests run on it).
@@ -163,34 +163,34 @@ final class DatasourceReloadTests: XCTestCase {
         let dataSource = CountingDataSource()
         let harness = RenderHarness(dataSource: dataSource)
         let defs = try JSONDecoder().decode([String: VariableDefinition].self, from: Data("""
-        { "catalog": { "type": "array", "initialValue": [], "source": "datasources/items" } }
+        { "feed": { "type": "array", "initialValue": [], "source": "datasources/items" } }
         """.utf8))
         harness.service.defineAppVariables(defs, appId: "reload-test-\(UUID().uuidString)")
         // Not blocking: the initial value is there right away.
-        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "catalog")), [])
-        await waitFor { !ids(harness.service.appVariableStore.getValue(name: "catalog")).isEmpty }
-        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "catalog")), ["v1"])
+        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "feed")), [])
+        await waitFor { !ids(harness.service.appVariableStore.getValue(name: "feed")).isEmpty }
+        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "feed")), ["v1"])
         XCTAssertEqual(dataSource.screenIds.first, "", "app scope fetches with an empty screenId")
 
         let ok = await harness.service.reloadDatasource("datasources/items", screenId: "home")
         XCTAssertTrue(ok)
-        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "catalog")), ["v2"])
+        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "feed")), ["v2"])
     }
 
     func testPersistedValueShowsUntilSourceLoads() async throws {
         let appId = "reload-persist-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: VariablePersistence.suiteName(appId: appId)))
-        defaults.set(try JSONSerialization.data(withJSONObject: [[["id": "stored"]]]), forKey: VariablePersistence.keyPrefix + "catalog")
+        defaults.set(try JSONSerialization.data(withJSONObject: [[["id": "stored"]]]), forKey: VariablePersistence.keyPrefix + "feed")
         defer { defaults.removePersistentDomain(forName: VariablePersistence.suiteName(appId: appId)) }
 
         let harness = RenderHarness(dataSource: CountingDataSource())
         let defs = try JSONDecoder().decode([String: VariableDefinition].self, from: Data("""
-        { "catalog": { "type": "array", "initialValue": [], "source": "datasources/items", "persist": true } }
+        { "feed": { "type": "array", "initialValue": [], "source": "datasources/items", "persist": true } }
         """.utf8))
         harness.service.defineAppVariables(defs, appId: appId)
-        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "catalog")), ["stored"])
-        await waitFor { ids(harness.service.appVariableStore.getValue(name: "catalog")) == ["v1"] }
-        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "catalog")), ["v1"])
+        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "feed")), ["stored"])
+        await waitFor { ids(harness.service.appVariableStore.getValue(name: "feed")) == ["v1"] }
+        XCTAssertEqual(ids(harness.service.appVariableStore.getValue(name: "feed")), ["v1"])
     }
 
     func testNavigationBarButtonRunsAnyActionInTheScreenScope() async throws {
