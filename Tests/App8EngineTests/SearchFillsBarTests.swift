@@ -115,4 +115,66 @@ final class SearchFillsBarTests: XCTestCase {
         XCTAssertEqual(frame.minY, safeTop + 10, accuracy: 0.5, "top gap \(frame)")
         XCTAssertEqual(screen.view.safeAreaInsets.top, frame.maxY + 10, accuracy: 0.5, "content top")
     }
+    /// DemoStore shop -> product (push) and back (pop): the shop's fillsBar
+    /// gap moves the shared navigation bar, so the bar has to stay where it is
+    /// across the transition. It used to be dropped by the pushed screen, and
+    /// UIKit applied that only once the transition finished: the back button
+    /// jumped 10pt up right after the push, the field 10pt down after the pop.
+    func testFillsBarGapKeepsBarStillAcrossPushAndPop() async throws {
+        guard #available(iOS 26.0, *), UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iOS 26 iPhone layout") }
+        let env: [String: Any] = ["bundle": [
+            "app": ["title": "T", "navigation": ["startFlow": "f", "flows": [["id": "f", "startScreen": "tabs"]]]],
+            "styles": [], "components": [],
+            "screens": [
+                "tabs": ["type": "tabBarScreen", "id": "tabs", "content": [
+                    "tabs": [["id": "shop", "label": "Shop", "icon": "magnifyingglass", "screen": "shop"]],
+                    "initialTab": "shop"] as [String: Any]],
+                "shop": Self.searchScreen()
+            ] as [String: Any]
+        ] as [String: Any]]
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        window.makeKeyAndVisible()
+        let instance = App8.instance(dataSource: try BundleDataSource(envelope: env))
+        window.rootViewController = try await instance.startApp()
+        window.layoutIfNeeded()
+        for _ in 0..<8 { try await Task.sleep(nanoseconds: 100_000_000) }
+        defer { window.rootViewController = nil }
+
+        func all(_ v: UIView) -> [UIView] { [v] + v.subviews.flatMap(all) }
+        let shop = try XCTUnwrap(all(window).compactMap { $0.next as? ScreenViewController }.first)
+        let nav = try XCTUnwrap(shop.navigationController)
+        func barFrame() -> CGRect {
+            nav.view.layoutIfNeeded()
+            return nav.navigationBar.convert(nav.navigationBar.bounds, to: window)
+        }
+        /// Waits for the transition to finish, then samples the bar at
+        /// completion and again one run loop later.
+        func settle(on top: UIViewController) async throws -> (CGRect, CGRect) {
+            for _ in 0..<40 where nav.topViewController !== top || nav.transitionCoordinator != nil {
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            XCTAssertTrue(nav.topViewController === top)
+            let atEnd = barFrame()
+            try await Task.sleep(nanoseconds: 50_000_000)
+            return (atEnd, barFrame())
+        }
+
+        let start = barFrame()
+        XCTAssertEqual(start.minY, window.safeAreaInsets.top + 10, accuracy: 0.5, "shop bar \(start)")
+
+        let detailJSON = ##"{"type":"screen","id":"detail","content":{"navigationBar":{"tintColor":"#2D4D3A"},"children":[]}}"##
+        let component = try JSONDecoder().decode(DSL.Model.Component.Any.self, from: Data(detailJSON.utf8))
+        let service = try XCTUnwrap((instance as? A8)?.appService)
+        let detail = await service.renderScreen(component, screenId: "detail")
+
+        nav.pushViewController(detail, animated: true)
+        let (pushEnd, pushNext) = try await settle(on: detail)
+        XCTAssertEqual(pushEnd, start, "bar moved by the push")
+        XCTAssertEqual(pushNext, pushEnd, "bar jumped after the push")
+
+        nav.popViewController(animated: true)
+        let (popEnd, popNext) = try await settle(on: shop)
+        XCTAssertEqual(popEnd, start, "bar moved by the pop")
+        XCTAssertEqual(popNext, popEnd, "bar jumped after the pop")
+    }
 }
