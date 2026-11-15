@@ -1187,6 +1187,19 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 payload: resolved
             ))
 
+        case .requestNotificationPermission:
+            // The rest of the trigger's list has already run (like `request`);
+            // onGranted / onDenied run once the user (or the stored status) answers.
+            let granted = action.onGranted?.actions ?? []
+            let denied = action.onDenied?.actions ?? []
+            let ctx = context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext())
+            NotificationPermission.request { [weak self] ok in
+                guard let self else { return }
+                for next in ok ? granted : denied {
+                    self.executeAction(next, context: ctx, store: store)
+                }
+            }
+
         case .executeFunction, .complete:
             break
         }

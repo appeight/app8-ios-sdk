@@ -138,6 +138,10 @@ extension DSL.Model {
         /// non-string scalars pass through unchanged.
         var payload: [String: AnyCodableValue]?
 
+        // requestNotificationPermission: what runs after the answer
+        var onGranted: ActionList?
+        var onDenied: ActionList?
+
         enum URLPresentation: String, Decodable, Sendable {
             case external   // Default: hand off to system (UIApplication.shared.open) — Safari app, Phone, Mail, etc.
             case sheet      // In-app SFSafariViewController presented as a sheet
@@ -203,6 +207,9 @@ extension DSL.Model {
             // HTTP + datasources
             case request                  // HTTP request; `onSuccess` / `onError` see `response`
             case reloadDatasource         // Refetch `source` and update every variable bound to it
+
+            // Notification permission: system prompt once, then onGranted / onDenied
+            case requestNotificationPermission
 
             /// Variable-store actions run by `VariableActionHandler`.
             var isVariableAction: Bool {
