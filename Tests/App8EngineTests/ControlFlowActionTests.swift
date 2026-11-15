@@ -44,6 +44,15 @@ final class ControlFlowActionTests: XCTestCase {
 
     private func value(_ name: String) -> Any? { root.variableStore.getValue(name: name) }
 
+    // MARK: variable alias
+
+    func testVariableKeyIsAnAliasOfVariableName() throws {
+        try run(#"{ "type": "appendToArray", "variable": "log", "value": "alias" }"#)
+        try run(#"{ "type": "appendToArray", "variableName": "log", "variable": "list", "value": "documented" }"#)
+        XCTAssertEqual(value("log") as? [String], ["alias", "documented"], "variableName wins over the alias")
+        XCTAssertEqual(value("list") as? [String], ["x", "y"])
+    }
+
     // MARK: forEach
 
     func testForEachRunsNestedActionsPerElementInOrder() throws {

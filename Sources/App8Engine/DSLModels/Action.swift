@@ -53,7 +53,12 @@ extension DSL.Model {
         var animated: Bool?       // For setState action: whether to animate (default: true)
 
         // Variable operations
-        var variableName: String?              // Variable name for single-variable actions
+        /// Variable name for single-variable actions. `variableName` is the
+        /// documented key; `variable` decodes as an undocumented alias so a
+        /// bundle behaves the same on every platform.
+        @VariableNameKey var variableName: String?
+        /// The `variable` alias, read only by `VariableNameKey` decoding.
+        private let variable: String?
         var value: AnyCodableValue?            // Value (can contain expressions as strings)
         var key: String?                       // updateVariable on an object variable: set only this key (string/expression)
         var by: Double?                        // Increment/decrement amount
@@ -273,5 +278,28 @@ extension DSL.Model {
             case app        // App-level variables
             case all        // All scopes
         }
+    }
+}
+
+extension DSL.Model {
+    /// Decodes `variableName`, falling back to the sibling `variable` key.
+    @propertyWrapper
+    public struct VariableNameKey: Decodable, Sendable {
+        public var wrappedValue: String?
+        public init(wrappedValue: String?) { self.wrappedValue = wrappedValue }
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// Synthesized `Action` decoding calls this for `variableName`: the
+    /// documented key wins, then the `variable` alias, else nil.
+    func decode(_ type: DSL.Model.VariableNameKey.Type, forKey key: Key) throws -> DSL.Model.VariableNameKey {
+        if let name = try decodeIfPresent(String.self, forKey: key) {
+            return .init(wrappedValue: name)
+        }
+        if let alias = Key(stringValue: "variable"), let name = try decodeIfPresent(String.self, forKey: alias) {
+            return .init(wrappedValue: name)
+        }
+        return .init(wrappedValue: nil)
     }
 }
