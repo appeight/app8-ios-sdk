@@ -101,7 +101,7 @@ final class ScreenViewController: BaseViewController {
         super.viewWillAppear(animated)
         attachLeftTitleViewIfNeeded()
         installSearchFillIfNeeded()
-        applySearchFillTopGap(animated: animated)
+        applySearchFillTopGap()
         navigationController?.navigationBar.tintColor = navigationBarConfig?.tintColor.flatMap(UIColor.init(withHexString:))
     }
 
@@ -339,8 +339,7 @@ final class ScreenViewController: BaseViewController {
 
     /// A `fillsBar` screen's bar sits this far below the status bar, so the
     /// field floats free of it. The bar is 10pt taller than the field, so the
-    /// content starts at safe area + 10 + field + 10. Other screens in the same
-    /// navigation controller put the bar back.
+    /// content starts at safe area + 10 + field + 10.
     private static let searchFillTopGap: CGFloat = 10
 
     private var usesSearchFill: Bool {
@@ -348,19 +347,19 @@ final class ScreenViewController: BaseViewController {
         return config.fillsBar == true && config.placement == .integrated && navigationBarConfig?.hidden != true
     }
 
-    private func applySearchFillTopGap(animated: Bool) {
+    /// The gap moves the navigation bar, which every screen in the stack
+    /// shares, so it belongs to the stack, not to the screen on top: the root
+    /// screen decides it and screens pushed over it keep it. UIKit freezes the
+    /// bar's frame for the length of a push/pop (an alongside change of the
+    /// navigation controller's safe area only lands at completion), so a
+    /// per-screen gap made the bar jump 10pt right after every transition
+    /// between a `fillsBar` screen and one without it.
+    private func applySearchFillTopGap() {
         guard let nav = navigationController else { return }
-        let top = usesSearchFill ? Self.searchFillTopGap : 0
+        let root = nav.viewControllers.first as? ScreenViewController
+        let top = root?.usesSearchFill == true ? Self.searchFillTopGap : 0
         guard nav.additionalSafeAreaInsets.top != top else { return }
-        let apply = {
-            nav.additionalSafeAreaInsets.top = top
-            nav.view.layoutIfNeeded()
-        }
-        if animated, let coordinator = transitionCoordinator {
-            coordinator.animate(alongsideTransition: { _ in apply() })
-        } else {
-            apply()
-        }
+        nav.additionalSafeAreaInsets.top = top
     }
 
     /// iPhone (iOS 26, measured on iPhone 17): the widest field UIKit keeps in
