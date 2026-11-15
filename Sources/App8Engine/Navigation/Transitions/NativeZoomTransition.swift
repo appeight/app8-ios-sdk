@@ -236,10 +236,9 @@ enum NativeZoomTransition {
             while let current = view, current !== root.superview {
                 if let scroll = current as? UIScrollView {
                     if scroll.zoomScale > scroll.minimumZoomScale + 0.01 { return false }
-                    // Only a scroller that can still move this way keeps the pan:
-                    // a pager on its first page leaves a back drag to the
-                    // full-width pop (as UIKit's content pop does).
-                    if horizontal, canScrollHorizontally(scroll, velocityX: velocity.x) { return false }
+                    // The innermost horizontal scroller keeps any pan it can use:
+                    // see `claimsHorizontalPan`.
+                    if horizontal, claimsHorizontalPan(scroll, velocityX: velocity.x) { return false }
                     // A stretchy-top scroll view uses the pull-down at its top.
                     if !horizontal, velocity.y > 0, let zooming = scroll as? App8ZoomingScrollView, zooming.claimsPullDown {
                         return false
@@ -249,6 +248,27 @@ enum NativeZoomTransition {
             }
             return true
         }
+    }
+
+    /// Whether a horizontal scroller keeps a horizontal pan rather than leaving
+    /// it to the dismiss: always while it is moving (dragged, decelerating,
+    /// snapping to a page or bouncing back from an edge), for a forward drag
+    /// (it rubber-bands at its end instead of dismissing), and for a back drag
+    /// while it has content that way. Only a back drag on a scroller at rest at
+    /// its leading end reaches the dismiss.
+    static func claimsHorizontalPan(_ scroll: UIScrollView, velocityX: CGFloat) -> Bool {
+        guard scroll.isScrollEnabled else { return false }
+        let inset = scroll.adjustedContentInset
+        let minX = -inset.left
+        let maxX = scroll.contentSize.width + inset.right - scroll.bounds.width
+        guard maxX > minX + 1 else { return false }
+        if scroll.isDragging || scroll.isDecelerating { return true }
+        let x = scroll.contentOffset.x
+        if x < minX - 0.5 || x > maxX + 0.5 { return true }   // bouncing back
+        let rtl = scroll.effectiveUserInterfaceLayoutDirection == .rightToLeft
+        let back = rtl ? velocityX < 0 : velocityX > 0
+        if !back { return true }
+        return canScrollHorizontally(scroll, velocityX: velocityX)
     }
 
     /// Whether a horizontal drag with this velocity can still scroll `scroll`:
