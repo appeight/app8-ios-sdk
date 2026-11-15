@@ -67,6 +67,10 @@ public final class ScopedVariableStore: VariableStoreProtocol {
             self.parent = newParent
             subscribeToParent(newParent)
         }
+        // Computed variables read the new parent's values (a reused collection
+        // cell: `item` is another item now). Recompute them before anyone
+        // re-resolves, or they keep the previous item's values.
+        recomputeAllComputedVariables()
         // Notify subscribers so views re-resolve expressions with new parent data.
         // Send empty string (not a specific variable name) so name-based filters
         // on other subscribers still work correctly.
@@ -93,6 +97,9 @@ public final class ScopedVariableStore: VariableStoreProtocol {
                 // so getDependents("counter1") correctly returns local computed vars like "count".
                 if !variableName.isEmpty {
                     try? self?.updateDependentVariables(changedVariable: variableName)
+                } else {
+                    // An ancestor was reparented: everything above may differ.
+                    self?.recomputeAllComputedVariables()
                 }
                 self?.anyVariableChangedSubject.send(variableName)
             }
@@ -297,6 +304,23 @@ public final class ScopedVariableStore: VariableStoreProtocol {
         for variableName in updateOrder {
             if let variable = localVariables[variableName], variable.isComputed {
                 try updateComputedVariable(variable: variable)
+            }
+        }
+    }
+
+    /// Every local computed variable, in dependency order.
+    private func recomputeAllComputedVariables() {
+        let computed = Set(localVariables.compactMap { $0.value.isComputed ? $0.key : nil })
+        guard !computed.isEmpty else { return }
+        isUpdating = true
+        defer { isUpdating = false }
+        for name in dependencyGraph.getUpdateOrder(for: computed) {
+            if let variable = localVariables[name], variable.isComputed {
+                do {
+                    try updateComputedVariable(variable: variable)
+                } catch {
+                    logger?.error("Failed to recompute '\(name)' after reparent: \(error)")
+                }
             }
         }
     }

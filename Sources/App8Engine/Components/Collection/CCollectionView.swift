@@ -60,9 +60,24 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     private var isSelfSizing = false             // true when scrollEnabled == false
     private var selfSizingHeightConstraint: NSLayoutConstraint?
     private var cellsSelfSizeWidth = false       // true when horizontal + estimatedItemWidth
-    private var remeasureScheduled = false
-    /// Natural heights of self-sizing grid cells, by index path (see `gridRowHeight`).
-    private var gridNaturalHeights: [IndexPath: CGFloat] = [:]
+    /// Items whose cells measured a new size after the layout placed them;
+    /// relaid out together on the next main-queue turn (`scheduleRemeasure`).
+    private var pendingRemeasure: Set<IndexPath> = []
+    /// Layout invalidations this collection asked for (tests: none per frame
+    /// while scrolling over measured items).
+    private(set) var layoutInvalidationCount = 0
+    /// Natural heights of self-sizing grid items, by item identity (template,
+    /// data, width; see `gridRowHeight`), not index path: a reused cell or a
+    /// row scrolled back into view gets the height measured the first time.
+    private var gridNaturalHeights: [String: CGFloat] = [:]
+    /// `gridHeightKey` memo by index path, rebuilt when the sections change.
+    private var gridHeightKeys: [IndexPath: String] = [:]
+    /// Column width each section's cells last measured at; part of the
+    /// height key, so a rotation or resize measures again.
+    private var gridSectionWidths: [Int: CGFloat] = [:]
+    /// A grid row's height became known after the layout was built: rebuild
+    /// it (once per main-queue turn) so the row is placed at a fixed height.
+    private var gridLayoutRebuildScheduled = false
     /// A cell's deferred remeasure ran while off-window; redo it on the next
     /// `didMoveToWindow` with a window.
     private var remeasureOnWindow = false
@@ -660,10 +675,12 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     private func remeasureEnclosingCell() {
         var view = superview
         var inCell = false
+        var cell: UICollectionViewCell?
         while let current = view {
             if current is UICollectionViewCell || current is UITableViewCell { inCell = true }
+            if cell == nil, let found = current as? UICollectionViewCell { cell = found }
             if inCell, let outer = current as? CCollectionView {
-                outer.scheduleRemeasure()
+                if let cell { outer.remeasure(cell) }
                 return
             }
             if inCell, let table = current as? UITableView {
@@ -680,7 +697,8 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         super.didMoveToWindow()
         guard window != nil, remeasureOnWindow else { return }
         remeasureOnWindow = false
-        scheduleRemeasure()
+        // Only the cells on screen measured before their text bound.
+        scheduleRemeasure(collectionView.indexPathsForVisibleItems)
     }
 
     override func layoutSubviews() {
@@ -743,6 +761,19 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
 
     private func createGridLayout(config: DSL.Model.Component.Collection.Layout) -> UICollectionViewCompositionalLayout {
         let columns = config.columns ?? 2
+        if columns > 1, config.aspectRatio == nil, config.itemHeight == nil {
+            // Self-sizing grid rows: rebuilt from the measured heights on every pass.
+            return UICollectionViewCompositionalLayout { [weak self] sectionIndex, _ in
+                let section = self?.selfSizingGridSection(config: config, sectionIndex: sectionIndex)
+                    ?? NSCollectionLayoutSection(group: .vertical(
+                        layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(44)),
+                        subitems: [.init(layoutSize: .init(widthDimension: .fractionalWidth(1), heightDimension: .estimated(44)))]))
+                if let insets = config.contentInsets {
+                    section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: insets.left ?? 0, bottom: insets.bottom ?? 0, trailing: insets.right ?? 0)
+                }
+                return section
+            }
+        }
 
         let itemSize: NSCollectionLayoutSize
         if let aspectRatio = config.aspectRatio {
@@ -821,10 +852,21 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             case .horizontal:
                 section = self.buildHorizontalSection(config: effectiveLayout!, sectionIndex: sectionIndex)
             case .grid:
-                section = self.buildGridSection(config: effectiveLayout!)
+                section = self.buildGridSection(config: effectiveLayout!, sectionIndex: sectionIndex)
                 gridOuterSpacing = (effectiveLayout?.itemSpacing ?? 0) / 2
             default:
-                section = self.buildVerticalSection(config: effectiveLayout)
+                if effectiveLayout?.itemHeight == nil,
+                   let rows = self.selfSizingRowsSection(
+                       columns: 1,
+                       estimated: effectiveLayout?.estimatedItemHeight ?? 44,
+                       interItemSpacing: 0,
+                       lineSpacing: effectiveLayout?.itemSpacing ?? 0,
+                       sectionIndex: sectionIndex
+                   ) {
+                    section = rows
+                } else {
+                    section = self.buildVerticalSection(config: effectiveLayout)
+                }
             }
 
             // Apply inter-section spacing from outer layout's itemSpacing
@@ -904,9 +946,14 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     }
 
     private func buildGridSection(
-        config: DSL.Model.Component.Collection.Layout
+        config: DSL.Model.Component.Collection.Layout,
+        sectionIndex: Int
     ) -> NSCollectionLayoutSection {
         let columns = config.columns ?? 2
+        if columns > 1, config.aspectRatio == nil, config.itemHeight == nil,
+           let section = selfSizingGridSection(config: config, sectionIndex: sectionIndex) {
+            return section
+        }
 
         let heightDimension: NSCollectionLayoutDimension
         if let aspectRatio = config.aspectRatio {
@@ -935,6 +982,80 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         section.interGroupSpacing = config.lineSpacing ?? 0
 
         return section
+    }
+
+    /// A self-sizing grid section (collections.md, "Self-sizing grid rows")
+    /// as one vertical group of rows: a row whose items have all been
+    /// measured has a fixed (`.absolute`) height, the rest `.estimated`.
+    ///
+    /// The compositional layout does not keep the heights cells self-size
+    /// to: an item scrolled out of view drops back to `estimatedItemHeight`
+    /// whenever the layout is invalidated. Every row scrolled back into view
+    /// then resized above the viewport, UIKit shifted the offset to
+    /// compensate (content moving faster than the finger, a jump after
+    /// deceleration) and the content size changed while bouncing at the end.
+    /// Rows built from the engine's own height cache never move.
+    private func selfSizingGridSection(
+        config: DSL.Model.Component.Collection.Layout,
+        sectionIndex: Int
+    ) -> NSCollectionLayoutSection? {
+        selfSizingRowsSection(
+            columns: config.columns ?? 2,
+            estimated: config.estimatedItemHeight ?? 100,
+            interItemSpacing: config.itemSpacing ?? 0,
+            lineSpacing: config.lineSpacing ?? 0,
+            sectionIndex: sectionIndex
+        )
+    }
+
+    /// Rows of `columns` items (a vertical section: rows of one), each row
+    /// `.absolute` once all its items have a cached natural height.
+    private func selfSizingRowsSection(
+        columns: Int,
+        estimated: CGFloat,
+        interItemSpacing: CGFloat,
+        lineSpacing: CGFloat,
+        sectionIndex: Int
+    ) -> NSCollectionLayoutSection? {
+        let count = sections[safe: sectionIndex]?.items.count ?? 0
+        guard count > 0 else { return nil }
+        let rows = (count + columns - 1) / columns
+        var rowGroups: [NSCollectionLayoutItem] = []
+        var total: CGFloat = 0
+        rowGroups.reserveCapacity(rows)
+        for row in 0..<rows {
+            let known = knownGridRowHeight(section: sectionIndex, row: row, columns: columns, count: count)
+            let dimension: NSCollectionLayoutDimension = known.map { .absolute($0) } ?? .estimated(estimated)
+            total += known ?? estimated
+            let item = NSCollectionLayoutItem(layoutSize: .init(widthDimension: .fractionalWidth(1.0 / CGFloat(columns)), heightDimension: dimension))
+            let group = NSCollectionLayoutGroup.horizontal(
+                layoutSize: .init(widthDimension: .fractionalWidth(1.0), heightDimension: dimension),
+                repeatingSubitem: item,
+                count: columns
+            )
+            group.interItemSpacing = .fixed(interItemSpacing)
+            rowGroups.append(group)
+        }
+        total += CGFloat(max(0, rows - 1)) * lineSpacing
+        let column = NSCollectionLayoutGroup.vertical(
+            layoutSize: .init(widthDimension: .fractionalWidth(1.0), heightDimension: .estimated(total)),
+            subitems: rowGroups
+        )
+        column.interItemSpacing = .fixed(lineSpacing)
+        let section = NSCollectionLayoutSection(group: column)
+        section.interGroupSpacing = lineSpacing
+        return section
+    }
+
+    /// The row's height when every item in it has a cached natural height.
+    private func knownGridRowHeight(section: Int, row: Int, columns: Int, count: Int) -> CGFloat? {
+        var height: CGFloat = 0
+        for item in (row * columns)..<min(row * columns + columns, count) {
+            guard let key = gridHeightKey(at: IndexPath(item: item, section: section)),
+                  let natural = gridNaturalHeights[key] else { return nil }
+            height = max(height, natural)
+        }
+        return height
     }
 
     private func buildVerticalSection(
@@ -1030,7 +1151,12 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                 if Self.itemScrollKeys(self.sections) != Self.itemScrollKeys(newSections) {
                     self.nestedScrollCache.reset()
                 }
-                self.gridNaturalHeights.removeAll()
+                self.gridHeightKeys.removeAll()
+                // Heights are keyed by item content: they stay valid across
+                // emissions. Only drop entries no item can use anymore.
+                if self.gridNaturalHeights.count > 4 * max(64, newSections.reduce(0) { $0 + $1.items.count }) {
+                    self.gridNaturalHeights.removeAll()
+                }
                 guard !self.sectionsStructurallyEqual(self.sections, newSections) else {
                     // Same shape, new item data (e.g. a cart line's quantity):
                     // push it into the live cells instead of a full reload.
@@ -1381,7 +1507,7 @@ extension CCollectionView: UICollectionViewDataSource {
         }
         cell.selfSizesWidth = cellsSelfSizeWidth
         cell.gridRowHeight = selfSizingGridColumns(inSection: indexPath.section) != nil
-            ? { [weak self] indexPath, natural in self?.gridRowHeight(at: indexPath, natural: natural) ?? natural }
+            ? { [weak self] indexPath, natural, width in self?.gridRowHeight(at: indexPath, natural: natural, width: width) ?? natural }
             : nil
 
         let parentPath = viewModel.componentPath + ".cell[\(item.index)]"
@@ -1408,6 +1534,10 @@ extension CCollectionView: UICollectionViewDataSource {
             )
         }
 
+        // Bound text / visibility normally lands a main-queue hop later, after
+        // UIKit measured the cell: apply it now, so the first measure is final.
+        cell.applyBoundValuesNow()
+
         if viewModel.component.properties.inverted == true {
             cell.contentView.transform = CGAffineTransform(scaleX: 1, y: -1)
         }
@@ -1429,7 +1559,7 @@ extension CCollectionView: UICollectionViewDataSource {
                 return
             }
             guard cell.needsRemeasure() else { return }
-            self.scheduleRemeasure()
+            self.remeasure(cell)
         }
 
         return cell
@@ -1452,43 +1582,134 @@ extension CCollectionView: UICollectionViewDataSource {
         case .horizontal:
             config = nil
         }
+        if props.layout?.type == nil || props.layout?.type == .vertical, usesMixedSectionsLayout,
+           config?.type == nil || config?.type == .vertical, config?.itemHeightValue == nil {
+            // A self-sizing vertical section of a mixed layout: rows of one.
+            return 1
+        }
         guard let config, config.type == .grid, config.itemHeightValue == nil, config.aspectRatio == nil else { return nil }
         let columns = config.columns ?? 2
         return columns > 1 ? columns : nil
     }
 
+    /// `createVerticalListLayout` builds one section per data section.
+    private var usesMixedSectionsLayout: Bool {
+        guard let viewModel else { return false }
+        return viewModel.component.properties.defaultSectionLayout != nil
+            || viewModel.component.properties.sectionLayouts != nil
+            || viewModel.component.sectionHeaders != nil
+    }
+
     /// The height of the grid row holding `indexPath`: the tallest natural
-    /// height measured so far among its items (collections.md, "Self-sizing
-    /// grid rows"). A new or changed natural height relayouts once so the
-    /// row's other cells take it too.
-    private func gridRowHeight(at indexPath: IndexPath, natural: CGFloat) -> CGFloat {
+    /// height among its items (collections.md, "Self-sizing grid rows").
+    ///
+    /// The row's other items are measured right here (cached, else with an
+    /// off-screen sizing cell), so the row is final on its first layout pass.
+    /// The compositional layout forgets the self-sized heights of off-screen
+    /// items whenever its layout is invalidated wholesale and falls back to
+    /// `estimatedItemHeight`; relaying out each new row used to do exactly
+    /// that, so every row scrolled back into view resized above the viewport
+    /// and UIKit moved the offset under the finger. Only a height that
+    /// changes after its first measure (the item's content changed) relays
+    /// out, and only that row's items.
+    private func gridRowHeight(at indexPath: IndexPath, natural: CGFloat, width: CGFloat) -> CGFloat {
         guard let columns = selfSizingGridColumns(inSection: indexPath.section) else { return natural }
-        let previous = gridNaturalHeights[indexPath]
-        gridNaturalHeights[indexPath] = natural
+        // Heights hold for one column width (a rotation or resize remeasures).
+        gridSectionWidths[indexPath.section] = width
+        guard let key = gridHeightKey(at: indexPath) else { return natural }
         let count = sections[safe: indexPath.section]?.items.count ?? 0
-        let start = indexPath.item / columns * columns
+        let row = indexPath.item / columns
+        let wasKnown = knownGridRowHeight(section: indexPath.section, row: row, columns: columns, count: count)
+        gridNaturalHeights[key] = natural
         var rowHeight = natural
-        var hasSiblings = false
-        for item in start..<min(start + columns, count) where item != indexPath.item {
-            hasSiblings = true
-            if let height = gridNaturalHeights[IndexPath(item: item, section: indexPath.section)] {
+        for item in (row * columns)..<min(row * columns + columns, count) where item != indexPath.item {
+            if let siblingKey = gridHeightKey(at: IndexPath(item: item, section: indexPath.section)),
+               let height = gridNaturalHeights[siblingKey] {
                 rowHeight = max(rowHeight, height)
             }
         }
-        if hasSiblings, previous.map({ abs($0 - natural) > 0.5 }) ?? true {
-            scheduleRemeasure()
+        // The row's items come into view together. Once all of them have
+        // measured (or the content changed), place the row at its fixed
+        // height. A row already placed at this height needs nothing.
+        let isKnown = knownGridRowHeight(section: indexPath.section, row: row, columns: columns, count: count)
+        if let isKnown, wasKnown.map({ abs($0 - isKnown) > 0.5 }) ?? true {
+            scheduleGridLayoutRebuild()
         }
         return rowHeight
     }
 
-    /// One layout invalidation per run loop turn, however many cells changed size.
-    func scheduleRemeasure() {
-        guard !remeasureScheduled else { return }
-        remeasureScheduled = true
+    /// One wholesale relayout per main-queue turn. Harmless to the rows
+    /// already measured: they come back at their cached heights.
+    private func scheduleGridLayoutRebuild() {
+        guard !gridLayoutRebuildScheduled else { return }
+        gridLayoutRebuildScheduled = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.remeasureScheduled = false
+            self.gridLayoutRebuildScheduled = false
+            self.layoutInvalidationCount += 1
             self.collectionView.collectionViewLayout.invalidateLayout()
+        }
+    }
+
+    /// Identity of the item at `indexPath` for the height cache: section,
+    /// template, the item's data and the column width.
+    private func gridHeightKey(at indexPath: IndexPath) -> String? {
+        guard let width = gridSectionWidths[indexPath.section] else { return nil }
+        let base: String
+        if let memo = gridHeightKeys[indexPath] {
+            base = memo
+        } else {
+            guard let section = sections[safe: indexPath.section],
+                  let item = section.items[safe: indexPath.item] else { return nil }
+            let template = viewModel?.resolveTemplate(for: item)?.id ?? ""
+            base = section.key + "|" + template + "|" + Self.contentFingerprint(item.data)
+            gridHeightKeys[indexPath] = base
+        }
+        return base + "|" + String(Int((width * 2).rounded()))
+    }
+
+
+    /// The item's data, order-independent (dictionary order is not stable).
+    private static func contentFingerprint(_ value: AnyCodableValue) -> String {
+        if JSONSerialization.isValidJSONObject(value.value),
+           let data = try? JSONSerialization.data(withJSONObject: value.value, options: [.sortedKeys, .fragmentsAllowed]),
+           let string = String(data: data, encoding: .utf8) {
+            return string
+        }
+        return String(describing: value.value)
+    }
+
+    /// `cell`'s content changed size after it was laid out: measure it again.
+    /// Self-sizing rows are placed from the height cache, so update the cache
+    /// (which relays out that row); other cells relayout on their own.
+    func remeasure(_ cell: UICollectionViewCell) {
+        guard let indexPath = collectionView.indexPath(for: cell) else { return }
+        if let cell = cell as? CCollectionCell, selfSizingGridColumns(inSection: indexPath.section) != nil {
+            let width = cell.bounds.width
+            _ = gridRowHeight(at: indexPath, natural: cell.measureNaturalHeight(width: width), width: width)
+        } else {
+            scheduleRemeasure([indexPath])
+        }
+    }
+
+    /// Relayout `indexPaths` on the next main-queue turn, together, without
+    /// invalidating the rest of the layout (a wholesale invalidation drops
+    /// every off-screen self-sized height back to the estimate).
+    func scheduleRemeasure(_ indexPaths: [IndexPath]) {
+        guard !indexPaths.isEmpty else { return }
+        let wasEmpty = pendingRemeasure.isEmpty
+        pendingRemeasure.formUnion(indexPaths)
+        guard wasEmpty else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let counts = (0..<self.collectionView.numberOfSections).map { self.collectionView.numberOfItems(inSection: $0) }
+            let valid = self.pendingRemeasure.filter { $0.section < counts.count && $0.item < counts[$0.section] }
+            self.pendingRemeasure.removeAll()
+            guard !valid.isEmpty else { return }
+            self.layoutInvalidationCount += 1
+            let context = UICollectionViewLayoutInvalidationContext()
+            context.invalidateItems(at: Array(valid))
+            self.collectionView.collectionViewLayout.invalidateLayout(with: context)
         }
     }
 
