@@ -135,9 +135,16 @@ final class CCollectionViewModel: CBaseViewModel<CollectionContent> {
             }
         }
 
-        let relevantVars: Set<String> = Set(defs.compactMap { def in
-            extractRootVariableName(from: def.data)
-        })
+        // Every variable the section expressions read — not just the leading
+        // identifier: `{{filter(allProducts, wishlist.includes(item.handle))}}`
+        // depends on `allProducts` AND `wishlist`. (Taking the text before the
+        // first "." gave "filter(allProducts, wishlist", which matched no
+        // variable, so the section never rebuilt: un-hearting a wishlist card
+        // left it on screen.) nil (an unparsable expression) reacts to all.
+        // A bare `data: "listings"` (no braces) still names its variable.
+        let relevantVars: Set<String>? = ExpressionDependencies.names(in: defs.map(\.data)).map { names in
+            names.union(defs.filter { !$0.data.contains("{{") }.compactMap { extractRootVariableName(from: $0.data) })
+        }
 
         let initial = buildSections()
         sectionsSubject.send(initial)
@@ -147,8 +154,8 @@ final class CCollectionViewModel: CBaseViewModel<CollectionContent> {
             .filter { variableName in
                 // Empty string = reparent signal, always process.
                 guard !variableName.isEmpty else { return true }
-                // No extracted vars: pass everything through as a safe fallback.
-                guard !relevantVars.isEmpty else { return true }
+                // Unparsable expression: pass everything through as a safe fallback.
+                guard let relevantVars else { return true }
                 return relevantVars.contains(variableName)
             }
             .sink { [weak self] _ in
