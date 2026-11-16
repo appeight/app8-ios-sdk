@@ -36,6 +36,7 @@ final class ScreenViewController: BaseViewController {
     private var didAutoFocusSearch = false
     /// The ✕ was tapped: `onCancel` runs once the field has finished unfocusing.
     private var pendingSearchCancel = false
+    private var lastSearchTap: CFTimeInterval = 0
     /// The field's focus as the search controller last announced it.
     private var searchFieldFocused = false
 
@@ -405,8 +406,23 @@ final class ScreenViewController: BaseViewController {
         guard !didAutoFocusSearch, navigationBarConfig?.search?.autoFocus == true,
               navigationBarConfig?.search?.isButton != true, let controller = searchController else { return }
         didAutoFocusSearch = true
-        controller.isActive = true
-        DispatchQueue.main.async { controller.searchBar.searchTextField.becomeFirstResponder() }
+        focusSearch(controller, attemptsLeft: 3)
+    }
+
+    /// Activates the search controller and raises the keyboard; tries again a
+    /// little later while the screen is still settling (a device can still
+    /// be finishing the push, or another field giving up first responder).
+    private func focusSearch(_ controller: UISearchController, attemptsLeft: Int) {
+        guard view.window != nil, navigationController?.topViewController === self else { return }
+        if !controller.isActive { controller.isActive = true }
+        DispatchQueue.main.async { [weak self] in
+            let field = controller.searchBar.searchTextField
+            if !field.isFirstResponder { field.becomeFirstResponder() }
+            guard !field.isFirstResponder, attemptsLeft > 1 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                self?.focusSearch(controller, attemptsLeft: attemptsLeft - 1)
+            }
+        }
     }
 
     /// `navigationBar.search.fillsBar`: an integrated field is compact and
@@ -515,7 +531,7 @@ final class ScreenViewController: BaseViewController {
         // Never wider focused than unfocused: the trailing items come back
         // while the field unfocuses, and a field still too wide for them makes
         // UIKit collapse it into a search button for good.
-        let resting = searchFillInset(barWidth: bar.bounds.width) + trailingItemsReserve
+        let resting = searchFillInset(barWidth: bar.bounds.width) + trailingItemsReserve + leadingBackReserve
         let inset = focused ? max(Self.searchFillFocusedInset, resting) : resting
         constraint.constant = max(0, bar.bounds.width - inset)
     }
@@ -523,6 +539,14 @@ final class ScreenViewController: BaseViewController {
     /// Room the trailing bar items take beside an unfocused `fillsBar` field:
     /// image items share one 44pt glass capsule (54pt between centres), text
     /// and prominent items get their own, 8pt apart, plus 8pt before the field.
+    /// A pushed screen's back button sits before the field: the 44pt glass
+    /// circle and 8pt (plus 8pt of slack, see `trailingItemsReserve`).
+    private var leadingBackReserve: CGFloat {
+        guard let nav = navigationController, nav.viewControllers.first !== self,
+              !navigationItem.hidesBackButton, navigationItem.leftBarButtonItems?.isEmpty ?? true else { return 0 }
+        return 44 + 16
+    }
+
     private var trailingItemsReserve: CGFloat {
         let items = navigationItem.rightBarButtonItems ?? []
         guard !items.isEmpty else { return 0 }
@@ -738,6 +762,15 @@ extension ScreenViewController: UISearchResultsUpdating, UISearchBarDelegate, UI
     /// animation: updated a run loop later, the full-width field met the ✕
     /// first and slid past the leading edge before shrinking back.
     func willPresentSearchController(_ searchController: UISearchController) {
+        if navigationBarConfig?.search?.isButton == true {
+            // A tap on the integrated capsule can activate the controller
+            // without asking `searchBarShouldBeginEditing` first: undo it and
+            // treat it as the tap. Left active, it held the presentation
+            // context and the pushed search screen's field could not focus.
+            DispatchQueue.main.async { searchController.isActive = false }
+            runSearchTapOnce()
+            return
+        }
         resizeSearchAlongPresentation(of: searchController, focused: true)
     }
 
@@ -785,9 +818,17 @@ extension ScreenViewController: UISearchResultsUpdating, UISearchBarDelegate, UI
 
     /// `mode: "button"`: the field never takes focus; the tap runs `onTap`.
     func searchBarShouldBeginEditing(_ searchBar: UISearchBar) -> Bool {
-        guard let search = navigationBarConfig?.search, search.isButton else { return true }
-        search.onTap?.forEach { actionHandler?($0) }
+        guard navigationBarConfig?.search?.isButton == true else { return true }
+        runSearchTapOnce()
         return false
+    }
+
+    /// `onTap` once per tap: activation and editing can both report one tap.
+    private func runSearchTapOnce() {
+        let now = CACurrentMediaTime()
+        guard now - lastSearchTap > 0.5 else { return }
+        lastSearchTap = now
+        navigationBarConfig?.search?.onTap?.forEach { actionHandler?($0) }
     }
 
     /// The cancel ✕: UIKit clears and unfocuses the field, then `onCancel` runs
