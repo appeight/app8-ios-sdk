@@ -13,6 +13,8 @@ extension DSL.Model {
         let animation: Animation?
         /// `properties.isHidden` of this state (any component type).
         let hiddenFlag: String?
+        /// `animation` of a wrapped `properties.isHidden` in this state.
+        let hiddenAnimation: Animation?
 
         private enum CodingKeys: String, CodingKey {
             case properties, style, layout, childStates, animation
@@ -23,6 +25,7 @@ extension DSL.Model {
         init(from decoder: any Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             hiddenFlag = HiddenFlagDecoding.decode(from: c, propertiesKey: .properties)
+            hiddenAnimation = HiddenFlagDecoding.decodeAnimation(from: c, propertiesKey: .properties)
             do {
                 properties = try c.decodeIfPresent(Properties.self, forKey: .properties)
             } catch {

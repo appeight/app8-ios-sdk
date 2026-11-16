@@ -80,6 +80,8 @@ extension DSL.Model {
         var animation: Animation? { get }
         /// `properties.isHidden` declared in this state (nil: keep the base value).
         var hiddenFlag: String? { get }
+        /// `animation` of a wrapped `properties.isHidden` in this state.
+        var hiddenAnimation: Animation? { get }
     }
 
     /// Trigger types for user-definable state changes

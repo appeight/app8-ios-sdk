@@ -31,7 +31,11 @@ extension DSL.Model {
             var contextMenu: DSL.Model.ContextMenu? { get }
             /// `properties.isHidden` (boolean as "true"/"false", or an
             /// expression), read for every component type. Default nil.
+            /// The wrapped form `{ value, animation }` contributes its `value`.
             var hiddenFlag: String? { get }
+            /// The `animation` of a wrapped `properties.isHidden`. Nil: a
+            /// change applies at once.
+            var hiddenAnimation: DSL.Model.Animation? { get }
         }
         
         protocol Entity: Protocol {
@@ -99,9 +103,11 @@ extension DSL.Model.Component.EntityContent {
     var accessibility: DSL.Model.Accessibility? { nil }
     var contextMenu: DSL.Model.ContextMenu? { nil }
     var hiddenFlag: String? { nil }
+    var hiddenAnimation: DSL.Model.Animation? { nil }
 }
 
-/// `properties.isHidden` on any component: a boolean or an expression string.
+/// `properties.isHidden` on any component: a boolean or an expression string,
+/// bare or wrapped as `{ "value": …, "animation": … }`.
 enum HiddenFlagDecoding {
     private enum Keys: String, CodingKey { case isHidden }
 
@@ -110,15 +116,38 @@ enum HiddenFlagDecoding {
         guard let props = try? container.nestedContainer(keyedBy: Keys.self, forKey: propertiesKey) else { return nil }
         return props.decodeFlagIfPresent(forKey: .isHidden)
     }
+
+    /// Reads the `animation` of a wrapped `properties.isHidden` (nil for the
+    /// bare form or no animation).
+    static func decodeAnimation<K: CodingKey>(from container: KeyedDecodingContainer<K>, propertiesKey: K) -> DSL.Model.Animation? {
+        guard let props = try? container.nestedContainer(keyedBy: Keys.self, forKey: propertiesKey) else { return nil }
+        return props.decodeFlagAnimationIfPresent(forKey: .isHidden)
+    }
 }
+
+/// Keys of the wrapped animated-value form `{ "value": …, "animation": … }`.
+private enum AnimatedFlagKeys: String, CodingKey { case value, animation }
 
 extension KeyedDecodingContainer {
     /// A boolean-or-expression field: a string as written, a boolean as
-    /// `"true"` / `"false"`, anything else nil.
+    /// `"true"` / `"false"`, or either one wrapped as `{ "value": …,
+    /// "animation": … }` (its `value`). Anything else nil.
     func decodeFlagIfPresent(forKey key: Key) -> String? {
         if let string = try? decodeIfPresent(String.self, forKey: key) { return string }
         if let bool = try? decodeIfPresent(Bool.self, forKey: key) { return bool ? "true" : "false" }
+        if let wrapped = try? nestedContainer(keyedBy: AnimatedFlagKeys.self, forKey: key) {
+            if let string = try? wrapped.decode(String.self, forKey: .value) { return string }
+            if let bool = try? wrapped.decode(Bool.self, forKey: .value) { return bool ? "true" : "false" }
+        }
         return nil
+    }
+
+    /// The `animation` of a wrapped boolean-or-expression field (see
+    /// `decodeFlagIfPresent`). Nil for the bare form, a missing animation, or
+    /// one that does not decode.
+    func decodeFlagAnimationIfPresent(forKey key: Key) -> DSL.Model.Animation? {
+        guard let wrapped = try? nestedContainer(keyedBy: AnimatedFlagKeys.self, forKey: key) else { return nil }
+        return (try? wrapped.decodeIfPresent(DSL.Model.Animation.self, forKey: .animation)) ?? nil
     }
 
     /// A boolean/number-or-expression property (`isOn`, `value`,

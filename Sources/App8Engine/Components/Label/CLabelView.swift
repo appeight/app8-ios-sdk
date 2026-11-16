@@ -7,16 +7,12 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     var layoutModeId: String? { viewModel?.componentPath.split(separator: ".").last.map(String.init) }
     var layoutModeContext: App8LayoutMode? { viewModel?.service.context.layoutMode }
     private var propertiesCancellable: AnyCancellable?
-    private var variablesCancellable: AnyCancellable?
     weak var materialView: MaterialView?
     let contentView = UIView()
     private let label = UILabel()
 
     override var intrinsicContentSource: UIView? { label }
 
-    // MARK: - isHidden Expression
-    private var isHiddenExpression: String?
-    private var lastIsHidden: Bool?
 
     // MARK: - Background Color (per-property animation)
     private var backgroundColorAnimation: DSL.Model.Animation.Inline?
@@ -246,32 +242,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         bindLayout(viewModel.layout, in: superview, viewRegistry: viewModel.service.componentRegistry.viewRegistry, parentComponentPath: viewModel.parentPath, keyboardService: viewModel.service.context.keyboardService, animated: animated)
         bindStyle(viewModel.style, animation: viewModel.animation)
         bindProperties(viewModel.propertiesWithVariables)
-        bindIsHidden(viewModel: viewModel)
         setupTouchHandlingIfNeeded()
-    }
-
-    // MARK: - isHidden Expression
-
-    private func bindIsHidden(viewModel: CLabelViewModel) {
-        let props = viewModel.currentProperties
-        isHiddenExpression = props.isHidden?.contains("{{") == true ? props.isHidden : nil
-        guard isHiddenExpression != nil else { return }
-
-        variablesCancellable = viewModel.variablesChanged
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.updateIsHidden()
-            }
-        updateIsHidden()
-    }
-
-    private func updateIsHidden() {
-        guard let viewModel = viewModel,
-              let expression = isHiddenExpression else { return }
-        let hidden = viewModel.resolvePropertyToBool(expression) ?? false
-        guard lastIsHidden != hidden else { return }
-        lastIsHidden = hidden
-        self.isHidden = hidden
     }
 
     // MARK: - Touch Handling
@@ -744,12 +715,12 @@ extension DSL.Model.Style.TextModel.Alignment {
 // MARK: - ReuseRefreshable
 
 extension CLabelView: ReuseRefreshable {
-    /// Collection cell configure / reuse: apply the item's text and `isHidden`
-    /// now instead of on the next main-queue hop, so the cell is measured with
-    /// the text it shows (a wrapped title decides a card's height).
+    /// Collection cell configure / reuse: apply the item's text now instead of
+    /// on the next main-queue hop, so the cell is measured with the text it
+    /// shows (a wrapped title decides a card's height). `isHidden`:
+    /// `CommonComponentProps.refreshHiddenForReuse`.
     func refreshForReusedItem() {
         guard let viewModel else { return }
         applyProperties(viewModel.currentProperties)
-        updateIsHidden()
     }
 }

@@ -61,6 +61,7 @@ struct NativeContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulConte
     let interaction: DSL.Model.Interaction?
     let accessibility: DSL.Model.Accessibility?
     let hiddenFlag: String?
+    let hiddenAnimation: DSL.Model.Animation?
 
     /// `[fallback]` when declared, else empty.
     var children: [DSL.Model.Component.`Any`] = []
@@ -76,6 +77,7 @@ struct NativeContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulConte
         let c = try decoder.container(keyedBy: CodingKeys.self)
         properties = try c.decode(Properties.self, forKey: .properties)
         hiddenFlag = HiddenFlagDecoding.decode(from: c, propertiesKey: .properties)
+        hiddenAnimation = HiddenFlagDecoding.decodeAnimation(from: c, propertiesKey: .properties)
         style = try Style.decode(fromContainer: c, key: .style)
         layout = try c.decodeIfPresent(DSL.Model.Layout.self, forKey: .layout)
 

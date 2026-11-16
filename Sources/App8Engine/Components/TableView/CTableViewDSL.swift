@@ -96,6 +96,8 @@ extension DSL.Model.Component {
                 let separatorInset: CGFloat?
                 /// Boolean or expression; see components.md "Visibility".
                 let isHidden: String?
+                /// `animation` of a wrapped `isHidden`.
+                let isHiddenAnimation: DSL.Model.Animation?
 
                 private enum CodingKeys: String, CodingKey { case tableStyle, showsIndicator, separatorInset, isHidden }
 
@@ -105,10 +107,12 @@ extension DSL.Model.Component {
                     showsIndicator = try c.decodeIfPresent(Bool.self, forKey: .showsIndicator)
                     separatorInset = try c.decodeIfPresent(CGFloat.self, forKey: .separatorInset)
                     isHidden = c.decodeFlagIfPresent(forKey: .isHidden)
+                    isHiddenAnimation = c.decodeFlagAnimationIfPresent(forKey: .isHidden)
                 }
             }
 
             var hiddenFlag: String? { properties.isHidden }
+            var hiddenAnimation: DSL.Model.Animation? { properties.isHiddenAnimation }
 
             enum TableStyle: String, SafeEnumCodable, Sendable {
                 case plain, grouped, insetGrouped

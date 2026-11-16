@@ -1,7 +1,7 @@
 import UIKit
 import Combine
 
-class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingUpdatable {
+class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingUpdatable, PropertyTransformHost {
 
     private var viewModel: CViewModel?
     var layoutModeId: String? { viewModel?.componentPath.split(separator: ".").last.map(String.init) }
@@ -25,22 +25,28 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
     private var transformScaleExpression: String?
     private var transformTranslateXExpression: String?
     private var transformTranslateYExpression: String?
+    /// `transformRotation` (degrees): an expression or a literal number.
+    private var transformRotationValue: String?
 
-    /// Per-property animation descriptors. The three transform expressions share
-    /// one `updateTransform()` call, so the first non-nil descriptor drives them
-    /// all. When all are nil, the update falls back to `.legacyTransformVariableUpdate`.
+    /// Per-property animation descriptors. The transform properties share one
+    /// `updateTransform()` call, so the first non-nil descriptor drives them
+    /// all. When all are nil, the update falls back to `.legacyTransformVariableUpdate`
+    /// (a change of `transformRotation` alone applies at once).
     private var transformScaleAnimation: DSL.Model.Animation.Inline?
     private var transformTranslateXAnimation: DSL.Model.Animation.Inline?
     private var transformTranslateYAnimation: DSL.Model.Animation.Inline?
+    private var transformRotationAnimation: DSL.Model.Animation.Inline?
 
     private var lastTransformScale: CGFloat?
     private var lastTranslateX: CGFloat?
     private var lastTranslateY: CGFloat?
+    private var lastRotation: CGFloat?
 
-    // MARK: - isHidden Expression
-
-    private var isHiddenExpression: String?
-    private var lastIsHidden: Bool?
+    /// The transform properties as last resolved; `style.transform` composes
+    /// with them (see `PropertyTransformHost`).
+    private(set) var propertyTransform: PropertyTransform?
+    /// `style.transform` as last applied (set by `applyBaseStyle`).
+    var styleTransform: DSL.Model.Style.View.Transform?
 
     // MARK: - Alpha Expression
 
@@ -97,7 +103,6 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         bindStyle(viewModel.style, animation: viewModel.animation)
         bindDynamicBackgroundColor(viewModel: viewModel)
         bindTransformExpression(viewModel: viewModel)
-        bindIsHiddenExpression(viewModel: viewModel)
         bindAlphaExpression(viewModel: viewModel)
         bindDynamicDimensions(viewModel: viewModel)
         configureContent(viewModel: viewModel, animated: animated)
@@ -170,14 +175,17 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         transformScaleExpression = props.transformScale?.value.contains("{{") == true ? props.transformScale?.value : nil
         transformTranslateXExpression = props.transformTranslateX?.value.contains("{{") == true ? props.transformTranslateX?.value : nil
         transformTranslateYExpression = props.transformTranslateY?.value.contains("{{") == true ? props.transformTranslateY?.value : nil
+        transformRotationValue = props.transformRotation?.value
 
         transformScaleAnimation = props.transformScale?.animation?.inlineOrNil
         transformTranslateXAnimation = props.transformTranslateX?.animation?.inlineOrNil
         transformTranslateYAnimation = props.transformTranslateY?.animation?.inlineOrNil
+        transformRotationAnimation = props.transformRotation?.animation?.inlineOrNil
 
         guard transformScaleExpression != nil ||
               transformTranslateXExpression != nil ||
-              transformTranslateYExpression != nil else {
+              transformTranslateYExpression != nil ||
+              transformRotationValue != nil else {
             return
         }
 
@@ -197,35 +205,49 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         let scale = transformScaleExpression.flatMap { viewModel.resolvePropertyToFloat($0) } ?? 1.0
         let translateX = transformTranslateXExpression.flatMap { viewModel.resolvePropertyToFloat($0) } ?? 0.0
         let translateY = transformTranslateYExpression.flatMap { viewModel.resolvePropertyToFloat($0) } ?? 0.0
+        let rotation = transformRotationValue.flatMap { value -> CGFloat? in
+            if let literal = Double(value.trimmingCharacters(in: .whitespaces)) { return CGFloat(literal) }
+            return viewModel.resolvePropertyToFloat(value)
+        } ?? 0.0
 
-        if lastTransformScale == scale && lastTranslateX == translateX && lastTranslateY == translateY {
+        if lastTransformScale == scale && lastTranslateX == translateX && lastTranslateY == translateY && lastRotation == rotation {
             return
         }
 
         // Nil last values = first apply after bind (or after reset); don't animate.
-        let isInitial = lastTransformScale == nil && lastTranslateX == nil && lastTranslateY == nil
+        let isInitial = lastTransformScale == nil && lastTranslateX == nil && lastTranslateY == nil && lastRotation == nil
+        let onlyRotationChanged = !isInitial && lastTransformScale == scale
+            && lastTranslateX == translateX && lastTranslateY == translateY
 
         lastTransformScale = scale
         lastTranslateX = translateX
         lastTranslateY = translateY
+        lastRotation = rotation
 
-        // Translate first, then scale — order matters.
-        var transform = CGAffineTransform.identity
-        transform = transform.translatedBy(x: translateX, y: translateY)
-        transform = transform.scaledBy(x: scale, y: scale)
+        // Translate, then rotate, then scale; `style.transform` composes in.
+        let parts = PropertyTransform(translateX: translateX, translateY: translateY, rotation: rotation, scale: scale)
+        propertyTransform = parts
+        let transform = parts.composed(with: styleTransform)
 
         if isInitial {
             self.transform = transform
             return
         }
 
-        // Per-property animation precedence: scale > translateX > translateY.
-        // Falls back to the legacy 0.3s spring (damping 0.75, velocity 0.3) so
-        // existing screens animate identically to before.
-        let animation = transformScaleAnimation
-            ?? transformTranslateXAnimation
-            ?? transformTranslateYAnimation
-            ?? .legacyTransformVariableUpdate
+        // Per-property animation precedence: scale > translateX > translateY >
+        // rotation. Without any descriptor, scale / translate fall back to the
+        // legacy 0.3s spring (damping 0.75, velocity 0.3) so existing screens
+        // animate identically to before; a rotation-only change is instant.
+        let animation: DSL.Model.Animation.Inline?
+        if onlyRotationChanged {
+            animation = transformRotationAnimation
+        } else {
+            animation = transformScaleAnimation
+                ?? transformTranslateXAnimation
+                ?? transformTranslateYAnimation
+                ?? transformRotationAnimation
+                ?? .legacyTransformVariableUpdate
+        }
         AnimationRunner.run(
             animation: animation,
             additionalOptions: [.allowUserInteraction],
@@ -233,37 +255,6 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
                 self.transform = transform
             }
         )
-    }
-
-    // MARK: - isHidden Expression
-
-    private func bindIsHiddenExpression(viewModel: CViewModel) {
-        let props = viewModel.component.properties
-
-        isHiddenExpression = props.isHidden?.contains("{{") == true ? props.isHidden : nil
-
-        guard isHiddenExpression != nil else { return }
-
-        viewModel.variablesChanged
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.updateIsHidden()
-            }
-            .store(in: &cancellables)
-
-        updateIsHidden()
-    }
-
-    private func updateIsHidden() {
-        guard let viewModel = viewModel,
-              let expression = isHiddenExpression else { return }
-
-        let hidden = viewModel.resolvePropertyToBool(expression) ?? false
-
-        if lastIsHidden == hidden { return }
-        lastIsHidden = hidden
-
-        self.isHidden = hidden
     }
 
     // MARK: - Alpha Expression
@@ -668,11 +659,10 @@ extension CView: UIGestureRecognizerDelegate {
 // MARK: - ReuseRefreshable
 
 extension CView: ReuseRefreshable {
-    /// Collection cell reuse: apply the new item's `isHidden` and dimension
-    /// expressions now instead of on the next main-queue hop, so the cell is
-    /// measured at the new item's size.
+    /// Collection cell reuse: apply the new item's dimension expressions now
+    /// instead of on the next main-queue hop, so the cell is measured at the
+    /// new item's size (`isHidden`: `CommonComponentProps.refreshHiddenForReuse`).
     func refreshForReusedItem() {
-        updateIsHidden()
         updateDynamicDimensions()
     }
 }
