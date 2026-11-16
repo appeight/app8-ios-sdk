@@ -1778,8 +1778,18 @@ extension CCollectionView: UICollectionViewDelegate {
         didEndDisplaying cell: UICollectionViewCell,
         forItemAt indexPath: IndexPath
     ) {
+        NativeVisibility.invalidate()
         guard let cell = cell as? CCollectionCell else { return }
         saveNestedScrollState(from: cell)
+    }
+
+    func collectionView(
+        _ collectionView: UICollectionView,
+        willDisplay cell: UICollectionViewCell,
+        forItemAt indexPath: IndexPath
+    ) {
+        // A `native` component in the cell may now be on screen.
+        NativeVisibility.invalidate()
     }
 
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {

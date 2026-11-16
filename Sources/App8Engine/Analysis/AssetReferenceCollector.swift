@@ -177,6 +177,15 @@ struct AssetReferenceCollector {
                           visitedScreens: &visitedScreens, queue: &queue, scope: localScope)
         }
 
+        // Screen bottomBar children are subtrees outside `content.children`.
+        if let viewContent = content as? DSL.Model.Component.Content<DSL.Model.Component.View.Properties, DSL.Model.Style.View>,
+           let bottomBar = viewContent.bottomBar {
+            if let child = bottomBar.component {
+                walkComponent(child, images: &images, fontFamilyNames: &fontFamilyNames,
+                              visitedScreens: &visitedScreens, queue: &queue, scope: localScope)
+            }
+        }
+
         // Action chains may target other screens (BFS only).
         if let actions = content.actions {
             for (_, list) in actions {

@@ -48,6 +48,9 @@ final class ScreenViewController: BaseViewController {
     /// read by `SharedElementTransitionAnimator` to morph matched elements.
     var transitionParticipants: [String: TransitionParticipant] = [:]
 
+    /// `bottomBar` content pinned to the bottom of the screen (see `ScreenBottomBar`).
+    var bottomBar: ScreenBottomBar?
+
     /// Active streaming session (non-nil for screens with streaming: true).
     private var streamingSession: StreamingSession?
 
@@ -55,13 +58,18 @@ final class ScreenViewController: BaseViewController {
     /// `viewDidDisappear` to compute `dwell_ms` for `app8.screen.dismissed`.
     private var appearedAt: Date?
 
+    /// From `viewDidAppear` until `viewWillDisappear`; never for offscreen
+    /// (snapshot) renders. Drives `native` visibility (see `NativeVisibility`).
+    private(set) var isOnScreen = false
+    var rendersOffscreen = false
+
     override var hasNavigationBar: Bool {
         guard let config = navigationBarConfig else { return false }
         return config.hidden != true
     }
 
     override func baseAdditionalBottomInset() -> CGFloat {
-        additionalSafeAreaInsetsConfig?.bottom ?? 0
+        (additionalSafeAreaInsetsConfig?.bottom ?? 0) + (bottomBar?.safeAreaContribution ?? 0)
     }
 
     // MARK: - Init
@@ -146,6 +154,7 @@ final class ScreenViewController: BaseViewController {
         applySearchFillTopGap()
         navigationController?.navigationBar.tintColor = resolveColor(navigationBarConfig?.tintColor)
         pulseClock()
+        NativeVisibility.evaluateNow() // a presented screen covers the one below now
     }
 
     /// `now()` / `today()` re-evaluate when the screen appears.
@@ -157,6 +166,8 @@ final class ScreenViewController: BaseViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        isOnScreen = !rendersOffscreen
+        NativeVisibility.evaluateNow()
         autoFocusSearchIfNeeded()
         guard context.analyticsConfig.autoScreenEvents else {
             appearedAt = nil
@@ -179,11 +190,14 @@ final class ScreenViewController: BaseViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        isOnScreen = false
+        NativeVisibility.evaluateNow()
         leftNavTitleView?.removeFromSuperview()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        NativeVisibility.screenDidDisappear() // uncovers the screen below
         guard context.analyticsConfig.autoScreenEvents, let appeared = appearedAt else {
             appearedAt = nil
             return
@@ -543,6 +557,7 @@ final class ScreenViewController: BaseViewController {
         updateSearchWidth()
         applyTopEdgeEffect()
         attachLargeTitleScrollViewIfNeeded()
+        bottomBar?.layoutPass(content: rootContainerView)
     }
 
     /// The large title collapses as the screen's main scroll view scrolls.

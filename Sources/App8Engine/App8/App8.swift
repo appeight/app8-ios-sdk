@@ -721,6 +721,8 @@ extension A8 {
 
     func screenshotScreen(screenId: String, options: ScreenRenderOptions) async throws -> UIImage {
         let viewController = try await renderScreen(screenId: screenId, options: options)
+        // A snapshot is not "on screen": its native components stay invisible.
+        (viewController as? ScreenViewController)?.rendersOffscreen = true
 
         let size = options.size ?? CGSize(width: 390, height: 844)
 
