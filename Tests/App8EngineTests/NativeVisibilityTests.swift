@@ -275,16 +275,20 @@ final class NativeVisibilityTests: XCTestCase {
         XCTAssertTrue(probe.contexts[0].isVisible)
         XCTAssertFalse(probe.contexts[1].isVisible, "a tab that is not selected is not visible")
 
-        tabs.selectedIndex = 1
-        waitUntil { probe.contexts[0].isVisible == false }
-        XCTAssertFalse(probe.contexts[1].isVisible, "not before the switch completes")
-        // The hostless runner never completes the switch's appearance
-        // transition; finish it the way UIKit does.
+        // The switch itself. The hostless runner (no window scene) does not
+        // reliably run UITabBarController's switch, so swap the tabs the way
+        // it does: old tab disappears, new tab joins the window and appears.
+        let tabA = try XCTUnwrap(first.topViewController)
         let tabB = try XCTUnwrap(second.topViewController)
-        if !probe.contexts[1].isVisible {
-            tabB.beginAppearanceTransition(true, animated: false)
-            tabB.endAppearanceTransition()
-        }
+        tabA.beginAppearanceTransition(false, animated: false)
+        XCTAssertEqual(probe.changes[0], [true, false], "old tab reports false as the switch starts")
+        tabB.beginAppearanceTransition(true, animated: false)
+        tabs.view.addSubview(second.view)
+        first.view.removeFromSuperview()
+        drain()
+        XCTAssertFalse(probe.contexts[1].isVisible, "not before the switch completes")
+        tabA.endAppearanceTransition()
+        tabB.endAppearanceTransition()
         XCTAssertTrue(probe.contexts[1].isVisible)
         XCTAssertEqual(probe.changes[0], [true, false])
         XCTAssertEqual(probe.changes[1], [true])
