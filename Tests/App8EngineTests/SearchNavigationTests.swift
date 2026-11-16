@@ -177,6 +177,8 @@ final class SearchNavigationTests: XCTestCase {
         try await Task.sleep(nanoseconds: 600_000_000)
         let controller = try XCTUnwrap(search.navigationItem.searchController)
         XCTAssertTrue(controller.isActive, "autoFocus activates the field")
+        XCTAssertTrue(controller.searchBar.searchTextField.isFirstResponder, "autoFocus raises the keyboard")
+        print("QA-FOCUS active=\(controller.isActive) first=\(controller.searchBar.searchTextField.isFirstResponder) inWindow=\(controller.searchBar.searchTextField.window != nil) os=\(UIDevice.current.systemVersion)")
 
         // Unfocused, the search screen's field sits exactly where the button was.
         controller.isActive = false
@@ -197,6 +199,54 @@ final class SearchNavigationTests: XCTestCase {
         search.searchBarCancelButtonClicked(controller.searchBar)
         try await Task.sleep(nanoseconds: 300_000_000)
         XCTAssertEqual(pops.count, 1, "onCancel asks to go back once")
+    }
+
+    /// A tap on the integrated capsule can activate the controller directly:
+    /// a button field turns that into `onTap` and does not stay active.
+    func testButtonModeActivationRunsOnTapAndDeactivates() async throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("iOS 26 bar") }
+        let home = try await start(bundle(homeNav: ["search": [
+            "placeholder": "Search", "placement": "integrated", "fillsBar": true, "mode": "button",
+            "onTap": ["type": "updateVariable", "variableName": "tapped", "value": true]
+        ]]))
+        let controller = try XCTUnwrap(home.navigationItem.searchController)
+        controller.isActive = true
+        try await Task.sleep(nanoseconds: 600_000_000)
+        XCTAssertFalse(controller.isActive, "a button field never stays active")
+        XCTAssertEqual(home.screenVariableStore?.getValue(name: "tapped") as? Bool, true, "onTap ran")
+    }
+
+    /// A pushed search screen that keeps its back button: the field sits
+    /// beside it (not collapsed into a search button), focuses on appear, and
+    /// unfocused it is back beside the back button.
+    func testSearchScreenWithBackButton() async throws {
+        guard #available(iOS 26.0, *), UIDevice.current.userInterfaceIdiom == .phone else { throw XCTSkip("iOS 26 iPhone layout") }
+        let home = try await start(bundle(homeNav: ["search": [
+            "placeholder": "Search", "placement": "integrated", "fillsBar": true, "mode": "button",
+            "onTap": ["type": "navigation", "nextScreen": "search"]]]))
+        let nav = try XCTUnwrap(home.navigationController)
+        let search = try await render(##"""
+        {"type":"screen","id":"search","content":{"navigationBar":{
+          "search":{"placeholder":"Search","bindVariable":"query","placement":"integrated","fillsBar":true,"autoFocus":true}},
+          "variables":{"query":{"type":"string","initialValue":""}},"children":[]}}
+        """##)
+        nav.pushViewController(search, animated: true)
+        try await settle(nav, on: search)
+        try await Task.sleep(nanoseconds: 800_000_000)
+        let controller = try XCTUnwrap(search.navigationItem.searchController)
+        XCTAssertTrue(controller.searchBar.searchTextField.isFirstResponder, "autoFocus raises the keyboard")
+        controller.isActive = false
+        try await Task.sleep(nanoseconds: 800_000_000)
+        let field = controller.searchBar.searchTextField
+        XCTAssertNotNil(field.window, "the field collapsed into a search button")
+        let frame = field.convert(field.bounds, to: window)
+        let bar = try XCTUnwrap(search.navigationController?.navigationBar)
+        let back = all(bar).filter { String(describing: type(of: $0)) == "_UIButtonBarButton" && !$0.isHidden && $0.alpha > 0.01 }
+            .map { $0.convert($0.bounds, to: window) }.filter { $0.maxX <= frame.minX + 0.5 }
+        print("QA-BACK field=\(frame) back=\(back)")
+        XCTAssertFalse(back.isEmpty, "a back button before the field")
+        XCTAssertGreaterThanOrEqual(back.first?.minX ?? -1, 0)
+        XCTAssertLessThanOrEqual(frame.maxX, window.bounds.width - 15.5)
     }
 
     /// A write to `bindVariable` from elsewhere (a recent search tapped) shows in the field.
