@@ -188,7 +188,16 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         let direction = viewModel.component.properties.direction ?? .vertical
         let showsIndicator = viewModel.component.properties.showsIndicator ?? true
         let insetAdjustment = viewModel.component.properties.contentInsetAdjustment ?? .automatic
-        scrollView.contentInsetAdjustmentBehavior = insetAdjustment == .automatic ? .automatic : .never
+        // A vertical scroll view nested in the screen (not the controller's root
+        // view) gets `.automatic` treated as `.scrollableAxes` by UIKit: while its
+        // content is shorter than its bounds it gets no top inset and the content
+        // starts under the navigation bar. `.always` keeps it below the bar at
+        // rest whatever its length; it still scrolls under the bar's edge effect.
+        if insetAdjustment == .automatic {
+            scrollView.contentInsetAdjustmentBehavior = direction == .vertical ? .always : .automatic
+        } else {
+            scrollView.contentInsetAdjustmentBehavior = .never
+        }
 
         let props = viewModel.component.properties
         let bounces = props.bounces ?? true
