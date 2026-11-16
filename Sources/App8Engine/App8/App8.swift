@@ -16,6 +16,16 @@ public struct App8 {
     public static func debugInstance(dataSource: App8DataSource) -> App8.DebugInstance {
         return A8(dataSource: dataSource)
     }
+
+    /// Removes the `persist: true` variables of every app on this device
+    /// (Android `App8.clearPersistedData(context)`). Hosts call it when their
+    /// signed-in user changes so the next user's apps start from their initial
+    /// values. Close running instances first: they keep their values in memory
+    /// and would write them back.
+    @MainActor
+    public static func clearPersistedData() {
+        VariablePersistence.clearAll()
+    }
 }
 
 @MainActor

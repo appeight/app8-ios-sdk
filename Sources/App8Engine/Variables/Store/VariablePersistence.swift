@@ -32,6 +32,16 @@ final class VariablePersistence {
 
     static func suiteName(appId: String) -> String { "app8.\(appId)" }
 
+    /// Removes every `app8.*` suite (the stored variables of every app).
+    static func clearAll() {
+        guard let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first,
+              let files = try? FileManager.default.contentsOfDirectory(atPath: library.appendingPathComponent("Preferences").path)
+        else { return }
+        for file in files where file.hasPrefix("app8.") && file.hasSuffix(".plist") {
+            UserDefaults.standard.removePersistentDomain(forName: String(file.dropLast(".plist".count)))
+        }
+    }
+
     init(appId: String, store: VariableStore, logger: A8Log?, defaults: UserDefaults? = nil) {
         self.appId = appId
         self.defaults = defaults ?? UserDefaults(suiteName: Self.suiteName(appId: appId)) ?? .standard
