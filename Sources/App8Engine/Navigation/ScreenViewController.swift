@@ -549,7 +549,7 @@ final class ScreenViewController: BaseViewController {
     /// UIKit only finds it by itself near the top of the view hierarchy; a
     /// DSL list sits several containers deep, so name it explicitly.
     private func attachLargeTitleScrollViewIfNeeded() {
-        guard usesLargeTitle, contentScrollView(for: .top) == nil,
+        guard usesLargeTitle || tracksScrollEdgeForBar, contentScrollView(for: .top) == nil,
               let scrollView = Self.firstVerticalScrollView(in: rootContainerView) else { return }
         setContentScrollView(scrollView, for: .top)
     }
@@ -577,7 +577,8 @@ final class ScreenViewController: BaseViewController {
     /// every scroll view on the screen. Re-run on layout so scroll views the DSL
     /// renders later (collections, async content) pick it up too.
     private func applyTopEdgeEffect() {
-        guard let effect = navigationBarConfig?.topEdgeEffect, effect != .automatic else { return }
+        let effect = Self.resolvedTopEdgeEffect(navigationBarConfig?.topEdgeEffect)
+        guard effect != .automatic else { return }
         guard #available(iOS 26.0, *) else { return }
         func apply(in view: UIView) {
             if let scrollView = view as? UIScrollView {
@@ -685,6 +686,11 @@ final class ScreenViewController: BaseViewController {
             if action.isBack == true {
                 let request = NavigationRequest(type: .pop)
                 NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
+            } else if let actionHandler {
+                // The full executor honors `presentation` (sheet, fullScreen…),
+                // `detents`, `grabber`, `transition` and resolves `params`
+                // expressions, exactly like the same action on a button.
+                actionHandler(action)
             } else if let nextScreen = action.nextScreen {
                 let params = action.params?.mapValues { $0.value } ?? [:]
                 let request = NavigationRequest(type: .push(screenId: nextScreen, params: params))
