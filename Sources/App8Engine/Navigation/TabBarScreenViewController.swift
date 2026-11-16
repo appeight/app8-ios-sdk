@@ -39,6 +39,60 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
 
     func navigationController(
         _ navigationController: UINavigationController,
+        willShow viewController: UIViewController,
+        animated: Bool
+    ) {
+        slideTabBarInAlongTransition(of: navigationController, to: viewController)
+    }
+
+    /// `hidesTabBar` screens use UIKit's `hidesBottomBarWhenPushed` (it also
+    /// owns the safe areas), but on iOS 26 a pop no longer slides the bar
+    /// back: UIKit unhides it at the very start, so its icons and labels show
+    /// at full opacity at once while only the glass fades in, and a cancelled
+    /// interactive pop hides it again in one frame. Instead the bar starts
+    /// below the bottom edge and slides up alongside the transition: the
+    /// coordinator scrubs it with an interactive pop's progress (also a zoom
+    /// pop's) and runs it back out when the pop is cancelled.
+    private func slideTabBarInAlongTransition(of navigationController: UINavigationController, to viewController: UIViewController) {
+        guard let coordinator = navigationController.transitionCoordinator, coordinator.isAnimated,
+              let from = coordinator.viewController(forKey: .from),
+              !Self.hidesTabBar(at: viewController, in: navigationController),
+              from !== viewController, from.hidesBottomBarWhenPushed || Self.hidesTabBar(at: from, in: navigationController)
+        else { return }
+        let bar = tabBar
+        let offscreen = CGAffineTransform(translationX: 0, y: Self.tabBarSlideDistance(bar, in: view))
+        bar.transform = offscreen
+        coordinator.animate(alongsideTransition: { _ in
+            bar.transform = .identity
+        }, completion: { context in
+            guard context.isCancelled else {
+                bar.transform = .identity
+                return
+            }
+            // Cancelled: UIKit hides the bar again once the transition ends;
+            // keep it below the edge until then so it never flashes back.
+            bar.transform = offscreen
+            DispatchQueue.main.async { bar.transform = .identity }
+        })
+    }
+
+    /// From the bar's resting place to just below the screen's bottom edge
+    /// (iOS 26 floats the bar above the home indicator).
+    static func tabBarSlideDistance(_ bar: UITabBar, in container: UIView) -> CGFloat {
+        let frame = bar.convert(bar.bounds, to: container)
+        return max(bar.bounds.height, container.bounds.maxY - frame.minY) + 1
+    }
+
+    /// UIKit's rule: the bar is hidden while any screen pushed above the root,
+    /// up to and including `viewController`, sets `hidesBottomBarWhenPushed`.
+    static func hidesTabBar(at viewController: UIViewController, in navigationController: UINavigationController) -> Bool {
+        let stack = navigationController.viewControllers
+        guard let index = stack.firstIndex(where: { $0 === viewController }) else { return false }
+        return stack[..<(index + 1)].dropFirst().contains { $0.hidesBottomBarWhenPushed }
+    }
+
+    func navigationController(
+        _ navigationController: UINavigationController,
         didShow viewController: UIViewController,
         animated: Bool
     ) {
