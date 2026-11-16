@@ -333,13 +333,51 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
 
         // Wait for a dismissal the same action list started (see FlowCoordinator).
         let gate = context.pendingDismissal
-        Task { @MainActor in
+        // Requests run one after another, each once the previous one's
+        // transition has ended: an action list like [back toRoot, selectTab]
+        // otherwise switches tabs while the pop is still animating, and UIKit
+        // drops the switch half way (the new tab's view is never installed and
+        // the tab bar stays hidden from the screen that was popped).
+        let previous = navigationQueue
+        let task = Task { @MainActor [weak self] in
+            await previous?.value
             await gate?.value
+            guard let self else { return }
+            await self.waitForRunningTransition()
             do {
-                try await handleRequest(request)
+                try await self.handleRequest(request)
             } catch {
-                context.logger.error("Navigation error: \(error)")
+                self.context.logger.error("Navigation error: \(error)")
             }
+        }
+        navigationQueue = task
+    }
+
+    /// The last queued navigation request (see `handleNavigationRequest`).
+    private var navigationQueue: Task<Void, Never>?
+
+    /// Returns once the selected tab's stack has no push or pop in flight
+    /// (also an interactive pop, finished or cancelled).
+    private func waitForRunningTransition() async {
+        for _ in 0..<10 {
+            guard selectedIndex < tabIds.count,
+                  let nav = tabNavigationControllers[tabIds[selectedIndex]],
+                  let coordinator = nav.transitionCoordinator else { return }
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                var resumed = false
+                let resume = {
+                    guard !resumed else { return }
+                    resumed = true
+                    continuation.resume()
+                }
+                if !coordinator.animate(alongsideTransition: nil, completion: { _ in resume() }) {
+                    resume()
+                }
+                // Never hold the queue on a transition that does not end.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { resume() }
+            }
+            // UIKit tears the transition down right after its completion blocks.
+            await Task.yield()
         }
     }
 
