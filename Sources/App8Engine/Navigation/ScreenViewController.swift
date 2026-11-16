@@ -1,4 +1,5 @@
 import UIKit
+import Combine
 
 /// View controller for rendered screens with optional navigation bar configuration.
 @MainActor
@@ -28,6 +29,15 @@ final class ScreenViewController: BaseViewController {
     private var searchController: UISearchController?
     /// Width of a `fillsBar` search field; tracks the bar width and focus.
     private var searchWidthConstraint: NSLayoutConstraint?
+    /// Writes to `search.bindVariable` from elsewhere (a recent search tapped) reach the field.
+    private var searchTextSubscription: AnyCancellable?
+    /// `search.autoFocus` runs on the first appearance only: coming back from a
+    /// result keeps the results without raising the keyboard again.
+    private var didAutoFocusSearch = false
+    /// The ✕ was tapped: `onCancel` runs once the field has finished unfocusing.
+    private var pendingSearchCancel = false
+    /// The field's focus as the search controller last announced it.
+    private var searchFieldFocused = false
 
     /// Holds the current rendered component view — a stable swap target for
     /// streaming structural updates.
@@ -147,6 +157,7 @@ final class ScreenViewController: BaseViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        autoFocusSearchIfNeeded()
         guard context.analyticsConfig.autoScreenEvents else {
             appearedAt = nil
             return
@@ -328,6 +339,10 @@ final class ScreenViewController: BaseViewController {
         if let search = config.search {
             configureSearch(search)
         }
+
+        if config.hidesBackButton == true {
+            navigationItem.hidesBackButton = true
+        }
     }
 
     // MARK: - Navigation Bar Search
@@ -337,6 +352,7 @@ final class ScreenViewController: BaseViewController {
         controller.obscuresBackgroundDuringPresentation = false
         controller.searchResultsUpdater = self
         controller.searchBar.delegate = self
+        controller.delegate = self
         if let placeholder = config.placeholder {
             controller.searchBar.placeholder = resolveString(placeholder)
         }
@@ -348,12 +364,35 @@ final class ScreenViewController: BaseViewController {
             controller.searchBar.text = text
         }
 
+        if let name = config.bindVariable, let store = titleViewVariableStore {
+            searchTextSubscription = store.anyVariableChanged
+                .filter { $0 == name }
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self, weak store] _ in
+                    guard let bar = self?.searchController?.searchBar else { return }
+                    let text = store?.getValue(name: name) as? String ?? ""
+                    if bar.text != text { bar.text = text }
+                }
+        }
+
         navigationItem.searchController = controller
         navigationItem.hidesSearchBarWhenScrolling = config.hidesWhenScrolling ?? false
         navigationItem.preferredSearchBarPlacement = searchBarPlacement(config.placement ?? .automatic)
         definesPresentationContext = true
         searchController = controller
 
+    }
+
+    /// `navigationBar.search.autoFocus`: a search screen opens with its field
+    /// focused and the keyboard up, once the push has landed (activating the
+    /// search controller mid-transition would animate its own presentation
+    /// against the push).
+    private func autoFocusSearchIfNeeded() {
+        guard !didAutoFocusSearch, navigationBarConfig?.search?.autoFocus == true,
+              navigationBarConfig?.search?.isButton != true, let controller = searchController else { return }
+        didAutoFocusSearch = true
+        controller.isActive = true
+        DispatchQueue.main.async { controller.searchBar.searchTextField.becomeFirstResponder() }
     }
 
     /// `navigationBar.search.fillsBar`: an integrated field is compact and
@@ -403,13 +442,41 @@ final class ScreenViewController: BaseViewController {
         nav.additionalSafeAreaInsets.top = top
     }
 
-    /// iPhone (iOS 26, measured on iPhone 17): the widest field UIKit keeps in
-    /// the bar (any wider and it collapses into a search button), and the width
-    /// that leaves room for the ✕ shown beside the field while focused.
-    /// Elsewhere (iPad idiom, e.g. Mac Catalyst previews) the field stays a
-    /// trailing item, spans to the bar's margins, and has no outside ✕.
-    private static var searchFillInset: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .phone ? 32 : Self.searchFillPadInset
+    /// iPhone: the field is trailing-aligned at the bar's margin and UIKit
+    /// keeps it only while it fits between both margins; one point wider and
+    /// it collapses into a search button. The margin is 16pt on iOS 26.0 and
+    /// 20pt (24pt on 414pt+ wide phones) on iOS 26.4, so the field is sized
+    /// for the wider one first; once the field is on screen its measured
+    /// trailing gap replaces the guess, so it is centred on both. Before, it
+    /// was sized for 16pt and collapsed into a button on iOS 26.4.
+    /// Focused, the field makes room for the ✕. Elsewhere (iPad idiom, e.g.
+    /// Mac Catalyst previews) the field stays a trailing item, spans to the
+    /// bar's margins, and has no outside ✕.
+    private func searchFillInset(barWidth: CGFloat) -> CGFloat {
+        guard UIDevice.current.userInterfaceIdiom == .phone else { return Self.searchFillPadInset }
+        return 2 * (measuredSearchMargin ?? (barWidth >= 414 ? 24 : 20))
+    }
+
+    /// The bar's trailing gap beside the unfocused field, measured once it is
+    /// on screen (the field is trailing-aligned, so the gap does not depend on
+    /// its width). A system metric, so shared: a search screen that focuses
+    /// before it was ever laid out unfocused uses the gap the first screen
+    /// measured, and the two fields line up.
+    private static var measuredSearchMargin: CGFloat?
+    private var measuredSearchMargin: CGFloat? {
+        get { Self.measuredSearchMargin }
+        set { Self.measuredSearchMargin = newValue }
+    }
+
+    private func measureSearchMarginIfNeeded() {
+        guard measuredSearchMargin == nil, !searchFieldFocused, searchWidthConstraint != nil,
+              let bar = navigationController?.navigationBar,
+              let field = searchController?.searchBar.searchTextField, field.window != nil,
+              field.bounds.width > 100 else { return }
+        let gap = bar.bounds.width - field.convert(field.bounds, to: bar).maxX
+        guard (8...32).contains(gap) else { return }
+        measuredSearchMargin = gap
+        searchWidthKey = nil
     }
     private static var searchFillFocusedInset: CGFloat {
         UIDevice.current.userInterfaceIdiom == .phone ? 72 : Self.searchFillPadInset
@@ -421,18 +488,58 @@ final class ScreenViewController: BaseViewController {
     /// `viewDidLayoutSubviews`; only a real change may touch the constraint.
     private var searchWidthKey: (CGFloat, Bool)?
 
-    private func updateSearchWidth() {
+    private func updateSearchWidth(focused override: Bool? = nil) {
         guard let constraint = searchWidthConstraint,
               let bar = navigationController?.navigationBar, bar.bounds.width > 0 else { return }
-        let focused = searchController?.isActive == true
+        let focused = override ?? searchFieldFocused
         if let key = searchWidthKey, key.0 == bar.bounds.width, key.1 == focused { return }
         searchWidthKey = (bar.bounds.width, focused)
-        let inset = focused ? Self.searchFillFocusedInset : Self.searchFillInset
+        // Unfocused, the field shares the bar with the trailing items; sized
+        // as if it had the bar to itself it overflowed it, and the bar laid the
+        // row out past the leading edge (the field, or the item beside it,
+        // clipped by the screen edge). Focused, UIKit swaps the items for the ✕.
+        // Never wider focused than unfocused: the trailing items come back
+        // while the field unfocuses, and a field still too wide for them makes
+        // UIKit collapse it into a search button for good.
+        let resting = searchFillInset(barWidth: bar.bounds.width) + trailingItemsReserve
+        let inset = focused ? max(Self.searchFillFocusedInset, resting) : resting
         constraint.constant = max(0, bar.bounds.width - inset)
+    }
+
+    /// Room the trailing bar items take beside an unfocused `fillsBar` field:
+    /// image items share one 44pt glass capsule (54pt between centres), text
+    /// and prominent items get their own, 8pt apart, plus 8pt before the field.
+    private var trailingItemsReserve: CGFloat {
+        let items = navigationItem.rightBarButtonItems ?? []
+        guard !items.isEmpty else { return 0 }
+        var width: CGFloat = 0
+        var run = 0
+        func add(_ w: CGFloat) { width += (width > 0 ? 8 : 0) + w }
+        func flush() {
+            if run > 0 { add(run > 1 ? 2 * 23.33 + CGFloat(run - 1) * 54 : 44) }
+            run = 0
+        }
+        for item in items.reversed() {
+            let prominent: Bool
+            if #available(iOS 26.0, *) { prominent = item.style == .prominent } else { prominent = item.style == .done }
+            if item.image != nil && !prominent {
+                run += 1
+            } else {
+                flush()
+                let title = (item.title ?? "") as NSString
+                let text = ceil(title.size(withAttributes: [.font: UIFont.systemFont(ofSize: 17)]).width)
+                add(item.image != nil ? 44 : max(44, text + 28))
+            }
+        }
+        flush()
+        // 8pt before the field, plus 8pt of slack: sized to the point, the
+        // row sits on UIKit's collapse threshold.
+        return width + 16
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        measureSearchMarginIfNeeded()
         updateSearchWidth()
         applyTopEdgeEffect()
         attachLargeTitleScrollViewIfNeeded()
@@ -606,12 +713,37 @@ final class ScreenViewController: BaseViewController {
 
 extension ScreenViewController: UISearchResultsUpdating, UISearchBarDelegate, UISearchControllerDelegate {
 
+    /// The width follows the field's focus inside the presentation's own
+    /// animation: updated a run loop later, the full-width field met the ✕
+    /// first and slid past the leading edge before shrinking back.
     func willPresentSearchController(_ searchController: UISearchController) {
-        DispatchQueue.main.async { [weak self] in self?.updateSearchWidth() }
+        resizeSearchAlongPresentation(of: searchController, focused: true)
     }
 
     func willDismissSearchController(_ searchController: UISearchController) {
-        DispatchQueue.main.async { [weak self] in self?.updateSearchWidth() }
+        resizeSearchAlongPresentation(of: searchController, focused: false)
+    }
+
+    private func resizeSearchAlongPresentation(of searchController: UISearchController, focused: Bool) {
+        guard searchWidthConstraint != nil, let bar = navigationController?.navigationBar else { return }
+        searchWidthKey = nil
+        // `isActive` still reads true through the dismissal: layout passes in
+        // between sized the field for focus again, beside the trailing items
+        // that came back, and UIKit collapsed it into a search button.
+        searchFieldFocused = focused
+        updateSearchWidth(focused: focused)
+        if let coordinator = searchController.transitionCoordinator {
+            coordinator.animate(alongsideTransition: { _ in bar.layoutIfNeeded() }, completion: { [weak self] _ in
+                self?.searchWidthKey = nil
+                self?.updateSearchWidth()
+            })
+        } else {
+            // Cubic ease-out, 0.33 s (easeOutCubic), like the rest of the engine's motion.
+            let timing = UICubicTimingParameters(controlPoint1: CGPoint(x: 0.215, y: 0.61), controlPoint2: CGPoint(x: 0.355, y: 1))
+            let animator = UIViewPropertyAnimator(duration: 0.33, timingParameters: timing)
+            animator.addAnimations { bar.layoutIfNeeded() }
+            animator.startAnimation()
+        }
     }
 
     func updateSearchResults(for searchController: UISearchController) {
@@ -628,5 +760,35 @@ extension ScreenViewController: UISearchResultsUpdating, UISearchBarDelegate, UI
 
     func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
         navigationBarConfig?.search?.onSubmit?.forEach { actionHandler?($0) }
+    }
+
+    /// `mode: "button"`: the field never takes focus; the tap runs `onTap`.
+    func searchBarShouldBeginEditing(_ searchBar: UISearchBar) -> Bool {
+        guard let search = navigationBarConfig?.search, search.isButton else { return true }
+        search.onTap?.forEach { actionHandler?($0) }
+        return false
+    }
+
+    /// The cancel ✕: UIKit clears and unfocuses the field, then `onCancel` runs
+    /// (a search screen pops back to the screen it came from).
+    func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
+        guard navigationBarConfig?.search?.onCancel?.isEmpty == false else { return }
+        // A pop requested while the search controller is still dismissing is
+        // dropped by the navigation controller: wait for the dismissal.
+        if searchController?.isActive == true {
+            pendingSearchCancel = true
+        } else {
+            runSearchCancel()
+        }
+    }
+
+    func didDismissSearchController(_ searchController: UISearchController) {
+        guard pendingSearchCancel else { return }
+        pendingSearchCancel = false
+        runSearchCancel()
+    }
+
+    private func runSearchCancel() {
+        navigationBarConfig?.search?.onCancel?.forEach { actionHandler?($0) }
     }
 }

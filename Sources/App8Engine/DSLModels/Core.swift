@@ -185,6 +185,9 @@ extension DSL.Model {
         let rightActions: [BarAction]?
         /// Hide the navigation bar entirely
         let hidden: Bool?
+        /// Hide the back button on a pushed screen (the back swipe still
+        /// works): a search screen whose field takes the back button's place.
+        let hidesBackButton: Bool?
         /// Title text color (hex string)
         let titleColor: String?
         /// Bar button tint (back chevron, bar actions) as hex. Applied while
@@ -224,6 +227,22 @@ extension DSL.Model {
         let fillsBar: Bool?
         /// Actions run when the user taps the keyboard's search key.
         let onSubmit: [Action]?
+        /// `field` (default): the editable field. `button`: the same field,
+        /// drawn by the system, that never takes focus; a tap runs `onTap`.
+        let mode: Mode?
+        /// `mode: "button"`: actions run on a tap (push the search screen).
+        let onTap: [Action]?
+        /// Focus the field (keyboard up, ✕ shown) once the screen appears.
+        let autoFocus: Bool?
+        /// Actions run when the user taps the cancel ✕.
+        let onCancel: [Action]?
+
+        enum Mode: String, SafeEnumCodable, Sendable {
+            case field, button
+            static let unknownCase: Mode = .field
+        }
+
+        var isButton: Bool { mode == .button }
 
         enum Placement: String, SafeEnumCodable, Sendable {
             case automatic, stacked, inline, integrated, integratedButton, integratedCentered
@@ -232,6 +251,13 @@ extension DSL.Model {
 
         enum CodingKeys: String, CodingKey {
             case placeholder, bindVariable, placement, hidesWhenScrolling, tintColor, fillsBar, onSubmit
+            case mode, onTap, autoFocus, onCancel
+        }
+
+        /// A single action or an array, like every other trigger.
+        private static func actions(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> [Action]? {
+            if let list = try? c.decodeIfPresent([Action].self, forKey: key) { return list }
+            return (try? c.decodeIfPresent(Action.self, forKey: key)).flatMap { $0.map { [$0] } }
         }
 
         init(from decoder: Decoder) throws {
@@ -242,12 +268,11 @@ extension DSL.Model {
             hidesWhenScrolling = try c.decodeIfPresent(Bool.self, forKey: .hidesWhenScrolling)
             tintColor = try c.decodeIfPresent(String.self, forKey: .tintColor)
             fillsBar = try c.decodeIfPresent(Bool.self, forKey: .fillsBar)
-            // A single action or an array, like every other trigger.
-            if let list = try? c.decodeIfPresent([Action].self, forKey: .onSubmit) {
-                onSubmit = list
-            } else {
-                onSubmit = (try? c.decodeIfPresent(Action.self, forKey: .onSubmit)).flatMap { $0.map { [$0] } }
-            }
+            onSubmit = Self.actions(c, .onSubmit)
+            mode = try c.decodeIfPresent(Mode.self, forKey: .mode)
+            onTap = Self.actions(c, .onTap)
+            autoFocus = try c.decodeIfPresent(Bool.self, forKey: .autoFocus)
+            onCancel = Self.actions(c, .onCancel)
         }
     }
 

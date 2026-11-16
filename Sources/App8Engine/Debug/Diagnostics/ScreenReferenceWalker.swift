@@ -143,6 +143,18 @@ struct ScreenReferenceWalker {
                     path: "\(componentPath).navigationBar.rightActions[\(i)]"
                 ))
             }
+            let searchTriggers: [(String, [DSL.Model.Action]?)] = [
+                ("onTap", navBar.search?.onTap), ("onSubmit", navBar.search?.onSubmit), ("onCancel", navBar.search?.onCancel)
+            ]
+            for (name, actions) in searchTriggers {
+                for (i, action) in (actions ?? []).enumerated() {
+                    refs.append(contentsOf: extractScreenRefs(
+                        from: action,
+                        screenId: screenId,
+                        path: "\(componentPath).navigationBar.search.\(name)[\(i)]"
+                    ))
+                }
+            }
             if let titleView = navBar.titleView {
                 refs.append(contentsOf: walkComponent(
                     titleView,
