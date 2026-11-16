@@ -14,11 +14,7 @@ class CIconView: App8BaseView<DSL.Model.Component.Icon.C>, CViewProtocol {
 
     private var propertiesCancellable: AnyCancellable?
     private var variablesCancellable: AnyCancellable?
-    private var isHiddenCancellable: AnyCancellable?
 
-    // MARK: - isHidden Expression
-    private var isHiddenExpression: String?
-    private var lastIsHidden: Bool?
 
     // MARK: - Color expressions (per-property animation)
     private var backgroundColorAnimation: DSL.Model.Animation.Inline?
@@ -55,33 +51,8 @@ class CIconView: App8BaseView<DSL.Model.Component.Icon.C>, CViewProtocol {
         bindStyle(viewModel.style, animation: viewModel.animation)
         bindProperties(viewModel: viewModel)
         bindVariables(viewModel: viewModel)
-        bindIsHidden(viewModel: viewModel)
         setupTouchHandlingIfNeeded()
         configureContent(viewModel: viewModel, animated: animated)
-    }
-
-    // MARK: - isHidden Expression
-
-    private func bindIsHidden(viewModel: CIconViewModel) {
-        let props = viewModel.currentProperties
-        isHiddenExpression = props.isHidden?.contains("{{") == true ? props.isHidden : nil
-        guard isHiddenExpression != nil else { return }
-
-        isHiddenCancellable = viewModel.variablesChanged
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.updateIsHidden()
-            }
-        updateIsHidden()
-    }
-
-    private func updateIsHidden() {
-        guard let viewModel = viewModel,
-              let expression = isHiddenExpression else { return }
-        let hidden = viewModel.resolvePropertyToBool(expression) ?? false
-        guard lastIsHidden != hidden else { return }
-        lastIsHidden = hidden
-        self.isHidden = hidden
     }
 
     // MARK: - Touch Handling
@@ -387,15 +358,5 @@ extension CIconView: StreamingUpdatable {
         bindVariables(viewModel: vm)
         configureContent(viewModel: vm, animated: animated)
         return vm
-    }
-}
-
-// MARK: - ReuseRefreshable
-
-extension CIconView: ReuseRefreshable {
-    /// Collection cell configure / reuse: apply the item's `isHidden` now, so
-    /// the cell is measured with the icons it shows.
-    func refreshForReusedItem() {
-        updateIsHidden()
     }
 }

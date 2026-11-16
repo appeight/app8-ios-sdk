@@ -1,5 +1,32 @@
 import UIKit
 
+/// The resolved transform properties of a `view` (`transformTranslateX/Y`,
+/// `transformRotation` in degrees, `transformScale`).
+struct PropertyTransform: Equatable {
+    var translateX: CGFloat = 0
+    var translateY: CGFloat = 0
+    var rotation: CGFloat = 0
+    var scale: CGFloat = 1
+
+    /// Translate, then rotate, then scale, with `style.transform` folded in
+    /// (its translateY adds, rotation adds, scale multiplies).
+    func composed(with style: DSL.Model.Style.View.Transform?) -> CGAffineTransform {
+        let ty = translateY + (style?.translateY ?? 0)
+        let degrees = rotation + (style?.rotation ?? 0)
+        let s = scale * (style?.scale ?? 1)
+        return CGAffineTransform(translationX: translateX, y: ty)
+            .rotated(by: degrees * .pi / 180)
+            .scaledBy(x: s, y: s)
+    }
+}
+
+/// A component whose transform properties compose with its `style.transform`.
+@MainActor
+protocol PropertyTransformHost: AnyObject {
+    var propertyTransform: PropertyTransform? { get }
+    var styleTransform: DSL.Model.Style.View.Transform? { get set }
+}
+
 protocol CViewProtocol: AnyObject {
     @MainActor
     var materialView: MaterialView? { get set }
@@ -147,7 +174,14 @@ extension CViewProtocol where Self: UIView {
 
         // Apply animatable properties (alpha, transform)
         let targetAlpha = style?.alpha ?? 1.0
-        let targetTransform = style?.transform?.affineTransform ?? .identity
+        let targetTransform: CGAffineTransform
+        if let host = self as? PropertyTransformHost {
+            host.styleTransform = style?.transform
+            targetTransform = host.propertyTransform?.composed(with: style?.transform)
+                ?? style?.transform?.affineTransform ?? .identity
+        } else {
+            targetTransform = style?.transform?.affineTransform ?? .identity
+        }
 
         // Layout inspection mode: show component outlines only — no backgrounds or fills.
         // Force alpha=1 and identity transform synchronously so that entrance animations

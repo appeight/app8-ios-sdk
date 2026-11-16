@@ -20,6 +20,10 @@ protocol ComponentViewModelAbstract: AnyObject {
     /// `properties.isHidden` (any component type), from the current state
     /// when it declares one, else the base content.
     var hiddenFlag: String? { get }
+    /// The `animation` of a wrapped `properties.isHidden` (the current
+    /// state's when it declares the flag, else the base content's). Nil: a
+    /// change applies at once.
+    var hiddenAnimation: DSL.Model.Animation.Inline? { get }
     /// Fires when the component's state changes (state-aware `isHidden`).
     var stateChanged: AnyPublisher<Void, Never> { get }
     /// True when a state of this component declares `properties.isHidden`.
@@ -46,6 +50,7 @@ extension ComponentViewModelAbstract {
     var interactionProps: DSL.Model.Interaction? { nil }
     var accessibilityProps: DSL.Model.Accessibility? { nil }
     var hiddenFlag: String? { nil }
+    var hiddenAnimation: DSL.Model.Animation.Inline? { nil }
     var stateChanged: AnyPublisher<Void, Never> { Empty().eraseToAnyPublisher() }
     var declaresStateHiddenFlag: Bool { false }
     func resolvePropertyToBool(_ value: String) -> Bool? { nil }
@@ -261,6 +266,13 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
             return flag
         }
         return component.hiddenFlag
+    }
+    var hiddenAnimation: DSL.Model.Animation.Inline? {
+        if let name = stateManager.currentStateNameValue,
+           let state = component.states?[name], state.hiddenFlag != nil {
+            return state.hiddenAnimation?.inlineOrNil
+        }
+        return component.hiddenAnimation?.inlineOrNil
     }
     var stateChanged: AnyPublisher<Void, Never> {
         stateManager.currentState.dropFirst().map { _ in () }.eraseToAnyPublisher()

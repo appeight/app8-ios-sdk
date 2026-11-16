@@ -26,6 +26,8 @@ extension DSL.Model.Component {
 
         /// `properties.isHidden`, read for every component type.
         let hiddenFlag: String?
+        /// `animation` of a wrapped `properties.isHidden`.
+        let hiddenAnimation: M.Animation?
 
         /// Default state name - can be static ("normal") or expression ("{{condition ? 'a' : 'b'}}")
         let defaultStateName: String?
@@ -146,6 +148,7 @@ extension DSL.Model.Component {
             }
             
             hiddenFlag       = HiddenFlagDecoding.decode(from: c, propertiesKey: .properties)
+            hiddenAnimation  = HiddenFlagDecoding.decodeAnimation(from: c, propertiesKey: .properties)
             layout           = try c.decodeIfPresent(M.Layout.self, forKey: .layout)
             if let rawActions = try c.decodeIfPresent([String: M.ActionList].self, forKey: .actions) {
                 var converted: [M.ActionTrigger: [M.Action]] = [:]

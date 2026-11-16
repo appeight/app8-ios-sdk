@@ -9,8 +9,8 @@ import UIKit
 /// `interaction.enabled` overrides the derived `isUserInteractionEnabled`
 /// default (see `CView.shouldHandleTouches`).
 ///
-/// Mirrors the `CView.bindIsHiddenExpression` pattern: cache the expression,
-/// subscribe once to `viewModel.variablesChanged`, re-resolve on each tick. The
+/// Also owns `properties.isHidden` for every component (`bindHidden`). Pattern:
+/// cache the expression, subscribe once to `viewModel.variablesChanged`, re-resolve on each tick. The
 /// subscription is retained via an associated object on the view so it lives
 /// exactly as long as the view.
 @MainActor
@@ -33,8 +33,8 @@ enum CommonComponentProps {
             view.accessibilityTraits = traits
         }
 
-        // Initial apply runs synchronously (mirrors `CView.bindIsHiddenExpression`'s
-        // `updateIsHidden()` call) so the props are in effect the moment the view
+        // Initial apply runs synchronously (like `bindHidden`'s first update)
+        // so the props are in effect the moment the view
         // is rendered — not deferred to the next run-loop turn.
         apply(interaction: interaction, accessibility: accessibility, to: view, viewModel: viewModel)
 
@@ -51,28 +51,38 @@ enum CommonComponentProps {
     }
 
     private static var hiddenCancellableKey: UInt8 = 0
+    private static var hiddenRefreshKey: UInt8 = 0
+
+    /// Re-applies a view's `isHidden` binding.
+    private final class HiddenRefresher {
+        let refresh: (_ animated: Bool) -> Void
+        init(_ refresh: @escaping (_ animated: Bool) -> Void) { self.refresh = refresh }
+    }
 
     /// `properties.isHidden` on any component: hidden views are not drawn,
     /// get no touches, are skipped by accessibility and take no space in a
-    /// stack view (UIStackView collapses hidden arranged subviews).
+    /// stack view (UIStackView collapses hidden arranged subviews). The
+    /// wrapped form's `animation` animates later changes (`HiddenTransition`).
     private static func bindHidden(view: UIView, viewModel: ComponentViewModelAbstract) {
         let hasStateFlag = viewModel.declaresStateHiddenFlag
         guard hasStateFlag || !(viewModel.hiddenFlag ?? "").isEmpty else { return }
-        func update(_ view: UIView, _ viewModel: ComponentViewModelAbstract) {
-            guard let flag = viewModel.hiddenFlag?.trimmingCharacters(in: .whitespaces), !flag.isEmpty else {
+        func update(_ view: UIView, _ viewModel: ComponentViewModelAbstract, animated: Bool) {
+            let hidden: Bool
+            if let flag = viewModel.hiddenFlag?.trimmingCharacters(in: .whitespaces), !flag.isEmpty {
+                hidden = flag.contains("{{")
+                    ? viewModel.resolvePropertyToBool(flag) ?? false
+                    : flag.lowercased() == "true" || flag == "1"
+            } else {
                 // A state without `isHidden` keeps the base value (none: shown).
-                if hasStateFlag, view.isHidden { view.isHidden = false }
-                return
+                hidden = false
             }
-            let hidden = flag.contains("{{")
-                ? viewModel.resolvePropertyToBool(flag) ?? false
-                : flag.lowercased() == "true" || flag == "1"
-            if view.isHidden != hidden {
-                view.isHidden = hidden
-                NativeVisibility.invalidate()
-            }
+            HiddenTransition.apply(hidden, to: view, animation: viewModel.hiddenAnimation, animated: animated)
         }
-        update(view, viewModel)
+        update(view, viewModel, animated: false)
+        objc_setAssociatedObject(view, &hiddenRefreshKey, HiddenRefresher { [weak view, weak viewModel] animated in
+            guard let view, let viewModel else { return }
+            update(view, viewModel, animated: animated)
+        }, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         // Re-resolve on variable changes (expressions) and state changes
         // (a state override may set or clear `isHidden`).
         let cancellable = viewModel.variablesChanged.map { _ in () }
@@ -80,9 +90,15 @@ enum CommonComponentProps {
             .receive(on: DispatchQueue.main)
             .sink { [weak view, weak viewModel] _ in
                 guard let view, let viewModel else { return }
-                update(view, viewModel)
+                update(view, viewModel, animated: true)
             }
         objc_setAssociatedObject(view, &hiddenCancellableKey, cancellable, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
+    /// Collection cell bind / reuse: apply the item's `isHidden` now and at
+    /// once (never animated), so the cell is measured with what it shows.
+    static func refreshHiddenForReuse(_ view: UIView) {
+        (objc_getAssociatedObject(view, &hiddenRefreshKey) as? HiddenRefresher)?.refresh(false)
     }
 
     private static func apply(

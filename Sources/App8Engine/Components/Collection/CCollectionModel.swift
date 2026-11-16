@@ -231,6 +231,7 @@ struct CollectionContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulC
 
     /// `properties.isHidden`.
     let hiddenFlag: String?
+    let hiddenAnimation: DSL.Model.Animation?
 
     // Event triggers
     let onEvent: [DSL.Model.EventTrigger]?
@@ -264,6 +265,7 @@ struct CollectionContent: DSL.Model.Component.EntityContent, DSL.Model.StatefulC
 
         properties = try c.decode(Properties.self, forKey: .properties)
         hiddenFlag = HiddenFlagDecoding.decode(from: c, propertiesKey: .properties)
+        hiddenAnimation = HiddenFlagDecoding.decodeAnimation(from: c, propertiesKey: .properties)
         style = try c.decodeIfPresent(Style.self, forKey: .style)
         layout = try c.decodeIfPresent(DSL.Model.Layout.self, forKey: .layout)
         // The collection layout (`type: vertical|horizontal|grid`, spacing, item
