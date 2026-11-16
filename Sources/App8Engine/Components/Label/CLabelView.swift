@@ -145,6 +145,9 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             if abs(label.preferredMaxLayoutWidth - natural) > 0.5 {
                 wrapPhase = .measuring
                 setPreferredMaxWidth(natural)
+                // Make sure the committing pass reaches us even when no
+                // ancestor frame changes (else the label stays unwrapped).
+                setNeedsLayout()
                 return
             }
         }
@@ -641,6 +644,50 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         return lineCount <= cap
     }
 
+}
+
+// MARK: - Settling wrap widths before a measurement
+
+extension UIView {
+
+    /// Lays this view out until every multi-line label below it has committed
+    /// the width its container grants it, so a following
+    /// `systemLayoutSizeFitting` sees each label's wrapped height.
+    ///
+    /// A multi-line label settles its wrap width over two of its own layout
+    /// passes (`CLabelView.syncWrapWidth`): the first publishes its unwrapped
+    /// width, the second commits the granted one. A layout pass only reaches
+    /// the label if its frame changed or it was marked, so each round marks
+    /// the labels first. A self-sizing cell measured after a single pass sees
+    /// one-line labels; when a fixed-height sibling (a thumbnail) is taller
+    /// than that line, the cell keeps the sibling's height and the text is
+    /// squeezed. Labels inside nested scroll views settle in their own cells.
+    func settleWrappingLabels(passes: Int = 3) {
+        for _ in 0..<passes {
+            guard Self.markWrappingLabels(in: self) else { return }
+            layoutIfNeeded()
+        }
+    }
+
+    /// Marks every multi-line label below `view` (not crossing into scroll
+    /// views) for layout; returns whether there was any.
+    private static func markWrappingLabels(in view: UIView) -> Bool {
+        var found = false
+        for subview in view.subviews {
+            if subview is UIScrollView { continue }
+            if let labelView = subview as? CLabelView, labelView.wrapsText {
+                labelView.setNeedsLayout()
+                found = true
+            }
+            if markWrappingLabels(in: subview) { found = true }
+        }
+        return found
+    }
+}
+
+extension CLabelView {
+    /// Whether the label may soft-wrap (`numberOfLines != 1`).
+    var wrapsText: Bool { label.numberOfLines != 1 }
 }
 
 // MARK: - StreamingUpdatable
