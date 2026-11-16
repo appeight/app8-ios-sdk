@@ -154,7 +154,14 @@ final class MaterialView: UIView {
 
         for entry in expectedLayers {
             switch entry.typeKey {
-            case .fill, .outline, .shadow:
+            case .shadow:
+                // A shadow is cast behind the shape: stack shadows under every
+                // fill and outline, whatever their order in the array. A shadow
+                // layer above a fill would draw its blurred shape over the fill
+                // (the web draws a box-shadow outside the box only).
+                let firstNonShadow = expectedCALayers.firstIndex { $0.typeKey != .shadow } ?? expectedCALayers.endIndex
+                expectedCALayers.insert(entry, at: firstNonShadow)
+            case .fill, .outline:
                 expectedCALayers.append(entry)
             case .visualEffect, .material:
                 expectedUIViews.append(entry)
@@ -309,9 +316,6 @@ final class MaterialView: UIView {
         shadowLayer.shadowRadius = def.radius
         shadowLayer.shadowOffset = def.offset.cgSize
         shadowLayer.shadowOpacity = Float(def.opacity)
-        if !def.isHollow {
-            shadowLayer.backgroundColor = resolvedColor.cgColor
-        }
         return true
     }
 

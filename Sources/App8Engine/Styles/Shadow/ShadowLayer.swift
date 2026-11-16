@@ -67,12 +67,10 @@ extension DSL.Model.Style.Shadow {
             layer.shadowRadius = shadowDef.radius
             layer.shadowOffset = shadowDef.offset.cgSize
             layer.shadowOpacity = Float(shadowDef.opacity)
-
-            // Hollow shadows get their shadowPath in layoutSublayers; non-hollow
-            // ones need an opaque background for the shadow to cast from.
-            if !shadowDef.isHollow {
-                layer.backgroundColor = resolvedColor.cgColor
-            }
+            // No backgroundColor: the shadow is cast from `shadowPath` (set in
+            // layoutSublayers), so the layer itself paints nothing. A shadow
+            // style never paints the shape in the shadow color; that would hide
+            // translucent fills and any fill listed before the shadow.
         }
 
         // MARK: - Scale
@@ -112,17 +110,11 @@ extension DSL.Model.Style.Shadow {
 
             if ownStyle.layers.count == 1 {
                 shadowPath = path
-                if !ownStyle.layers[0].isHollow {
-                    self.cornerRadius = radius
-                }
             } else {
                 for (index, sublayer) in (sublayers ?? []).enumerated() {
                     sublayer.frame = bounds
                     sublayer.shadowPath = path
                     sublayer.zPosition = CGFloat(index)
-                    if index < ownStyle.layers.count, !ownStyle.layers[index].isHollow {
-                        sublayer.cornerRadius = radius
-                    }
                 }
             }
 
