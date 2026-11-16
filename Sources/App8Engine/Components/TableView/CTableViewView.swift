@@ -116,6 +116,12 @@ class CTableViewView: App8BaseView<DSL.Model.Component.TableView.Content>, CView
         }
 
         tv.reloadData()
+        // Row views bind their text and style on a later main-queue hop, after
+        // the first height pass: measure automatic-height rows again then.
+        DispatchQueue.main.async { [weak tv] in
+            guard let tv, tv.window != nil else { return }
+            tv.performBatchUpdates(nil)
+        }
     }
 }
 

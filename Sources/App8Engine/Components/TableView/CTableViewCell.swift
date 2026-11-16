@@ -24,6 +24,26 @@ final class CTableViewCell: UITableViewCell {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// Automatic row heights: lay the row out at the table's width first so
+    /// multi-line labels wrap at their final width before the fit.
+    override func systemLayoutSizeFitting(
+        _ targetSize: CGSize,
+        withHorizontalFittingPriority horizontalFittingPriority: UILayoutPriority,
+        verticalFittingPriority: UILayoutPriority
+    ) -> CGSize {
+        if horizontalFittingPriority == .required, targetSize.width > 0,
+           abs(bounds.width - targetSize.width) > 0.5 {
+            bounds.size.width = targetSize.width
+        }
+        layoutIfNeeded()
+        contentView.settleWrappingLabels()
+        return super.systemLayoutSizeFitting(
+            targetSize,
+            withHorizontalFittingPriority: horizontalFittingPriority,
+            verticalFittingPriority: verticalFittingPriority
+        )
+    }
+
     /// Attach a pre-rendered DSL view as the cell's content.
     func setRenderedView(_ view: UIView) {
         renderedView?.removeFromSuperview()

@@ -52,8 +52,14 @@ final class CCollectionCell: UICollectionViewCell {
     override func preferredLayoutAttributesFitting(
         _ layoutAttributes: UICollectionViewLayoutAttributes
     ) -> UICollectionViewLayoutAttributes {
+        // Lay out at the width the layout grants (vertical lists and grids),
+        // so multi-line labels wrap at their final width before measuring.
+        if !selfSizesWidth, abs(bounds.width - layoutAttributes.size.width) > 0.5 {
+            bounds.size.width = layoutAttributes.size.width
+        }
         setNeedsLayout()
         layoutIfNeeded()
+        contentView.settleWrappingLabels()
 
         let size = fittingSize(width: layoutAttributes.size.width, height: layoutAttributes.size.height)
 
@@ -98,10 +104,9 @@ final class CCollectionCell: UICollectionViewCell {
         if bounds.width != width { frame.size.width = width }
         // Multi-line labels settle their wrap width over a few passes (they
         // publish their unwrapped width, then commit to the granted one).
-        for _ in 0..<3 {
-            setNeedsLayout()
-            layoutIfNeeded()
-        }
+        setNeedsLayout()
+        layoutIfNeeded()
+        contentView.settleWrappingLabels()
         return ceil(fittingSize(width: width, height: bounds.height).height)
     }
 
@@ -120,6 +125,7 @@ final class CCollectionCell: UICollectionViewCell {
     func needsRemeasure() -> Bool {
         guard let reported = reportedSize else { return false }
         layoutIfNeeded()
+        contentView.settleWrappingLabels()
         let size = fittingSize(width: reported.width, height: reported.height)
         return abs(ceil(size.height) - reported.height) > 0.5 || (selfSizesWidth && abs(ceil(size.width) - reported.width) > 0.5)
     }
