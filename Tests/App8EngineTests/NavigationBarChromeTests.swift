@@ -65,6 +65,28 @@ final class NavigationBarChromeTests: XCTestCase {
         try XCTUnwrap(views(window).compactMap { $0.next as? ScreenViewController }.first { $0.screenId == "home" })
     }
 
+    func testBarTintColorTintsBarButtons() async throws {
+        var env = Self.bundle(homeChildren: [], rightAction: ["type": "dismiss"])
+        var bundle = env["bundle"] as! [String: Any]
+        var screens = bundle["screens"] as! [String: Any]
+        var home = screens["home"] as! [String: Any]
+        var content = home["content"] as! [String: Any]
+        content["navigationBar"] = ["title": "Home", "tintColor": "#2D4D3A", "rightActions": [
+            ["icon": "questionmark.circle", "action": ["type": "dismiss"]],
+            ["icon": "trash", "style": "destructive", "action": ["type": "dismiss"]],
+            ["icon": "star", "color": "#FF9500", "action": ["type": "dismiss"]],
+        ]]
+        home["content"] = content; screens["home"] = home; bundle["screens"] = screens; env["bundle"] = bundle
+        let window = try await start(env)
+        defer { window.rootViewController = nil }
+        let screen = try homeScreen(in: window)
+        let items = try XCTUnwrap(screen.navigationItem.rightBarButtonItems).reversed().map { $0 }
+        XCTAssertEqual(items.count, 3)
+        XCTAssertEqual(items[0].tintColor, UIColor(withHexString: "#2D4D3A"), "bar tintColor tints the button")
+        XCTAssertEqual(items[1].tintColor, .systemRed, "destructive keeps red")
+        XCTAssertEqual(items[2].tintColor, UIColor(withHexString: "#FF9500"), "an action's own color wins")
+    }
+
     func testBarButtonSheetPresentsAsSheet() async throws {
         let action: [String: Any] = ["type": "navigation", "nextScreen": "info", "presentation": "sheet", "detents": ["large"], "grabber": true]
         let window = try await start(Self.bundle(homeChildren: [], rightAction: action))

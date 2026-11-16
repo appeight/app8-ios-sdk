@@ -681,6 +681,11 @@ final class ScreenViewController: BaseViewController {
 
         if let color = resolveColor(barAction.color) {
             item.tintColor = color
+        } else if barAction.style != "destructive", let barTint = resolveColor(navigationBarConfig?.tintColor) {
+            // iOS 26 draws bar buttons in the shared glass group with the label
+            // color and ignores `navigationBar.tintColor`; the bar's `tintColor`
+            // tints its buttons (navigation.md), so set it on the item.
+            item.tintColor = barTint
         }
 
         return item
