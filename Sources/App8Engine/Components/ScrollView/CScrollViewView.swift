@@ -191,7 +191,11 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         scrollView.contentInsetAdjustmentBehavior = insetAdjustment == .automatic ? .automatic : .never
 
         let props = viewModel.component.properties
-        scrollView.bounces = props.bounces ?? true
+        let bounces = props.bounces ?? true
+        scrollView.bounces = bounces
+        // Every scrollable screen bounces, also when its content is shorter
+        // than the viewport (layout.md, "Scrolling and bounce").
+        scrollView.alwaysBounceVertical = bounces && direction == .vertical
         scrollView.isPagingEnabled = props.pagingEnabled ?? false
         if let dismissMode = props.keyboardDismissMode {
             scrollView.keyboardDismissMode = dismissMode.ui

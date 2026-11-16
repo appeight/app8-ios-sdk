@@ -389,3 +389,13 @@ extension CIconView: StreamingUpdatable {
         return vm
     }
 }
+
+// MARK: - ReuseRefreshable
+
+extension CIconView: ReuseRefreshable {
+    /// Collection cell configure / reuse: apply the item's `isHidden` now, so
+    /// the cell is measured with the icons it shows.
+    func refreshForReusedItem() {
+        updateIsHidden()
+    }
+}

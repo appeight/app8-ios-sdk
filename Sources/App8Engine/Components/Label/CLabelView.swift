@@ -693,3 +693,16 @@ extension DSL.Model.Style.TextModel.Alignment {
         }
     }
 }
+
+// MARK: - ReuseRefreshable
+
+extension CLabelView: ReuseRefreshable {
+    /// Collection cell configure / reuse: apply the item's text and `isHidden`
+    /// now instead of on the next main-queue hop, so the cell is measured with
+    /// the text it shows (a wrapped title decides a card's height).
+    func refreshForReusedItem() {
+        guard let viewModel else { return }
+        applyProperties(viewModel.currentProperties)
+        updateIsHidden()
+    }
+}

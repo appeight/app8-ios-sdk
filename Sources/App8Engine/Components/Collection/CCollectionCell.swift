@@ -17,12 +17,15 @@ final class CCollectionCell: UICollectionViewCell {
     /// Whether this cell should self-size its width (horizontal collections with estimatedItemWidth)
     var selfSizesWidth = false
 
-    /// Self-sizing grid rows: given this cell's index path and natural height,
-    /// the height of its row (the tallest natural height among the row's items).
-    /// Nil outside self-sizing grids. The compositional layout's horizontal
+    /// Self-sizing rows (grid sections, and vertical sections of a mixed
+    /// layout as rows of one): given this cell's index path and natural
+    /// height, the height of its row (the tallest natural height among the
+    /// row's items), and the collection caches the height by item identity.
+    /// Nil elsewhere. The compositional layout's horizontal
     /// `.estimated` group already makes the row as tall as its tallest item but
     /// leaves the shorter items at their own height; this stretches them.
-    var gridRowHeight: ((IndexPath, CGFloat) -> CGFloat)?
+    /// Arguments: index path, natural height, width.
+    var gridRowHeight: ((IndexPath, CGFloat, CGFloat) -> CGFloat)?
 
     /// Identity of the outer item this cell was last configured for, used to save
     /// nested scroll offsets under the right key when the cell ends display.
@@ -60,7 +63,7 @@ final class CCollectionCell: UICollectionViewCell {
         // The natural size: `needsRemeasure` compares against it, not the row height.
         reportedSize = frame.size
         if let gridRowHeight {
-            frame.size.height = gridRowHeight(layoutAttributes.indexPath, frame.size.height)
+            frame.size.height = gridRowHeight(layoutAttributes.indexPath, frame.size.height, frame.size.width)
         }
         layoutAttributes.frame = frame
 
@@ -88,6 +91,25 @@ final class CCollectionCell: UICollectionViewCell {
             withHorizontalFittingPriority: selfSizesWidth ? .fittingSizeLevel : .required,
             verticalFittingPriority: .fittingSizeLevel
         )
+    }
+
+    /// Natural height at `width` of an off-screen (sizing) cell.
+    func measureNaturalHeight(width: CGFloat) -> CGFloat {
+        if bounds.width != width { frame.size.width = width }
+        // Multi-line labels settle their wrap width over a few passes (they
+        // publish their unwrapped width, then commit to the granted one).
+        for _ in 0..<3 {
+            setNeedsLayout()
+            layoutIfNeeded()
+        }
+        return ceil(fittingSize(width: width, height: bounds.height).height)
+    }
+
+    /// Apply the current item's bound values (text, visibility, dimensions)
+    /// now rather than on the next main-queue hop, so a measurement right
+    /// after `configure` sees the item it shows.
+    func applyBoundValuesNow() {
+        refreshRenderedViewForNewItem()
     }
 
     /// The natural size this cell last measured (nil: never measured).

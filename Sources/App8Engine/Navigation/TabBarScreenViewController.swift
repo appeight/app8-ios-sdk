@@ -3,7 +3,7 @@ import Combine
 
 /// View controller that manages a tab bar with multiple screens, each with its own navigation stack.
 @MainActor
-final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerDelegate, UINavigationControllerDelegate {
+final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerDelegate, UINavigationControllerDelegate, UITabBarControllerDelegate {
 
     private let tabBarContent: DSL.Model.TabBarContent
     private let screenLoader: ScreenLoaderProtocol
@@ -70,6 +70,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         if context.layoutMode.isEnabled {
             view.backgroundColor = .clear
         }
+        delegate = self
         subscribeToNavigationRequests()
         configureTabBarAppearance()
         if #available(iOS 18.0, *) {
@@ -151,6 +152,69 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
            let index = tabIds.firstIndex(of: initialTab) {
             selectedIndex = index
         }
+    }
+
+    // MARK: - Reselect
+
+    func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
+        guard viewController === selectedViewController else { return true }
+        Self.handleReselect(of: viewController)
+        return false
+    }
+
+    /// Tapping the selected tab again (iOS convention, like
+    /// `UITabBarController` with a `UITableViewController`): a pushed stack
+    /// pops to its root; at the root, the screen's main scroll view scrolls
+    /// to its top. The DSL list sits several containers deep in the screen,
+    /// where UIKit does not look for it, so the engine does it.
+    static func handleReselect(of viewController: UIViewController, animated: Bool = true) {
+        if let nav = viewController as? UINavigationController {
+            if nav.viewControllers.count > 1 {
+                nav.popToRootViewController(animated: animated)
+                return
+            }
+            guard let root = nav.topViewController else { return }
+            handleReselect(of: root, animated: animated)
+            return
+        }
+        guard viewController.isViewLoaded,
+              let scrollView = primaryScrollView(in: viewController.view) else { return }
+        scrollToTop(scrollView, animated: animated)
+    }
+
+    /// Breadth-first: the outermost visible scroll view that scrolls
+    /// vertically (not a sideways shelf, pager or text view).
+    static func primaryScrollView(in root: UIView) -> UIScrollView? {
+        var queue: [UIView] = [root]
+        var index = 0
+        while index < queue.count {
+            let view = queue[index]
+            index += 1
+            if view.isHidden || view.alpha < 0.01 { continue }
+            if let scrollView = view as? UIScrollView, !(scrollView is UITextView),
+               scrollView.isScrollEnabled, !scrollView.isPagingEnabled {
+                if let collection = scrollView as? UICollectionView {
+                    // A horizontal collection scrolls in orthogonal sections.
+                    if collection.alwaysBounceVertical || collection.contentSize.height > collection.bounds.height {
+                        return collection
+                    }
+                } else if scrollView.alwaysBounceVertical
+                            || scrollView.contentSize.height > scrollView.bounds.height
+                            || scrollView.contentSize.width <= scrollView.bounds.width {
+                    return scrollView
+                }
+            }
+            queue.append(contentsOf: view.subviews)
+        }
+        return nil
+    }
+
+    /// Animate to the top rest position: below the bars and any large title
+    /// (`adjustedContentInset`), not to raw offset 0.
+    static func scrollToTop(_ scrollView: UIScrollView, animated: Bool = true) {
+        let top = CGPoint(x: scrollView.contentOffset.x, y: -scrollView.adjustedContentInset.top)
+        guard abs(scrollView.contentOffset.y - top.y) > 0.5 else { return }
+        scrollView.setContentOffset(top, animated: animated)
     }
 
     // MARK: - Badges
