@@ -41,7 +41,7 @@ enum CommonComponentProps {
         // Reactive apply: re-resolve every expression-backed field whenever a
         // variable in scope changes.
         let cancellable = viewModel.variablesChanged
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak view, weak viewModel] _ in
                 guard let view, let viewModel else { return }
                 apply(interaction: interaction, accessibility: accessibility, to: view, viewModel: viewModel)
@@ -87,7 +87,7 @@ enum CommonComponentProps {
         // (a state override may set or clear `isHidden`).
         let cancellable = viewModel.variablesChanged.map { _ in () }
             .merge(with: viewModel.stateChanged)
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak view, weak viewModel] _ in
                 guard let view, let viewModel else { return }
                 update(view, viewModel, animated: true)

@@ -111,7 +111,7 @@ class CTextViewView: App8BaseView<DSL.Model.Component.TextView.C>, CViewProtocol
 
     private func bindProperties(_ propertiesPublisher: AnyPublisher<DSL.Model.Component.TextView.Properties, Never>) {
         propertiesPublisher
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] properties in
                 self?.applyProperties(properties)
             }
@@ -120,7 +120,7 @@ class CTextViewView: App8BaseView<DSL.Model.Component.TextView.C>, CViewProtocol
 
     private func bindExternalTextUpdates() {
         viewModel?.externalTextUpdate
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] text in
                 self?.textView.text = text
                 self?.updatePlaceholderVisibility()

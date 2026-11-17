@@ -60,13 +60,13 @@ class CShapeView: App8BaseView<DSL.Model.Component.Shape.C>, CViewProtocol {
         applyCurrentProperties(animated: false)
 
         propertiesCancellable = viewModel.properties
-            .receive(on: DispatchQueue.main)
+            .receiveOnMainDroppingInline()
             .sink { [weak self] _ in
                 self?.applyCurrentProperties(animated: true)
             }
 
         variablesCancellable = viewModel.variablesChanged
-            .receive(on: DispatchQueue.main)
+            .receiveOnMainDroppingInline()
             .sink { [weak self] _ in
                 self?.applyCurrentProperties(animated: true)
             }
@@ -387,12 +387,12 @@ extension CShapeView: StreamingUpdatable {
         applyCurrentProperties(animated: animated)
 
         propertiesCancellable = vm.properties
-            .receive(on: DispatchQueue.main)
+            .receiveOnMainDroppingInline()
             .sink { [weak self] _ in
                 self?.applyCurrentProperties(animated: true)
             }
         variablesCancellable = vm.variablesChanged
-            .receive(on: DispatchQueue.main)
+            .receiveOnMainDroppingInline()
             .sink { [weak self] _ in
                 self?.applyCurrentProperties(animated: true)
             }

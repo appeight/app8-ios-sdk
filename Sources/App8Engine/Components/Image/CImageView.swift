@@ -144,7 +144,10 @@ class CImageView: App8BaseView<DSL.Model.Component.Image.C>, CViewProtocol {
             guard lastLoadedImageKey != imageKey else { return }
             lastLoadedImageKey = imageKey
 
-            imageView.image = nil
+            // An image already decoded in memory (the card this screen was
+            // opened from, say) shows at once; the load below still runs and
+            // lets the data source replace it.
+            imageView.image = effectiveUrl.flatMap { viewModel.service.imageLoader.cachedImage(urlString: $0) }
             // Prefer the data source: it owns prefetched assets and resolves
             // them by id/name from a cache the host app populates. Only fall
             // back to URL when the asset isn't in the data source — typically

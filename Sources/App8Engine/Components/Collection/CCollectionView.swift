@@ -1144,7 +1144,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
 
     private func bindSections() {
         viewModel?.sections
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] newSections in
                 guard let self else { return }
                 // Different items → saved nested offsets no longer belong to them.
@@ -1376,7 +1376,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
 
     private func bindEmptyState() {
         viewModel?.isEmpty
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] isEmpty in
                 self?.updateEmptyState(isEmpty: isEmpty)
             }
@@ -1404,7 +1404,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
 
     private func bindLoadingState() {
         viewModel?.isLoading
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] isLoading in
                 self?.updateLoadingState(isLoading: isLoading)
             }
@@ -1433,7 +1433,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
 
     private func bindErrorState() {
         viewModel?.error
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] error in
                 self?.updateErrorState(error: error)
             }

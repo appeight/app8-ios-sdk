@@ -83,7 +83,7 @@ final class CNativeView: App8BaseView<NativeContent>, CViewProtocol {
             hostedView = view
 
             variablesCancellable = viewModel.variablesChanged
-                .receive(on: DispatchQueue.main)
+                .receiveOnMain()
                 .sink { [weak self] _ in self?.refreshProps() }
         } else if let fallback = viewModel.component.fallback {
             viewModel.service.renderComponent(

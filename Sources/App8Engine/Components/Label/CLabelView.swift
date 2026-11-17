@@ -124,6 +124,17 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         // Steady-state fast path: once committed (`lastWrapNatural > 0`, reset to
         // -1 on every text change), skip the `boundingRect` measurement entirely
         // while the environment width is unchanged.
+        // A committed wrap narrower than the text, while the label and every
+        // ancestor up to the scroll view are now wider than that wrap, was
+        // measured before its ancestors reached their final size (a screen
+        // built and pushed before its first full layout): measure again. Once
+        // re-measured, the narrowest ancestor equals the wrap, so this settles.
+        if wrapPhase == .idle, lastWrapNatural > 0,
+           label.preferredMaxLayoutWidth + 0.5 < lastWrapNatural,
+           grantedWidth() > label.preferredMaxLayoutWidth + 0.5 {
+            lastWrapNatural = -1
+        }
+
         if wrapPhase == .idle, lastWrapNatural > 0,
            abs(referenceWidth - lastWrapContainerWidth) < 0.5 { return }
 
@@ -286,7 +297,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     private func bindProperties(_ propertiesPublisher: AnyPublisher<DSL.Model.Component.Label.Properties, Never>) {
         propertiesCancellable?.cancel()
         propertiesCancellable = propertiesPublisher
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] properties in
                 self?.applyProperties(properties)
             }

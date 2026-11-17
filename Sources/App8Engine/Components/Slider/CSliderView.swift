@@ -65,13 +65,13 @@ class CSliderView: App8BaseView<DSL.Model.Component.Slider.C>, CViewProtocol {
         slider.value = viewModel.currentValue
 
         externalUpdateCancellable = viewModel.externalSliderUpdate
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] value in
                 self?.slider.setValue(value, animated: true)
             }
 
         propertiesCancellable = viewModel.propertiesWithVariables
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] properties in
                 self?.applyProperties(properties)
             }
@@ -144,12 +144,12 @@ extension CSliderView: StreamingUpdatable {
         bindStyle(vm.style, animation: vm.animation)
 
         externalUpdateCancellable = vm.externalSliderUpdate
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] value in
                 self?.slider.setValue(value, animated: true)
             }
         propertiesCancellable = vm.propertiesWithVariables
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] properties in
                 self?.applyProperties(properties)
             }

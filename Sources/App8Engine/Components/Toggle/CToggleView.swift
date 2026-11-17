@@ -61,13 +61,13 @@ class CToggleView: App8BaseView<DSL.Model.Component.Toggle.C>, CViewProtocol {
         toggle.isOn = viewModel.currentIsOn
 
         externalUpdateCancellable = viewModel.externalToggleUpdate
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] value in
                 self?.toggle.setOn(value, animated: true)
             }
 
         propertiesCancellable = viewModel.propertiesWithVariables
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] properties in
                 self?.applyProperties(properties)
             }
@@ -135,12 +135,12 @@ extension CToggleView: StreamingUpdatable {
         bindStyle(vm.style, animation: vm.animation)
 
         externalUpdateCancellable = vm.externalToggleUpdate
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] value in
                 self?.toggle.setOn(value, animated: true)
             }
         propertiesCancellable = vm.propertiesWithVariables
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] properties in
                 self?.applyProperties(properties)
             }

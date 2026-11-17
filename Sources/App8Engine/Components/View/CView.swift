@@ -126,7 +126,7 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         backgroundColorAnimation = viewModel.component.properties.backgroundColor?.animation?.inlineOrNil
 
         viewModel.resolvedBackgroundColor
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] color in
                 self?.applyDynamicBackgroundColor(color, cornerRadius: viewModel.cornerRadius)
             }
@@ -192,7 +192,7 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         // .prepend forces an initial evaluation.
         viewModel.variablesChanged
             .prepend("")
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] _ in
                 self?.updateTransform()
             }
@@ -270,7 +270,7 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         // .prepend forces an initial evaluation.
         viewModel.variablesChanged
             .prepend("")
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] _ in
                 self?.updateAlpha()
             }
@@ -344,7 +344,7 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         heightExprSelfReferential = dynamicHeightExpression?.contains("view.height") ?? false
 
         viewModel.variablesChanged
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] _ in
                 self?.updateDynamicDimensions()
             }

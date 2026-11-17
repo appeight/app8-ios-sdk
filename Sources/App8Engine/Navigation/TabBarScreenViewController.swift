@@ -168,7 +168,15 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         return fields.contains { $0?.contains("{{") == true }
     }
 
+    /// Tabs whose screen has been built (the others hold a placeholder root).
+    private var builtTabs: Set<String> = []
+    /// In-flight builds, so a tap and the idle prewarm never build a tab twice.
+    private var tabBuilds: [String: Task<Void, Never>] = [:]
+
     /// Set up all tabs — must be called after init to load screens asynchronously.
+    /// Only the initial tab's screen is built before the tab bar appears; the
+    /// others are built in idle time once it is showing (or at once when the
+    /// user picks one first), as `UITabBarController` loads tabs lazily.
     func setupTabs() async throws {
         var viewControllers: [UIViewController] = []
 
@@ -181,10 +189,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
             if context.layoutMode.isEnabled {
                 navController.view.backgroundColor = .clear
             }
-
-            let screenComponent = try await screenLoader.loadScreen(id: tab.screen)
-            let screenVC = await appService.renderScreen(screenComponent, screenId: tab.screen, params: nil)
-            navController.setViewControllers([screenVC], animated: false)
+            navController.setViewControllers([TabPlaceholderViewController()], animated: false)
 
             navController.tabBarItem = UITabBarItem(
                 title: tab.label,
@@ -199,19 +204,76 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
             viewControllers.append(navController)
         }
 
-        self.viewControllers = viewControllers
-        bindBadges()
-
+        var initialIndex = 0
         if let initialTab = tabBarContent.initialTab,
            let index = tabIds.firstIndex(of: initialTab) {
-            selectedIndex = index
+            initialIndex = index
+        }
+        if tabBarContent.tabs.indices.contains(initialIndex) {
+            let initial = tabBarContent.tabs[initialIndex]
+            // Errors here fail the setup, as before.
+            try await buildTab(initial)
+        }
+
+        self.viewControllers = viewControllers
+        bindBadges()
+        selectedIndex = initialIndex
+        prewarmTabs()
+    }
+
+    /// Builds `tab`'s screen into its navigation controller.
+    private func buildTab(_ tab: DSL.Model.Tab) async throws {
+        guard !builtTabs.contains(tab.id), let navController = tabNavigationControllers[tab.id] else { return }
+        let screenComponent = try await screenLoader.loadScreen(id: tab.screen)
+        let screenVC = await appService.renderScreen(screenComponent, screenId: tab.screen, params: nil)
+        guard !builtTabs.contains(tab.id) else { return }
+        builtTabs.insert(tab.id)
+        navController.setViewControllers([screenVC], animated: false)
+    }
+
+    /// Builds the tab with `id` unless it already is (or is being) built.
+    func ensureTabBuilt(_ id: String) async {
+        guard !builtTabs.contains(id) else { return }
+        if let running = tabBuilds[id] { return await running.value }
+        guard let tab = tabBarContent.tabs.first(where: { $0.id == id }) else { return }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await self.buildTab(tab)
+            } catch {
+                self.context.logger.error("tab.build.failed: '\(id)': \(error)")
+            }
+            self.tabBuilds[id] = nil
+        }
+        tabBuilds[id] = task
+        await task.value
+    }
+
+    /// Builds the other tabs one at a time once the first one is showing,
+    /// so switching tabs later is instant.
+    private func prewarmTabs() {
+        let pending = tabIds.filter { !builtTabs.contains($0) }
+        guard !pending.isEmpty else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(800))
+            for id in pending {
+                guard let self else { return }
+                await self.ensureTabBuilt(id)
+                try? await Task.sleep(for: .milliseconds(120))
+            }
         }
     }
 
     // MARK: - Reselect
 
     func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
-        guard viewController === selectedViewController else { return true }
+        guard viewController === selectedViewController else {
+            if let id = tabNavigationControllers.first(where: { $0.value === viewController })?.key,
+               !builtTabs.contains(id) {
+                Task { @MainActor [weak self] in await self?.ensureTabBuilt(id) }
+            }
+            return true
+        }
         Self.handleReselect(of: viewController)
         return false
     }
@@ -406,10 +468,15 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
             currentNavController.popToRootViewController(animated: true)
 
         case .selectTab(let index, let id):
+            var target: Int?
             if let index = index, index >= 0, index < tabIds.count {
-                selectedIndex = index
+                target = index
             } else if let id = id, let index = tabIds.firstIndex(of: id) {
-                selectedIndex = index
+                target = index
+            }
+            if let target {
+                await ensureTabBuilt(tabIds[target])
+                selectedIndex = target
             }
             // Tab switch doesn't trigger didShow, so notify explicitly.
             NotificationCenter.default.post(name: .app8ScreenContextChanged, object: nil)
@@ -418,5 +485,13 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
             // Handled by FlowCoordinator, not TabBarScreenViewController.
             break
         }
+    }
+}
+
+/// Root of a tab whose screen is not built yet.
+private final class TabPlaceholderViewController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
     }
 }

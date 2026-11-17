@@ -94,10 +94,12 @@ class CIconView: App8BaseView<DSL.Model.Component.Icon.C>, CViewProtocol {
 
     /// Subscribe to property changes (for state-driven icon changes)
     private func bindProperties(viewModel: CIconViewModel) {
+        // The value delivered inline while the icon is built is its starting
+        // content, shown without a symbol transition.
         propertiesCancellable = viewModel.properties
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.configureContent(viewModel: viewModel, animated: true)
+            .receiveOnMainTagged()
+            .sink { [weak self] update in
+                self?.configureContent(viewModel: viewModel, animated: !update.isInline)
             }
     }
 
