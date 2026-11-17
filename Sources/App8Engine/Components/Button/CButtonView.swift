@@ -44,7 +44,7 @@ class CButtonView: App8BaseView<DSL.Model.Component.Button.C>, CViewProtocol {
 
     private func bindProperties(_ publisher: AnyPublisher<Content.Properties, Never>) {
         propertiesCancellable = publisher
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] properties in
                 self?.applyProperties(properties)
             }

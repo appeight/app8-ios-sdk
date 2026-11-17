@@ -57,13 +57,13 @@ class CShimmerView: App8BaseView<DSL.Model.Component.Shimmer.C>, CViewProtocol {
         applyCurrentProperties()
 
         propertiesCancellable = viewModel.properties
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] _ in
                 self?.applyCurrentProperties()
             }
 
         variablesCancellable = viewModel.variablesChanged
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] _ in
                 self?.applyCurrentProperties()
             }
@@ -219,12 +219,12 @@ extension CShimmerView: StreamingUpdatable {
         applyCurrentProperties()
 
         propertiesCancellable = vm.properties
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] _ in
                 self?.applyCurrentProperties()
             }
         variablesCancellable = vm.variablesChanged
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] _ in
                 self?.applyCurrentProperties()
             }

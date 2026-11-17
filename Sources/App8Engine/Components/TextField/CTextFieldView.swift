@@ -94,7 +94,7 @@ class CTextFieldView: App8BaseView<DSL.Model.Component.TextField.C>, CViewProtoc
 
     private func bindProperties(_ propertiesPublisher: AnyPublisher<DSL.Model.Component.TextField.Properties, Never>) {
         propertiesPublisher
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] properties in
                 self?.applyProperties(properties)
             }
@@ -103,7 +103,7 @@ class CTextFieldView: App8BaseView<DSL.Model.Component.TextField.C>, CViewProtoc
 
     private func bindExternalTextUpdates() {
         viewModel?.externalTextUpdate
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] text in
                 self?.textField.text = text
             }

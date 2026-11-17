@@ -149,6 +149,44 @@ final class NewComponentRenderTests: XCTestCase {
         XCTAssertEqual(uiSlider?.maximumValue, 100)
     }
 
+    // MARK: - First render
+
+    /// A component shows its text, style and content in the pass that builds
+    /// it, without waiting for the main queue: a screen pushed right after it
+    /// is built (zoom transition) must not show a frame with layout only.
+    func testFirstRenderAppliesTextAndStyleWithoutMainQueueHop() throws {
+        let json = """
+        {
+            "type": "view", "id": "root",
+            "content": {
+                "style": { "material": [ { "id": "bg", "type": "fill", "content": { "solid": "#FF0000" } } ] },
+                "layout": { "width": 300, "height": 200 },
+                "children": [
+                    { "type": "label", "id": "title",
+                      "content": { "properties": { "text": "Sample" }, "style": { "text": { "fontSize": 17, "color": "#00FF00" } },
+                                   "layout": { "constraints": [ { "type": "top", "target": "superview" }, { "type": "leading", "target": "superview" } ] } } },
+                    { "type": "icon", "id": "star",
+                      "content": { "properties": { "type": "symbol", "name": "star.fill" }, "style": { "color": "#0000FF" },
+                                   "layout": { "constraints": [ { "type": "bottom", "target": "superview" }, { "type": "leading", "target": "superview" } ] } } }
+                ]
+            }
+        }
+        """
+        let superview = try render(json)
+        let labels = allViews(ofType: UILabel.self, in: superview)
+        let title = try XCTUnwrap(labels.first { $0.text == "Sample" || $0.attributedText?.string == "Sample" }, "label text set during the build")
+        XCTAssertEqual(title.textColor?.hexComponents, UIColor(red: 0, green: 1, blue: 0, alpha: 1).hexComponents)
+        let icon = try XCTUnwrap(findView(ofType: CIconView.self, in: superview))
+        let imageView = try XCTUnwrap(allViews(ofType: UIImageView.self, in: icon).first)
+        XCTAssertEqual(imageView.tintColor?.hexComponents, UIColor(red: 0, green: 0, blue: 1, alpha: 1).hexComponents, "icon tint from the style, not the inherited system blue")
+        let root = try XCTUnwrap(findView(ofType: CView.self, in: superview))
+        XCTAssertFalse(allViews(ofType: MaterialView.self, in: root).isEmpty, "background fill applied during the build")
+    }
+
+    private func allViews<T: UIView>(ofType type: T.Type, in view: UIView) -> [T] {
+        ((view as? T).map { [$0] } ?? []) + view.subviews.flatMap { allViews(ofType: type, in: $0) }
+    }
+
     // MARK: - PageControl
 
     func testPageControlRendersMediaCapsule() throws {
@@ -157,7 +195,6 @@ final class NewComponentRenderTests: XCTestCase {
             "type": "pageControl", "id": "test-dots",
             "content": {
                 "properties": { "numberOfPages": "5", "currentPage": "2" },
-                "style": { "pageIndicatorTintColor": "#0000003D", "currentPageIndicatorTintColor": "#2D4D3A" },
                 "layout": { "width": 200, "height": 30 }
             }
         }
@@ -173,7 +210,8 @@ final class NewComponentRenderTests: XCTestCase {
         XCTAssertEqual(control.intrinsicContentSize, CGSize(width: 90, height: 26))
         XCTAssertNotNil(findView(ofType: UIVisualEffectView.self, in: control), "blurred capsule behind the dots")
 
-        // White dots whatever the DSL tints: current opaque, others at 50 %.
+        // Without DSL tints the dots are white: current opaque, others at 50 %
+        // (with tints they take the DSL colors, as on the web renderer).
         control.frame = CGRect(origin: .zero, size: control.intrinsicContentSize)
         control.layoutIfNeeded()
         let dots = (control.layer.sublayers ?? []).filter { $0.bounds.width == MediaPageControl.dotSize }
@@ -416,5 +454,14 @@ private extension UIView {
             if let found = sub.firstDescendant(ofType: type) { return found }
         }
         return nil
+    }
+}
+
+private extension UIColor {
+    /// RGBA rounded to 2 decimals, for comparing colors across color spaces.
+    var hexComponents: [CGFloat] {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        getRed(&r, green: &g, blue: &b, alpha: &a)
+        return [r, g, b, a].map { ($0 * 100).rounded() / 100 }
     }
 }

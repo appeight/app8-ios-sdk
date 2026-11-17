@@ -36,6 +36,11 @@ final class A8: App8.DebugInstance {
     /// Strong reference - A8 instance owns its data source for its lifetime
     private(set) var dataSource: App8DataSource?
 
+    /// Last decoded screen per id with the bytes it came from: pushing the
+    /// same screen again (every product page) skips decoding an unchanged
+    /// payload. New bytes from the data source are decoded and replace it.
+    var decodedScreens: [String: (data: Data, screen: DSL.Model.Component.`Any`)] = [:]
+
     let context: App8Context
 
     init(dataSource: App8DataSource) {
@@ -100,14 +105,18 @@ final class A8: App8.DebugInstance {
         return coordinator.screenContext
     }
 
-    private(set) var styles: [String: DSL.Model.Style.`Any`] = [:]
+    private(set) var styles: [String: DSL.Model.Style.`Any`] = [:] {
+        didSet { decodedScreens.removeAll() } // decoding resolves style pointers
+    }
 
     /// [animationId : Animation.Inline]. Built from `DSL.Model.App.animations`; consumed at
     /// screen decode time via `decoder.userInfo[.app8AnimationResolver]` so
     /// `{ "id": "..." }` references in screen JSON resolve to inline form.
     private(set) var animationsById: [String: DSL.Model.Animation.Inline] = [:]
 
-    private(set) var templateResolver: TemplateResolver?
+    private(set) var templateResolver: TemplateResolver? {
+        didSet { decodedScreens.removeAll() } // decoding expands templates
+    }
 
     private(set) var initialScreen: DSL.Model.Component.`Any`?
 
@@ -604,8 +613,13 @@ extension A8: ScreenLoaderProtocol {
             throw Error.invalidUTF8("\(id).json")
         }
 
+        if let cached = decodedScreens[id], cached.data == screenData {
+            return cached.screen
+        }
         do {
             let screen = try decodeComponent(screenData, as: DSL.Model.Component.`Any`.self)
+            if decodedScreens.count >= 16 { decodedScreens.removeAll() }
+            decodedScreens[id] = (screenData, screen)
             return screen
         } catch {
             throw Error.screenDecodeFailed(id: id, underlying: error)

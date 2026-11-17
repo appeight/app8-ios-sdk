@@ -79,13 +79,13 @@ class CDatePickerView: App8BaseView<DSL.Model.Component.DatePicker.C>, CViewProt
         datePicker.date = viewModel.currentDate
 
         externalUpdateCancellable = viewModel.externalDateUpdate
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] date in
                 self?.datePicker.setDate(date, animated: true)
             }
 
         propertiesCancellable = viewModel.propertiesWithVariables
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] properties in
                 self?.applyProperties(properties)
             }
@@ -150,12 +150,12 @@ extension CDatePickerView: StreamingUpdatable {
         bindStyle(vm.style, animation: vm.animation)
 
         externalUpdateCancellable = vm.externalDateUpdate
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] date in
                 self?.datePicker.setDate(date, animated: true)
             }
         propertiesCancellable = vm.propertiesWithVariables
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] properties in
                 self?.applyProperties(properties)
             }

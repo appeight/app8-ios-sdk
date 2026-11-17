@@ -184,6 +184,41 @@ extension DSL.Model.Component {
     struct `Any`: `Protocol`, Decodable, Sendable, TemplatePointerResolvable, DSL.Model.Style.StylePointerResolvable {
         private(set) var base: any `Protocol`
 
+        /// `defer` on the envelope: build this component after its screen is
+        /// shown, with a placeholder in its stack slot until then (DSL
+        /// "Deferred sections"). Nil when absent or malformed.
+        private(set) var deferral: Deferral?
+
+        /// Wraps `base`, without a deferral: the component is built at once.
+        func withoutDeferral() -> Self {
+            var copy = self
+            copy.deferral = nil
+            return copy
+        }
+
+        struct Deferral: Decodable, Sendable, Equatable {
+            enum Placeholder: String, Decodable, Sendable { case shimmer, none }
+            let placeholder: Placeholder?
+            let estimatedHeight: Double?
+            let estimatedWidth: Double?
+
+            init(placeholder: Placeholder?, estimatedHeight: Double?, estimatedWidth: Double?) {
+                self.placeholder = placeholder
+                self.estimatedHeight = estimatedHeight
+                self.estimatedWidth = estimatedWidth
+            }
+
+            /// Lenient: an unknown placeholder means `none`, a bad estimate `0`.
+            init(from decoder: any Decoder) throws {
+                enum Keys: String, CodingKey { case placeholder, estimatedHeight, estimatedWidth }
+                let c = try decoder.container(keyedBy: Keys.self)
+                let raw = (try? c.decodeIfPresent(String.self, forKey: .placeholder)) ?? nil
+                placeholder = raw.map { Placeholder(rawValue: $0) ?? Placeholder.none }
+                estimatedHeight = ((try? c.decodeIfPresent(Double.self, forKey: .estimatedHeight)) ?? nil).map { max(0, $0) }
+                estimatedWidth = ((try? c.decodeIfPresent(Double.self, forKey: .estimatedWidth)) ?? nil).map { max(0, $0) }
+            }
+        }
+
         // Forwarded conformance
         var templateId: String? { base.templateId }
         var id: String { base.id }
@@ -191,6 +226,7 @@ extension DSL.Model.Component {
 
         private enum CodingKeys: String, CodingKey {
             case id, type, content
+            case deferral = "defer"
         }
 
         init(from decoder: any Decoder) throws {
@@ -201,6 +237,7 @@ extension DSL.Model.Component {
             }
             let container = try decoder.container(keyedBy: CodingKeys.self)
             let t = try container.decode(CType.self, forKey: .type)
+            self.deferral = try? container.decodeIfPresent(Deferral.self, forKey: .deferral)
 
             // Determine whether `content` exists and is non-nil
             let hasNonNilContent: Bool = {

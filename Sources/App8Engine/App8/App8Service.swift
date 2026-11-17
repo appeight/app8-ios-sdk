@@ -248,6 +248,14 @@ extension App8Service: ComponentRenderer, ComponentService {
 
     @MainActor
     private func renderScreenSync(_ component: DSL.Model.Component.`Any`, screenId: String? = nil, params: [String: Any]? = nil, fixedSafeAreaInsets: UIEdgeInsets? = nil) -> UIViewController {
+        // `defer` is honoured only while a screen is being built.
+        DeferredBuildQueue.shared.buildingScreen {
+            buildScreen(component, screenId: screenId, params: params, fixedSafeAreaInsets: fixedSafeAreaInsets)
+        }
+    }
+
+    @MainActor
+    private func buildScreen(_ component: DSL.Model.Component.`Any`, screenId: String? = nil, params: [String: Any]? = nil, fixedSafeAreaInsets: UIEdgeInsets? = nil) -> UIViewController {
         guard
             case .key(.screen) = component.type,
             let entity: DSLComponent.View.Entity = component.asConcreteEntity()
@@ -421,6 +429,11 @@ extension App8Service: ComponentRenderer, ComponentService {
     @MainActor
     @discardableResult
     private func renderComponentImpl(_ component: DSL.Model.Component.`Any`, superview: UIView, parentPath: String? = nil, parentVariableStore: VariableStoreProtocol? = nil, reuseViewModel: ComponentViewModelAbstract? = nil) -> RenderResult {
+        // A stack strips `defer` from the children it defers or builds; any
+        // other `defer` that reaches here is built at once.
+        if component.deferral != nil, DeferredBuildQueue.shared.defersNow {
+            context.logger.warning("defer.notInStack: '\(component.id)' is not a direct stackView child; built with its screen")
+        }
         guard case .key(let type) = component.type else {
             // Custom component types are not renderable yet.
             return RenderResult(view: renderErrorView(), type: .key(.view))

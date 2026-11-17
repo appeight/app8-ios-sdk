@@ -67,7 +67,7 @@ class CStackViewView: App8BaseView<DSL.Model.Component.StackView.C>, CViewProtoc
 
     private func bindDynamicBackgroundColor(viewModel: CStackViewViewModel) {
         viewModel.resolvedBackgroundColor
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] color in
                 self?.applyDynamicBackgroundColor(color, cornerRadius: viewModel.cornerRadius)
             }
@@ -97,7 +97,7 @@ class CStackViewView: App8BaseView<DSL.Model.Component.StackView.C>, CViewProtoc
 
     private func bindProperties(_ propertiesPublisher: some Publisher<DSL.Model.Component.StackView.Properties, Never>) {
         propertiesPublisher
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] _ in
                 self?.applyStackProperties()
             }
@@ -142,9 +142,37 @@ class CStackViewView: App8BaseView<DSL.Model.Component.StackView.C>, CViewProtoc
             $0.removeFromSuperview()
         }
 
+        let queue = DeferredBuildQueue.shared
         viewModel.component.children.forEach { child in
+            if let deferral = child.deferral, queue.defersNow {
+                // Deferred section: a placeholder now, the child once the
+                // screen is on screen.
+                let placeholder = DeferredPlaceholderView(deferral: deferral, axis: stackView.axis)
+                // A section that will be hidden holds no space (its own
+                // variables don't exist yet: read in the stack's scope).
+                if let flag = child.asEntity().flatMap({ $0.content.hiddenFlag })?.trimmingCharacters(in: .whitespaces), !flag.isEmpty {
+                    placeholder.isHidden = flag.contains("{{")
+                        ? viewModel.resolvePropertyToBool(flag) ?? false
+                        : flag.lowercased() == "true" || flag == "1"
+                }
+                stackView.addArrangedSubview(placeholder)
+                queue.enqueue(anchor: placeholder) { [weak self, weak viewModel, weak placeholder] in
+                    guard let self, let viewModel, let placeholder else { return }
+                    let result = viewModel.service.renderComponent(
+                        child.withoutDeferral(),
+                        superview: self.stackView,
+                        parentPath: viewModel.componentPath,
+                        parentVariableStore: viewModel.variableStore
+                    )
+                    self.stackView.swapInDeferred(result.view, for: placeholder)
+                    if let currentState = viewModel.currentStateName {
+                        viewModel.forceReapplyState(currentState)
+                    }
+                }
+                return
+            }
             let result = viewModel.service.renderComponent(
-                child,
+                child.withoutDeferral(),
                 superview: stackView,
                 parentPath: viewModel.componentPath,
                 parentVariableStore: viewModel.variableStore

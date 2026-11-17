@@ -49,13 +49,13 @@ class CActivityIndicatorView: App8BaseView<DSL.Model.Component.ActivityIndicator
         applyCurrentProperties()
 
         propertiesCancellable = viewModel.properties
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] _ in
                 self?.applyCurrentProperties()
             }
 
         variablesCancellable = viewModel.variablesChanged
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] _ in
                 self?.applyCurrentProperties()
             }
@@ -130,12 +130,12 @@ extension CActivityIndicatorView: StreamingUpdatable {
         applyCurrentProperties()
 
         propertiesCancellable = vm.properties
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] _ in
                 self?.applyCurrentProperties()
             }
         variablesCancellable = vm.variablesChanged
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] _ in
                 self?.applyCurrentProperties()
             }

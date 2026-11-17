@@ -64,10 +64,12 @@ enum DatasourceResolver {
         let data = reload
             ? try await dataSource.reloadDatasource(screenId: screenId, datasourceId: source)
             : try await dataSource.getDatasource(screenId: screenId, datasourceId: source)
+        if let cached = DecodedDatasources.shared.value(source: source, data: data) { return cached }
         let datasource = try JSONDecoder().decode(DatasourceDefinition.self, from: data)
         if let schema = datasource.schema {
             try SchemaValidator.validate(data: datasource.rawData, against: schema)
         }
+        DecodedDatasources.shared.store(source: source, data: data, value: datasource.rawData)
         return datasource.rawData
     }
 
@@ -86,5 +88,28 @@ enum DatasourceResolver {
     static func hasExternalDatasources(_ variables: [String: VariableDefinition]?) -> Bool {
         guard let variables = variables else { return false }
         return variables.values.contains { $0.hasExternalSource }
+    }
+}
+
+/// Last decoded value per datasource with the bytes it came from: a screen
+/// pushed again (every product page reads the same product details) skips
+/// decoding and validating an unchanged payload. New bytes replace it.
+private final class DecodedDatasources: @unchecked Sendable {
+    static let shared = DecodedDatasources()
+    private let lock = NSLock()
+    private var entries: [String: (data: Data, value: Any)] = [:]
+
+    func value(source: String, data: Data) -> Any? {
+        lock.withLock {
+            guard let entry = entries[source], entry.data == data else { return nil }
+            return entry.value
+        }
+    }
+
+    func store(source: String, data: Data, value: Any) {
+        lock.withLock {
+            if entries.count >= 32 { entries.removeAll() }
+            entries[source] = (data, value)
+        }
     }
 }

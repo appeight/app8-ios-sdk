@@ -140,12 +140,14 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
     ) where P.Output == Content.Style?, P.Failure == Never {
 
         styleCancellable?.cancel()
+        // The style delivered inline while the component is built is its
+        // starting look, applied without animation.
         styleCancellable = stylePublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] style in
+            .receiveOnMainTagged()
+            .sink { [weak self] update in
                 guard let self else { return }
-                self.latestStyle = style
-                self.applyStyle(style, animated: animated, duration: duration, options: options)
+                self.latestStyle = update.value
+                self.applyStyle(update.value, animated: animated && !update.isInline, duration: duration, options: options)
             }
     }
 
@@ -161,18 +163,24 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
 
         // Store latest animation when it changes
         animationCancellable = animationPublisher
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] animation in
                 self?.latestAnimation = animation
             }
 
-        // Apply style using the latest animation config
+        // Apply style using the latest animation config. The style delivered
+        // inline while the component is built is its starting look, applied
+        // without animation.
         styleCancellable = stylePublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] style in
+            .receiveOnMainTagged()
+            .sink { [weak self] update in
                 guard let self else { return }
-                self.latestStyle = style
-                self.applyStyleWithAnimation(style, animation: self.latestAnimation)
+                self.latestStyle = update.value
+                if update.isInline {
+                    self.applyStyle(update.value, animated: false)
+                } else {
+                    self.applyStyleWithAnimation(update.value, animation: self.latestAnimation)
+                }
             }
     }
 

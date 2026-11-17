@@ -73,6 +73,12 @@ final class ImageLoader {
         return decoded
     }
 
+    /// The decoded image already in memory for `urlString`, without loading:
+    /// lets a view show a cached image in the pass that builds it.
+    func cachedImage(urlString: String, targetPointSize: CGSize? = nil) -> UIImage? {
+        imageCache.object(forKey: imageCacheKey(url: urlString, size: targetPointSize) as NSString)
+    }
+
     /// Load raw image data from a URL string, returning cached data when available.
     func load(urlString: String) async -> Data? {
         if let cached = dataCache.object(forKey: urlString as NSString) {

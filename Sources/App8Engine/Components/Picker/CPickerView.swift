@@ -68,18 +68,18 @@ class CPickerView: App8BaseView<DSL.Model.Component.Picker.C>, CViewProtocol {
         }
 
         externalUpdateCancellable = viewModel.externalSelectionUpdate
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] value in
                 self?.updateSelection(value)
             }
         optionsCancellable = viewModel.optionsUpdate
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] options in
                 self?.updateOptions(options)
             }
 
         propertiesCancellable = viewModel.propertiesWithVariables
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] properties in
                 self?.applyProperties(properties)
             }
@@ -332,17 +332,17 @@ extension CPickerView: StreamingUpdatable {
         }
 
         externalUpdateCancellable = vm.externalSelectionUpdate
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] value in
                 self?.updateSelection(value)
             }
         optionsCancellable = vm.optionsUpdate
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] options in
                 self?.updateOptions(options)
             }
         propertiesCancellable = vm.propertiesWithVariables
-            .receive(on: DispatchQueue.main)
+            .receiveOnMain()
             .sink { [weak self] properties in
                 self?.applyProperties(properties)
             }
