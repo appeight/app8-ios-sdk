@@ -943,6 +943,9 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 executeAction(nested, context: scoped, store: store)
             }
 
+        case .unknown:
+            break   // reported when decoded; runs nothing
+
         case .if:
             // The condition once, then exactly one branch in the current scope.
             let ctx = context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext())

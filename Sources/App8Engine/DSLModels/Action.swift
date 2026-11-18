@@ -211,6 +211,21 @@ extension DSL.Model {
             case with                     // Bind `values` as names, then run `actions`
             case `if`                     // Run `then` when `condition` holds, else `else`
 
+            // A type this engine does not know (a newer DSL): decoded as an inert
+            // action that runs nothing, so the rest of the list and the screen work.
+            case unknown
+
+            init(from decoder: any Decoder) throws {
+                let raw = try decoder.singleValueContainer().decode(String.self)
+                if let known = Self(rawValue: raw) {
+                    self = known
+                    return
+                }
+                let path = decoder.codingPath.dropLast().map(\.stringValue).joined(separator: ".")
+                (decoder.userInfo[.app8Logger] as? A8Log)?.warning("Unknown action type '\(raw)'\(path.isEmpty ? "" : " at \(path)"): skipped")
+                self = .unknown
+            }
+
             // HTTP + datasources
             case request                  // HTTP request; `onSuccess` / `onError` see `response`
             case reloadDatasource         // Refetch `source` and update every variable bound to it

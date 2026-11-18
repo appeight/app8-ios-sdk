@@ -245,4 +245,19 @@ final class ControlFlowActionTests: XCTestCase {
             XCTAssertEqual(ActionCondition.holds(input), expected, "\(String(describing: input))")
         }
     }
+
+    // MARK: unknown action types
+
+    func testUnknownActionTypeIsSkippedAndTheListGoesOn() throws {
+        let json = #"{ "type": "forEach", "items": "{{[1]}}", "actions": [ { "type": "teleport", "to": "moon" }, { "type": "appendToArray", "variableName": "log", "value": "after" } ] }"#
+        let action = try JSONDecoder().decode(DSL.Model.Action.self, from: Data(json.utf8))
+        XCTAssertEqual(action.actions?.actions.first?.type, .unknown)
+        root.executeAction(action)
+        XCTAssertEqual(value("log") as? [String], ["after"])
+    }
+
+    func testScreenWithAnUnknownActionStillDecodes() throws {
+        let json = #"{ "id": "s", "type": "screen", "content": { "children": [ { "id": "b", "type": "button", "content": { "properties": { "text": "Go" }, "actions": { "tap": [ { "type": "teleport" }, { "type": "haptic", "style": "light" } ] } } } ] } }"#
+        XCTAssertNoThrow(try JSONDecoder().decode(DSL.Model.Component.Any.self, from: Data(json.utf8)))
+    }
 }
