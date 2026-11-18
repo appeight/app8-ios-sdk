@@ -157,6 +157,15 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
                 // Make sure the committing pass reaches us even when no
                 // ancestor frame changes (else the label stays unwrapped).
                 setNeedsLayout()
+                // A label only a little wider than its container (one line
+                // that needs two) keeps its frame, so no pass may come: finish
+                // the measurement after this layout cycle if none did.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.wrapPhase == .measuring else { return }
+                    self.superview?.layoutIfNeeded()
+                    guard self.wrapPhase == .measuring else { return }
+                    self.syncWrapWidth()
+                }
                 return
             }
         }
