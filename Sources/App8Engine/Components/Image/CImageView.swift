@@ -130,14 +130,17 @@ class CImageView: App8BaseView<DSL.Model.Component.Image.C>, CViewProtocol {
             } else {
                 resolvedUrl = nil
             }
+            // A `url` that is not an absolute URL names a file in the bundle's
+            // assets (image.md, Image source): it goes to the data source by name.
+            let relativeUrl = resolvedUrl.flatMap { $0.contains("://") || $0.hasPrefix("data:") ? nil : $0 }
             let resolvedName: String?
             if let name = remoteAsset.name {
                 resolvedName = viewModel.resolvePropertyToString(name)
             } else {
-                resolvedName = nil
+                resolvedName = relativeUrl
             }
-            // Effective URL: explicit url field, or name if it looks like a URL.
-            let effectiveUrl = resolvedUrl
+            // Effective URL: explicit absolute url field, or name if it looks like a URL.
+            let effectiveUrl = (relativeUrl == nil ? resolvedUrl : nil)
                 ?? (resolvedName.flatMap { $0.hasPrefix("http://") || $0.hasPrefix("https://") ? $0 : nil })
 
             let imageKey = effectiveUrl ?? resolvedName ?? remoteAsset.id

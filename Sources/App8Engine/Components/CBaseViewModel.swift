@@ -467,18 +467,10 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     }
 
     /// Resolve a string expression to a Bool (for visibility, etc.)
+    /// The DSL's boolean coercion (variables.md, "Boolean coercion"); nil
+    /// when missing or unresolved (the property keeps its default).
     func resolvePropertyToBool(_ value: String) -> Bool? {
-        let resolved = resolveProperty(value)
-        if let bool = resolved as? Bool {
-            return bool
-        } else if let num = resolved as? Int {
-            return num != 0
-        } else if let num = resolved as? Double {
-            return num != 0
-        } else if let str = resolved as? String {
-            return str.lowercased() == "true" || str == "1"
-        }
-        return nil
+        BoolCoercion.coerce(resolveProperty(value))
     }
 
     // MARK: - Action Execution
@@ -943,6 +935,18 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 executeAction(nested, context: scoped, store: store)
             }
 
+        case .unknown:
+            break   // reported when decoded; runs nothing
+
+        case .if:
+            // The condition once, then exactly one branch in the current scope.
+            let ctx = context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext())
+            let raw = action.condition?.value
+            let holds = ActionCondition.holds(raw.map { resolveActionValue($0, context: ctx) })
+            for nested in (holds ? action.then : action.else)?.actions ?? [] {
+                executeAction(nested, context: ctx, store: store)
+            }
+
         case .request:
             runRequest(action, context: context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext()), store: store)
 
@@ -1323,3 +1327,36 @@ extension CBaseViewModel: StateControllable {}
 // MARK: - ComponentViewModelAbstract
 
 extension CBaseViewModel: ComponentViewModelAbstract {}
+
+/// The DSL's one boolean coercion (variables.md, "Boolean coercion"), for
+/// every boolean: `if` conditions, `isHidden`, `isEnabled`, toggles.
+enum BoolCoercion {
+    /// true, non-zero numbers, "true" / "1", non-empty arrays and objects;
+    /// any other string, 0 and null are false. nil: missing, or an expression
+    /// that did not resolve (its `{{…}}` text): the property's default.
+    static func coerce(_ value: Any?) -> Bool? {
+        switch value {
+        case nil: return nil
+        case is NSNull: return false
+        case let n as NSNumber:
+            if CFGetTypeID(n) == CFBooleanGetTypeID() { return n.boolValue }
+            return n.doubleValue != 0
+        case let b as Bool: return b
+        case let i as Int: return i != 0
+        case let d as Double: return d != 0
+        case let s as String:
+            if s.contains("{{") { return nil }
+            return s.lowercased() == "true" || s == "1"
+        case let a as [Any]: return !a.isEmpty
+        case let o as [String: Any]: return !o.isEmpty
+        default: return false
+        }
+    }
+}
+
+/// The `if` action's condition: the boolean coercion; an unevaluable condition runs `else`.
+enum ActionCondition {
+    static func holds(_ value: Any?) -> Bool {
+        BoolCoercion.coerce(value) ?? false
+    }
+}

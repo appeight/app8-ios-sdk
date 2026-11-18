@@ -53,6 +53,7 @@ class CButtonView: App8BaseView<DSL.Model.Component.Button.C>, CViewProtocol {
     private func applyProperties(_ properties: Content.Properties) {
         currentTitle = viewModel?.resolvePropertyToString(properties.text) ?? properties.text
 
+        // isEnabled (button.md): the boolean coercion; missing or unresolved stays enabled.
         let isEnabled = properties.isEnabled.flatMap { viewModel?.resolvePropertyToBool($0) } ?? true
         let isSelected = properties.isSelected.flatMap { viewModel?.resolvePropertyToBool($0) } ?? false
         button.isEnabled = isEnabled

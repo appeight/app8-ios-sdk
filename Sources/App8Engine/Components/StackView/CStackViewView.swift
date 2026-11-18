@@ -49,6 +49,12 @@ class CStackViewView: App8BaseView<DSL.Model.Component.StackView.C>, CViewProtoc
             animated: animated
         )
         bindStyle(viewModel.style, animation: viewModel.animation)
+        viewModel.style
+            .map { $0?.layoutMargins }
+            .removeDuplicates()
+            .receiveOnMain()
+            .sink { [weak self] margins in self?.applyLayoutMargins(margins) }
+            .store(in: &cancellables)
         bindDynamicBackgroundColor(viewModel: viewModel)
         bindProperties(viewModel.propertiesWithVariables)
         configureContent(viewModel: viewModel, animated: animated)
@@ -111,7 +117,20 @@ class CStackViewView: App8BaseView<DSL.Model.Component.StackView.C>, CViewProtoc
         stackView.alignment = viewModel.stackAlignment
         stackView.distribution = viewModel.stackDistribution
         stackView.spacing = viewModel.currentProperties.spacing ?? 0
+        applyLayoutMargins(viewModel.currentStyle?.layoutMargins)
         applyCornerClipping(viewModel.cornerRadius)
+    }
+
+    /// `style.layoutMargins`: the arranged subviews sit inside the margins
+    /// (`isLayoutMarginsRelativeArrangement`); the background still covers
+    /// the whole frame. The safe area never adds to them.
+    private func applyLayoutMargins(_ margins: DSL.Model.Style.View.LayoutMargins?) {
+        let insets = margins?.directional ?? .zero
+        stackView.insetsLayoutMarginsFromSafeArea = false
+        guard stackView.directionalLayoutMargins != insets || stackView.isLayoutMarginsRelativeArrangement != (insets != .zero) else { return }
+        stackView.directionalLayoutMargins = insets
+        stackView.isLayoutMarginsRelativeArrangement = insets != .zero
+        setNeedsLayout()
     }
 
     /// `properties.cornerRadius` rounds the stack AND clips its arranged

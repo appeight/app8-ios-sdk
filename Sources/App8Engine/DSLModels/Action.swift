@@ -87,6 +87,12 @@ extension DSL.Model {
         var actions: ActionList?
         /// with: names evaluated once and bound for `actions`.
         var values: [String: AnyCodableValue]?
+        /// if: the condition, evaluated once when the action runs.
+        var condition: AnyCodableValue?
+        /// if: actions run when `condition` holds.
+        var then: ActionList?
+        /// if: actions run when `condition` does not hold (optional).
+        var `else`: ActionList?
 
         // HTTP request
         /// request: GET (default), POST, PUT, PATCH, DELETE.
@@ -203,6 +209,22 @@ extension DSL.Model {
             // Control flow
             case forEach                  // Run `actions` once per element of `items`
             case with                     // Bind `values` as names, then run `actions`
+            case `if`                     // Run `then` when `condition` holds, else `else`
+
+            // A type this engine does not know (a newer DSL): decoded as an inert
+            // action that runs nothing, so the rest of the list and the screen work.
+            case unknown
+
+            init(from decoder: any Decoder) throws {
+                let raw = try decoder.singleValueContainer().decode(String.self)
+                if let known = Self(rawValue: raw) {
+                    self = known
+                    return
+                }
+                let path = decoder.codingPath.dropLast().map(\.stringValue).joined(separator: ".")
+                (decoder.userInfo[.app8Logger] as? A8Log)?.warning("Unknown action type '\(raw)'\(path.isEmpty ? "" : " at \(path)"): skipped")
+                self = .unknown
+            }
 
             // HTTP + datasources
             case request                  // HTTP request; `onSuccess` / `onError` see `response`

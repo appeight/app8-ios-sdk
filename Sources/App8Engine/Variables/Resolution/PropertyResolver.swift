@@ -35,7 +35,10 @@ public final class PropertyResolver {
         // A single whole-string expression returns the raw result, not stringified
         if trimmed.hasPrefix("{{") && trimmed.hasSuffix("}}") {
             let innerContent = String(trimmed.dropFirst(2).dropLast(2))
-            if !innerContent.contains("{{") && !innerContent.contains("}}") {
+            // One expression when its closing `}}` (outside quotes and braces) ends the string.
+            if !innerContent.contains("{{"),
+               let close = ExpressionText.closingBraces(in: trimmed.dropFirst(2)),
+               trimmed.distance(from: close, to: trimmed.endIndex) == 2 {
                 let node = try parser.parse(value)
                 return try evaluator.evaluate(node, context: context) ?? NSNull()
             }
@@ -101,12 +104,13 @@ public final class PropertyResolver {
             result += remaining[..<startRange.lowerBound]
 
             let afterStart = remaining[startRange.upperBound...]
-            guard let endRange = afterStart.range(of: "}}") else {
+            guard let close = ExpressionText.closingBraces(in: afterStart) else {
                 // No closing }}, treat rest as literal
                 result += remaining[startRange.lowerBound...]
                 remaining = remaining[remaining.endIndex...]
                 break
             }
+            let endRange = close..<afterStart.index(close, offsetBy: 2)
 
             let expression = String(afterStart[..<endRange.lowerBound])
             let fullExpression = "{{\(expression)}}"

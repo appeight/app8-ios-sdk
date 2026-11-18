@@ -17,11 +17,12 @@ enum ExpressionDependencies {
         let extractor = DependencyExtractor()
         for case let string? in strings where string.contains("{{") {
             var rest = Substring(string)
-            while let open = rest.range(of: "{{"), let close = rest.range(of: "}}", range: open.upperBound..<rest.endIndex) {
-                let expression = String(rest[open.lowerBound..<close.upperBound])
+            while let open = rest.range(of: "{{"), let closeStart = ExpressionText.closingBraces(in: rest[open.upperBound...]) {
+                let close = rest.index(closeStart, offsetBy: 2)
+                let expression = String(rest[open.lowerBound..<close])
                 guard let node = try? parser.parse(expression) else { return nil }
                 result.formUnion(extractor.extractDependencies(from: node))
-                rest = rest[close.upperBound...]
+                rest = rest[close...]
             }
         }
         return result

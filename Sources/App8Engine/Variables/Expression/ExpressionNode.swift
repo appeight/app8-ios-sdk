@@ -18,6 +18,13 @@ public indirect enum ExpressionNode: Sendable {
     /// Array literal with at least one non-literal element (e.g. `[1, x, 3]`),
     /// evaluated element-wise at runtime. All-literal arrays stay `.literal(.array)`.
     case arrayLiteral([ExpressionNode])
+    /// Object literal (`{title: 'A', 'count': n}`): keys in order, values evaluated at runtime.
+    case objectLiteral([ObjectEntry])
+
+    public struct ObjectEntry: Sendable {
+        public let key: String
+        public let value: ExpressionNode
+    }
 }
 
 /// Wrapper for literal values to make ExpressionNode Sendable

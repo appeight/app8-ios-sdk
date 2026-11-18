@@ -39,7 +39,7 @@ extension DSL.Model.Component.Image {
         }
         
         enum CodingKeys: String, CodingKey {
-            case type, url, asset
+            case type, url, asset, name
         }
         
         init(from decoder: any Decoder) throws {
@@ -54,6 +54,16 @@ extension DSL.Model.Component.Image {
                 } else if let name = try container.decodeIfPresent(String.self, forKey: .asset) {
                     self.type = .localAsset
                     self.model = .asset(LocalAsset(name: name))
+                } else if let name = try container.decodeIfPresent(String.self, forKey: .name) {
+                    // `name` without `type` is the same as `asset` (image.md, Image
+                    // source); an http(s) value is loaded as a URL.
+                    if name.hasPrefix("http://") || name.hasPrefix("https://") {
+                        self.type = .remoteAsset
+                        self.model = .remoteAsset(try DSL.Model.Asset(from: decoder))
+                    } else {
+                        self.type = .localAsset
+                        self.model = .asset(LocalAsset(name: name))
+                    }
                 } else {
                     self.type = .none
                     self.model = .none

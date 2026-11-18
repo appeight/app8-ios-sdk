@@ -196,4 +196,78 @@ final class ControlFlowActionTests: XCTestCase {
         XCTAssertEqual(tasks.count, 1)
         XCTAssertEqual(tasks[0]["quantity"] as? Int, 1)
     }
+
+    // MARK: if
+
+    func testIfRunsThenOrElse() throws {
+        let json = #"{ "type": "if", "condition": "{{size != null}}", "then": [ { "type": "appendToArray", "variableName": "log", "value": "then" } ], "else": [ { "type": "appendToArray", "variableName": "log", "value": "else" } ] }"#
+        try run(json)
+        try root.variableStore.defineVariable(name: "size", definition: VariableDefinition(type: .string, initialValue: "M"))
+        try run(json)
+        XCTAssertEqual(value("log") as? [String], ["else", "then"])
+    }
+
+    func testIfWithoutElseAndSingleAction() throws {
+        try run(#"{ "type": "if", "condition": "{{false}}", "then": { "type": "appendToArray", "variableName": "log", "value": "then" } }"#)
+        try run(#"{ "type": "if", "condition": true, "then": { "type": "appendToArray", "variableName": "log", "value": "then" } }"#)
+        XCTAssertEqual(value("log") as? [String], ["then"])
+    }
+
+    func testIfEvaluatesItsConditionOnce() throws {
+        try root.variableStore.setValue(name: "item", value: "on")
+        try run(#"{ "type": "if", "condition": "{{item == 'on'}}", "then": [ { "type": "updateVariable", "variableName": "item", "value": "off" }, { "type": "appendToArray", "variableName": "log", "value": "then" } ], "else": [ { "type": "appendToArray", "variableName": "log", "value": "else" } ] }"#)
+        XCTAssertEqual(value("log") as? [String], ["then"])
+        XCTAssertEqual(value("item") as? String, "off")
+    }
+
+    func testIfNestsInsideForEachWithAndIf() throws {
+        try run(#"""
+        { "type": "with", "values": { "limit": 2 }, "actions": {
+            "type": "forEach", "items": "{{[1, 2, 3]}}", "as": "n", "actions": {
+              "type": "if", "condition": "{{n <= limit}}",
+              "then": { "type": "if", "condition": "{{n == 1}}",
+                        "then": { "type": "appendToArray", "variableName": "log", "value": "one" },
+                        "else": { "type": "appendToArray", "variableName": "log", "value": "small {{n}}" } },
+              "else": { "type": "appendToArray", "variableName": "log", "value": "big {{n}}" } } } }
+        """#)
+        XCTAssertEqual(value("log") as? [String], ["one", "small 2", "big 3"])
+    }
+
+    /// The one boolean coercion (variables.md, "Boolean coercion"), shared by
+    /// if, isHidden, isEnabled and toggles. nil: missing or unresolved.
+    private static let coercionTable: [(Any?, Bool?)] = [
+        (true, true), (false, false), (1, true), (0, false), (-2.5, true),
+        ("true", true), ("TRUE", true), ("1", true),
+        ("yes", false), ("M", false), ("", false), ("false", false), ("0", false),
+        ([1], true), ([Any](), false), (["a": 1], true), ([String: Any](), false),
+        (NSNull(), false), (NSNumber(value: true), true), (NSNumber(value: 0), false),
+        (nil, nil), ("{{missing.", nil),
+    ]
+
+    func testBooleanCoercionTable() {
+        for (input, expected) in Self.coercionTable {
+            XCTAssertEqual(BoolCoercion.coerce(input), expected, "\(String(describing: input))")
+        }
+    }
+
+    func testIfConditionUsesTheBooleanCoercion() {
+        for (input, expected) in Self.coercionTable {
+            XCTAssertEqual(ActionCondition.holds(input), expected ?? false, "\(String(describing: input))")
+        }
+    }
+
+    // MARK: unknown action types
+
+    func testUnknownActionTypeIsSkippedAndTheListGoesOn() throws {
+        let json = #"{ "type": "forEach", "items": "{{[1]}}", "actions": [ { "type": "teleport", "to": "moon" }, { "type": "appendToArray", "variableName": "log", "value": "after" } ] }"#
+        let action = try JSONDecoder().decode(DSL.Model.Action.self, from: Data(json.utf8))
+        XCTAssertEqual(action.actions?.actions.first?.type, .unknown)
+        root.executeAction(action)
+        XCTAssertEqual(value("log") as? [String], ["after"])
+    }
+
+    func testScreenWithAnUnknownActionStillDecodes() throws {
+        let json = #"{ "id": "s", "type": "screen", "content": { "children": [ { "id": "b", "type": "button", "content": { "properties": { "text": "Go" }, "actions": { "tap": [ { "type": "teleport" }, { "type": "haptic", "style": "light" } ] } } } ] } }"#
+        XCTAssertNoThrow(try JSONDecoder().decode(DSL.Model.Component.Any.self, from: Data(json.utf8)))
+    }
 }

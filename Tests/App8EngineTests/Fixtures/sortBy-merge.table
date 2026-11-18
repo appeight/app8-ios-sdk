@@ -1,0 +1,41 @@
+{
+  "description": "DSL gaps 2026-11 item 4: sortBy and merge. Every renderer's expression tests evaluate each `expression` with `variables` in scope and compare the result to `expected` (numbers compare by value: 1 == 1.0). Each SDK keeps a copy; its test checks the copy against this file when the conformance checkout is next to it.",
+  "variables": {
+    "products": [
+      { "name": "Bag", "price": { "amount": 30 } },
+      { "name": "apple", "price": { "amount": 5 } },
+      { "name": "Cap", "price": { "amount": 12 } },
+      { "name": "Belt" },
+      { "name": "Zip", "price": { "amount": 12 } },
+      { "name": "éclair", "price": { "amount": "n/a" } }
+    ],
+    "defaults": { "a": 1, "b": 2 },
+    "overrides": { "b": 3, "c": 4 },
+    "nestedA": { "o": { "x": 1 }, "keep": true },
+    "nestedB": { "o": { "y": 2 } },
+    "mixed": [3, { "a": 1 }],
+    "flags": [{ "a": true }, { "a": 1 }, { "a": null }, { "a": "s" }],
+    "nothing": null
+  },
+  "cases": [
+    { "expression": "{{map(sortBy(products, 'price.amount'), item.name)}}", "expected": ["apple", "Cap", "Zip", "Bag", "éclair", "Belt"] },
+    { "expression": "{{map(sortBy(products, 'price.amount', true), item.name)}}", "expected": ["apple", "Cap", "Zip", "Bag", "éclair", "Belt"] },
+    { "expression": "{{map(sortBy(products, 'price.amount', false), item.name)}}", "expected": ["éclair", "Bag", "Cap", "Zip", "apple", "Belt"] },
+    { "expression": "{{map(sortBy(products, 'name'), item.name)}}", "expected": ["Bag", "Belt", "Cap", "Zip", "apple", "éclair"] },
+    { "expression": "{{map(sortBy(products, 'name', false), item.name)}}", "expected": ["éclair", "apple", "Zip", "Cap", "Belt", "Bag"] },
+    { "expression": "{{map(sortBy(products, 'missing'), item.name)}}", "expected": ["Bag", "apple", "Cap", "Belt", "Zip", "éclair"] },
+    { "expression": "{{sortBy(mixed, 'a')}}", "expected": [{ "a": 1 }, 3] },
+    { "expression": "{{sortBy(flags, 'a')}}", "expected": [{ "a": 1 }, { "a": "s" }, { "a": true }, { "a": null }] },
+    { "expression": "{{sortBy([], 'a')}}", "expected": [] },
+    { "expression": "{{sortBy('text', 'a')}}", "expected": "text" },
+    { "expression": "{{length(products)}}", "expected": 6 },
+    { "expression": "{{merge(defaults, overrides)}}", "expected": { "a": 1, "b": 3, "c": 4 } },
+    { "expression": "{{merge(overrides, defaults)}}", "expected": { "a": 1, "b": 2, "c": 4 } },
+    { "expression": "{{merge(nestedA, nestedB)}}", "expected": { "o": { "y": 2 }, "keep": true } },
+    { "expression": "{{merge([1, 2], [3])}}", "expected": [1, 2, 3] },
+    { "expression": "{{merge(defaults, [1])}}", "expected": { "a": 1, "b": 2 } },
+    { "expression": "{{merge(5, defaults)}}", "expected": 5 },
+    { "expression": "{{merge('a', 'b')}}", "expected": "a" },
+    { "expression": "{{defaults.b}}", "expected": 2 }
+  ]
+}
