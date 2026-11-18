@@ -243,6 +243,7 @@ extension CViewProtocol where Self: UIView {
                         animation: materialAnimation,
                         layerBlock: {
                             materialView.update(material: material)
+                            materialView.glassAppearance = style?.glassAppearance ?? .auto
                             // Content masked with the same corner style as the
                             // material so child views get clipped consistently.
                             if let cornerStyle = MaterialView.cornerStyle(inMaterial: material) {

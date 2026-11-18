@@ -8,6 +8,7 @@ extension DSL.Model.Style {
         var alpha: CGFloat? { get }
         var transform: View.Transform? { get }
         var blendMode: View.BlendMode? { get }
+        var glassAppearance: GlassAppearance? { get }
     }
 }
 
@@ -15,6 +16,8 @@ extension DSL.Model.Style.BaseStyleProtocol {
     /// Only view and image styles carry a blend mode; every other style
     /// composites normally.
     var blendMode: DSL.Model.Style.View.BlendMode? { nil }
+    /// Only view styles pin glass; every other style's glass is adaptive.
+    var glassAppearance: DSL.Model.Style.GlassAppearance? { nil }
 }
 
 extension DSL.Model.Style {
@@ -26,6 +29,8 @@ extension DSL.Model.Style {
         private(set) var alpha: CGFloat?
         private(set) var transform: Transform?
         private(set) var blendMode: BlendMode?
+        /// Adaptive glass: `auto` (default) follows the content behind, `light` / `dark` pin it.
+        private(set) var glassAppearance: GlassAppearance?
         /// stackView only: insets of the arranged subviews (`top`, `leading`, `bottom`, `trailing`).
         private(set) var layoutMargins: LayoutMargins?
 

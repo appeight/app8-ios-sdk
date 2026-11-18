@@ -136,6 +136,9 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     }
 
     private func configureTabBarAppearance() {
+        // Adaptive glass: iOS 26's tab bar glass follows the content behind it;
+        // `glassAppearance: light | dark` pins it.
+        tabBar.overrideUserInterfaceStyle = (tabBarContent.style?.glassAppearance ?? .auto).interfaceStyle
         if let tintColor = resolveColor(tabBarContent.tintColor) {
             tabBar.tintColor = tintColor
         }

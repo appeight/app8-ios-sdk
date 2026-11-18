@@ -161,6 +161,12 @@ extension DSL.Model {
         var badgeColor: String? = nil
         /// Badge text color (hex). Default white.
         var badgeTextColor: String? = nil
+        /// `style.glassAppearance`: the tab bar's glass, adaptive by default.
+        var style: TabBarStyle? = nil
+
+        struct TabBarStyle: Decodable, Sendable {
+            var glassAppearance: DSL.Model.Style.GlassAppearance?
+        }
     }
 
     // MARK: - Navigation Bar
