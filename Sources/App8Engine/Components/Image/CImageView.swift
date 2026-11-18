@@ -160,7 +160,7 @@ class CImageView: App8BaseView<DSL.Model.Component.Image.C>, CViewProtocol {
             let assetId = remoteAsset.id
             Task { [weak self] in
                 if let imageData = try? await dataSource.getAsset(assetId: assetId, assetName: resolvedName),
-                   let decoded = await UIImage(data: imageData)?.byPreparingForDisplay() {
+                   let decoded = await ImageLoader.decodeForDisplay(data: imageData) {
                     await MainActor.run { self?.imageView.image = decoded }
                     return
                 }

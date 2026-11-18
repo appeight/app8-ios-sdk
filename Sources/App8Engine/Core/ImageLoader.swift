@@ -117,8 +117,23 @@ final class ImageLoader {
     /// Decode image data into a display-ready UIImage. `byPreparingForDisplay()`
     /// manages its own serial decode queue to avoid overloading the system.
     private static func decodeImage(data: Data) async -> UIImage? {
+        await decodeForDisplay(data: data)
+    }
+
+    /// `data` decoded for display off the main thread. `byPreparingForDisplay()`
+    /// returns nil for formats it does not prepare (an indexed-colour PNG, as
+    /// image CDNs serve for flat artwork); those are drawn into a bitmap
+    /// instead, so the image still shows.
+    static func decodeForDisplay(data: Data) async -> UIImage? {
         guard let image = UIImage(data: data) else { return nil }
-        return await image.byPreparingForDisplay()
+        if let prepared = await image.byPreparingForDisplay() { return prepared }
+        return await Task.detached(priority: .userInitiated) {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = image.scale
+            return UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+                image.draw(at: .zero)
+            }
+        }.value
     }
 
     /// Downsample image data to a target point size during decode.

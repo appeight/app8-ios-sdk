@@ -509,7 +509,7 @@ class CVideoView: App8BaseView<DSL.Model.Component.Video.C>, CViewProtocol {
             let effectiveUrl = resolvedUrl
                 ?? (resolvedName.flatMap { $0.hasPrefix("http://") || $0.hasPrefix("https://") ? $0 : nil })
             if let data = try? await viewModel.service.dataSource.getAsset(assetId: source.id, assetName: resolvedName),
-               let decoded = await UIImage(data: data)?.byPreparingForDisplay() {
+               let decoded = await ImageLoader.decodeForDisplay(data: data) {
                 return decoded
             }
             if let effectiveUrl {
