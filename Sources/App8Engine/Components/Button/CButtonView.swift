@@ -53,7 +53,12 @@ class CButtonView: App8BaseView<DSL.Model.Component.Button.C>, CViewProtocol {
     private func applyProperties(_ properties: Content.Properties) {
         currentTitle = viewModel?.resolvePropertyToString(properties.text) ?? properties.text
 
-        let isEnabled = properties.isEnabled.flatMap { viewModel?.resolvePropertyToBool($0) } ?? true
+        // isEnabled (button.md): an expression that does not resolve (its
+        // `{{…}}` text comes back) keeps the button enabled, as on Android and web.
+        let isEnabled = properties.isEnabled.flatMap { raw -> Bool? in
+            if let text = viewModel?.resolveProperty(raw) as? String, text.contains("{{") { return nil }
+            return viewModel?.resolvePropertyToBool(raw)
+        } ?? true
         let isSelected = properties.isSelected.flatMap { viewModel?.resolvePropertyToBool($0) } ?? false
         button.isEnabled = isEnabled
         button.isSelected = isSelected

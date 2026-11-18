@@ -281,7 +281,9 @@ final class CCollectionViewModel: CBaseViewModel<CollectionContent> {
         do {
             let context = VariableContext(store: cellStore)
             let propertyResolver = PropertyResolver()
-            let result = try propertyResolver.resolveToString(expression, context: context)
+            // A bare path (`item.category`, as collections.md writes it) is an expression too.
+            let source = expression.contains("{{") ? expression : "{{\(expression)}}"
+            let result = try propertyResolver.resolveToString(source, context: context)
             return result
         } catch {
             service.context.logger.error("Failed to evaluate groupBy '\(expression)': \(error)")
