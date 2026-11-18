@@ -1216,6 +1216,12 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 }
             }
 
+        case .capturePhoto:
+            runCapturePhoto(action, context: context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext()), store: store)
+
+        case .deletePhoto:
+            runDeletePhoto(action, context: context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext()))
+
         case .executeFunction, .complete:
             break
         }

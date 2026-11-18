@@ -43,6 +43,10 @@ final class App8Context {
     /// (`App8NativeContext.appId`). Set during app load.
     var appId: String?
 
+    /// The app's persistence id (`app.id`, `bundleId`, the host bundle id):
+    /// where persisted variables and stored photos live. Set during app load.
+    var persistenceId: String = "default"
+
     /// Session the DSL `request` action sends through. Tests swap in a
     /// session with a stub `URLProtocol`.
     var urlSession: URLSession = .shared

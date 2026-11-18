@@ -17,7 +17,7 @@ public struct App8 {
         return A8(dataSource: dataSource)
     }
 
-    /// Removes the `persist: true` variables of every app on this device
+    /// Removes the `persist: true` variables and the stored photos (photos.md) of every app on this device
     /// (Android `App8.clearPersistedData(context)`). Hosts call it when their
     /// signed-in user changes so the next user's apps start from their initial
     /// values. Close running instances first: they keep their values in memory
@@ -25,6 +25,7 @@ public struct App8 {
     @MainActor
     public static func clearPersistedData() {
         VariablePersistence.clearAll()
+        PhotoStore.clearAll()
     }
 }
 
@@ -235,9 +236,12 @@ final class A8: App8.DebugInstance {
                     let model = try self.decoder.decode(DSL.Model.App.self, from: appData)
                     self.app = model
                     context.appId = model.id
+                    context.persistenceId = model.persistenceId
                     if let variables = model.variables {
                         await self.appService?.defineAppVariables(variables, appId: model.persistenceId)
                     }
+                    // Photos no persisted variable mentions any more (photos.md, Cleanup).
+                    PhotoStore.sweepInBackground(appId: model.persistenceId)
                     // Pointer-only entries would self-reference and are skipped (inlineOrNil → nil).
                     let registry: [String: DSL.Model.Animation.Inline] = (model.animations ?? [])
                         .reduce(into: [:]) { acc, entry in
