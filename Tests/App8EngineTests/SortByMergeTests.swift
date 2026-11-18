@@ -15,7 +15,6 @@ final class SortByMergeTests: XCTestCase {
 
     private struct Table: Decodable {
         struct Case: Decodable { let expression: String }
-        let variables: [String: AnyCodableValue]
         let cases: [Case]
     }
 
@@ -36,10 +35,13 @@ final class SortByMergeTests: XCTestCase {
         let table = try JSONDecoder().decode(Table.self, from: data)
         let raw = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let expected = try XCTUnwrap(raw["cases"] as? [[String: Any]]).map { $0["expected"] }
+        // Plain JSON values (as datasources deliver them), not AnyCodableValue wrappers.
+        let variables = try XCTUnwrap(raw["variables"] as? [String: Any])
         let store = VariableStore()
-        for (name, value) in table.variables {
-            let type: VariableType = value.value is [Any] ? .array : (value.value is String ? .string : .object)
-            try store.defineVariable(name: name, definition: VariableDefinition(type: type, initialValue: value))
+        for (name, value) in variables {
+            let type: VariableType = value is [Any] ? .array : (value is String ? .string : .object)
+            try store.defineVariable(name: name, definition: VariableDefinition(type: type, initialValue: nil))
+            try store.setValue(name: name, value: value is NSNull ? nil : value)
         }
         for (i, c) in table.cases.enumerated() {
             let result = try ExpressionEvaluator().evaluate(ExpressionParser().parse(c.expression), context: VariableContext(store: store))

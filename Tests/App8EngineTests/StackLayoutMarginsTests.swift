@@ -53,7 +53,8 @@ final class StackLayoutMarginsTests: XCTestCase {
         }
         """)
         harness.superview.layoutIfNeeded()
-        XCTAssertEqual(try frame("stack", harness), CGRect(x: 0, y: 100, width: 390, height: 12 + 20 + 10 + 44 + 8))
+        let stack = try XCTUnwrap(harness.find(UIStackView.self))
+        XCTAssertEqual(stack.convert(stack.bounds, to: harness.superview), CGRect(x: 0, y: 100, width: 390, height: 12 + 20 + 10 + 44 + 8))
         XCTAssertEqual(try frame("a", harness), CGRect(x: 16, y: 112, width: 358, height: 20))
         XCTAssertEqual(try frame("b", harness), CGRect(x: 16, y: 142, width: 358, height: 44))
         XCTAssertEqual(try frame("a", harness).minX, try frame("sibling", harness).minX, "lines up with a 16 pt inset sibling")

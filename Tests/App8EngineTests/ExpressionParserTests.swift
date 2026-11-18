@@ -187,6 +187,9 @@ final class ExpressionParserTests: XCTestCase {
 
         case .arrayLiteral:
             return ".arrayLiteral"
+
+        case .objectLiteral:
+            return ".objectLiteral"
         }
     }
 }
