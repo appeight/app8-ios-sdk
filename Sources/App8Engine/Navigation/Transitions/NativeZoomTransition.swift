@@ -119,7 +119,7 @@ enum NativeZoomTransition {
         }
 
         let sourceExpression = zoom.sourceKeyExpression
-        viewController.preferredTransition = .zoom(options: options) { [weak presentingScreen] _ in
+        viewController.preferredTransition = .zoom(options: options) { [weak presentingScreen] context in
             MainActor.assumeIsolated {
                 guard let presentingScreen else { return nil }
                 // Re-evaluated in the presenting screen's scope (dismissal can
@@ -129,7 +129,7 @@ enum NativeZoomTransition {
                 candidates.append(initialKey)
                 for key in candidates {
                     if let view = TransitionKeyLocator.view(forKey: key, in: presentingScreen.view) {
-                        return view
+                        return SourceProxy.source(for: view, in: presentingScreen.view, coordinator: context.zoomedViewController.transitionCoordinator)
                     }
                 }
                 return nil
@@ -360,5 +360,51 @@ enum NativeZoomTransition {
         if velocityX > 0 { return scroll.contentOffset.x > minX + 0.5 }
         if velocityX < 0 { return scroll.contentOffset.x < maxX - 0.5 }
         return true
+    }
+}
+
+/// The view UIKit's zoom uses as its source. UIKit hides the source view for
+/// the whole transition (and an interactive dismissal): for a card in a grid
+/// that leaves the card's slot empty, as the system does. A source that fills
+/// (most of) the presenting screen, such as the photo of a full-screen pager
+/// page, would leave the screen black behind the shrinking screen; it stays
+/// visible instead, and UIKit gets a transparent stand-in at its frame (same
+/// corners) to measure and hide.
+@MainActor
+enum SourceProxy {
+    /// Area share of the presenting screen above which the source stays visible.
+    static let fillsScreen: CGFloat = 0.8
+
+    private static var proxies: [ObjectIdentifier: UIView] = [:]
+
+    static func source(for view: UIView, in screen: UIView, coordinator: UIViewControllerTransitionCoordinator?) -> UIView {
+        guard covers(view, screen), let host = view.superview else { return view }
+        let key = ObjectIdentifier(view)
+        proxies[key]?.removeFromSuperview()
+        let proxy = UIView(frame: view.frame)
+        proxy.isUserInteractionEnabled = false
+        proxy.backgroundColor = .clear
+        proxy.layer.cornerRadius = view.layer.cornerRadius
+        proxy.layer.cornerCurve = view.layer.cornerCurve
+        proxy.layer.maskedCorners = view.layer.maskedCorners
+        proxy.transform = view.transform
+        host.insertSubview(proxy, aboveSubview: view)
+        proxies[key] = proxy
+        coordinator?.animate(alongsideTransition: nil) { _ in
+            MainActor.assumeIsolated {
+                if proxies[key] === proxy { proxies[key] = nil }
+                proxy.removeFromSuperview()
+            }
+        }
+        return proxy
+    }
+
+    /// Whether `view`, on screen, covers at least `fillsScreen` of `screen`.
+    static func covers(_ view: UIView, _ screen: UIView) -> Bool {
+        let area = screen.bounds.width * screen.bounds.height
+        guard area > 0 else { return false }
+        let frame = view.convert(view.bounds, to: screen).intersection(screen.bounds)
+        guard !frame.isNull else { return false }
+        return frame.width * frame.height >= area * fillsScreen
     }
 }
