@@ -233,16 +233,26 @@ final class ControlFlowActionTests: XCTestCase {
         XCTAssertEqual(value("log") as? [String], ["one", "small 2", "big 3"])
     }
 
-    func testIfConditionTruthiness() {
-        let cases: [(Any?, Bool)] = [
-            (true, true), (false, false), (1, true), (0, false), (-2.5, true),
-            ("yes", true), ("", false), ("false", false), ("0", true),
-            ([1], true), ([Any](), false), (["a": 1], true), ([String: Any](), false),
-            (nil, false), (NSNull(), false),
-            ("{{missing.", false),
-        ]
-        for (input, expected) in cases {
-            XCTAssertEqual(ActionCondition.holds(input), expected, "\(String(describing: input))")
+    /// The one boolean coercion (variables.md, "Boolean coercion"), shared by
+    /// if, isHidden, isEnabled and toggles. nil: missing or unresolved.
+    private static let coercionTable: [(Any?, Bool?)] = [
+        (true, true), (false, false), (1, true), (0, false), (-2.5, true),
+        ("true", true), ("TRUE", true), ("1", true),
+        ("yes", false), ("M", false), ("", false), ("false", false), ("0", false),
+        ([1], true), ([Any](), false), (["a": 1], true), ([String: Any](), false),
+        (NSNull(), false), (NSNumber(value: true), true), (NSNumber(value: 0), false),
+        (nil, nil), ("{{missing.", nil),
+    ]
+
+    func testBooleanCoercionTable() {
+        for (input, expected) in Self.coercionTable {
+            XCTAssertEqual(BoolCoercion.coerce(input), expected, "\(String(describing: input))")
+        }
+    }
+
+    func testIfConditionUsesTheBooleanCoercion() {
+        for (input, expected) in Self.coercionTable {
+            XCTAssertEqual(ActionCondition.holds(input), expected ?? false, "\(String(describing: input))")
         }
     }
 

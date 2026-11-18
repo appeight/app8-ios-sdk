@@ -467,18 +467,10 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     }
 
     /// Resolve a string expression to a Bool (for visibility, etc.)
+    /// The DSL's boolean coercion (variables.md, "Boolean coercion"); nil
+    /// when missing or unresolved (the property keeps its default).
     func resolvePropertyToBool(_ value: String) -> Bool? {
-        let resolved = resolveProperty(value)
-        if let bool = resolved as? Bool {
-            return bool
-        } else if let num = resolved as? Int {
-            return num != 0
-        } else if let num = resolved as? Double {
-            return num != 0
-        } else if let str = resolved as? String {
-            return str.lowercased() == "true" || str == "1"
-        }
-        return nil
+        BoolCoercion.coerce(resolveProperty(value))
     }
 
     // MARK: - Action Execution
@@ -1336,25 +1328,35 @@ extension CBaseViewModel: StateControllable {}
 
 extension CBaseViewModel: ComponentViewModelAbstract {}
 
-/// The `if` action's condition (actions.md, if).
-enum ActionCondition {
-    /// The `if` action's condition (actions.md, if): `true`, a non-zero
-    /// number, a non-empty string other than "false", a non-empty array or
-    /// object. A condition that could not be evaluated (its `{{…}}` text
-    /// comes back) is false.
-    static func holds(_ value: Any?) -> Bool {
+/// The DSL's one boolean coercion (variables.md, "Boolean coercion"), for
+/// every boolean: `if` conditions, `isHidden`, `isEnabled`, toggles.
+enum BoolCoercion {
+    /// true, non-zero numbers, "true" / "1", non-empty arrays and objects;
+    /// any other string, 0 and null are false. nil: missing, or an expression
+    /// that did not resolve (its `{{…}}` text): the property's default.
+    static func coerce(_ value: Any?) -> Bool? {
         switch value {
-        case nil, is NSNull: return false
+        case nil: return nil
+        case is NSNull: return false
+        case let n as NSNumber:
+            if CFGetTypeID(n) == CFBooleanGetTypeID() { return n.boolValue }
+            return n.doubleValue != 0
         case let b as Bool: return b
-        case let n as NSNumber: return n.doubleValue != 0
         case let i as Int: return i != 0
         case let d as Double: return d != 0
         case let s as String:
-            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-            return !t.isEmpty && t != "false" && !t.contains("{{")
+            if s.contains("{{") { return nil }
+            return s.lowercased() == "true" || s == "1"
         case let a as [Any]: return !a.isEmpty
         case let o as [String: Any]: return !o.isEmpty
-        default: return true
+        default: return false
         }
+    }
+}
+
+/// The `if` action's condition: the boolean coercion; an unevaluable condition runs `else`.
+enum ActionCondition {
+    static func holds(_ value: Any?) -> Bool {
+        BoolCoercion.coerce(value) ?? false
     }
 }
