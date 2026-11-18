@@ -943,6 +943,15 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 executeAction(nested, context: scoped, store: store)
             }
 
+        case .if:
+            // The condition once, then exactly one branch in the current scope.
+            let ctx = context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext())
+            let raw = action.condition?.value
+            let holds = ActionCondition.holds(raw.map { resolveActionValue($0, context: ctx) })
+            for nested in (holds ? action.then : action.else)?.actions ?? [] {
+                executeAction(nested, context: ctx, store: store)
+            }
+
         case .request:
             runRequest(action, context: context ?? (store.map { VariableContext(store: $0) } ?? getVariableContext()), store: store)
 
@@ -1323,3 +1332,26 @@ extension CBaseViewModel: StateControllable {}
 // MARK: - ComponentViewModelAbstract
 
 extension CBaseViewModel: ComponentViewModelAbstract {}
+
+/// The `if` action's condition (actions.md, if).
+enum ActionCondition {
+    /// The `if` action's condition (actions.md, if): `true`, a non-zero
+    /// number, a non-empty string other than "false", a non-empty array or
+    /// object. A condition that could not be evaluated (its `{{…}}` text
+    /// comes back) is false.
+    static func holds(_ value: Any?) -> Bool {
+        switch value {
+        case nil, is NSNull: return false
+        case let b as Bool: return b
+        case let n as NSNumber: return n.doubleValue != 0
+        case let i as Int: return i != 0
+        case let d as Double: return d != 0
+        case let s as String:
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !t.isEmpty && t != "false" && !t.contains("{{")
+        case let a as [Any]: return !a.isEmpty
+        case let o as [String: Any]: return !o.isEmpty
+        default: return true
+        }
+    }
+}

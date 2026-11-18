@@ -196,4 +196,53 @@ final class ControlFlowActionTests: XCTestCase {
         XCTAssertEqual(tasks.count, 1)
         XCTAssertEqual(tasks[0]["quantity"] as? Int, 1)
     }
+
+    // MARK: if
+
+    func testIfRunsThenOrElse() throws {
+        let json = #"{ "type": "if", "condition": "{{size != null}}", "then": [ { "type": "appendToArray", "variableName": "log", "value": "then" } ], "else": [ { "type": "appendToArray", "variableName": "log", "value": "else" } ] }"#
+        try run(json)
+        try root.variableStore.defineVariable(name: "size", definition: VariableDefinition(type: .string, initialValue: "M"))
+        try run(json)
+        XCTAssertEqual(value("log") as? [String], ["else", "then"])
+    }
+
+    func testIfWithoutElseAndSingleAction() throws {
+        try run(#"{ "type": "if", "condition": "{{false}}", "then": { "type": "appendToArray", "variableName": "log", "value": "then" } }"#)
+        try run(#"{ "type": "if", "condition": true, "then": { "type": "appendToArray", "variableName": "log", "value": "then" } }"#)
+        XCTAssertEqual(value("log") as? [String], ["then"])
+    }
+
+    func testIfEvaluatesItsConditionOnce() throws {
+        try root.variableStore.setValue(name: "item", value: "on")
+        try run(#"{ "type": "if", "condition": "{{item == 'on'}}", "then": [ { "type": "updateVariable", "variableName": "item", "value": "off" }, { "type": "appendToArray", "variableName": "log", "value": "then" } ], "else": [ { "type": "appendToArray", "variableName": "log", "value": "else" } ] }"#)
+        XCTAssertEqual(value("log") as? [String], ["then"])
+        XCTAssertEqual(value("item") as? String, "off")
+    }
+
+    func testIfNestsInsideForEachWithAndIf() throws {
+        try run(#"""
+        { "type": "with", "values": { "limit": 2 }, "actions": {
+            "type": "forEach", "items": "{{[1, 2, 3]}}", "as": "n", "actions": {
+              "type": "if", "condition": "{{n <= limit}}",
+              "then": { "type": "if", "condition": "{{n == 1}}",
+                        "then": { "type": "appendToArray", "variableName": "log", "value": "one" },
+                        "else": { "type": "appendToArray", "variableName": "log", "value": "small {{n}}" } },
+              "else": { "type": "appendToArray", "variableName": "log", "value": "big {{n}}" } } } }
+        """#)
+        XCTAssertEqual(value("log") as? [String], ["one", "small 2", "big 3"])
+    }
+
+    func testIfConditionTruthiness() {
+        let cases: [(Any?, Bool)] = [
+            (true, true), (false, false), (1, true), (0, false), (-2.5, true),
+            ("yes", true), ("", false), ("false", false), ("0", true),
+            ([1], true), ([Any](), false), (["a": 1], true), ([String: Any](), false),
+            (nil, false), (NSNull(), false),
+            ("{{missing.", false),
+        ]
+        for (input, expected) in cases {
+            XCTAssertEqual(ActionCondition.holds(input), expected, "\(String(describing: input))")
+        }
+    }
 }

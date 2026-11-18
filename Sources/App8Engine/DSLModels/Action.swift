@@ -87,6 +87,12 @@ extension DSL.Model {
         var actions: ActionList?
         /// with: names evaluated once and bound for `actions`.
         var values: [String: AnyCodableValue]?
+        /// if: the condition, evaluated once when the action runs.
+        var condition: AnyCodableValue?
+        /// if: actions run when `condition` holds.
+        var then: ActionList?
+        /// if: actions run when `condition` does not hold (optional).
+        var `else`: ActionList?
 
         // HTTP request
         /// request: GET (default), POST, PUT, PATCH, DELETE.
@@ -203,6 +209,7 @@ extension DSL.Model {
             // Control flow
             case forEach                  // Run `actions` once per element of `items`
             case with                     // Bind `values` as names, then run `actions`
+            case `if`                     // Run `then` when `condition` holds, else `else`
 
             // HTTP + datasources
             case request                  // HTTP request; `onSuccess` / `onError` see `response`
