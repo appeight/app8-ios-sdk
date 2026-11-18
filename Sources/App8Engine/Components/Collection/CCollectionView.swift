@@ -35,6 +35,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     var layoutModeId: String? { viewModel?.componentPath.split(separator: ".").last.map(String.init) }
     var layoutModeContext: App8LayoutMode? { viewModel?.service.context.layoutMode }
     private var sections: [CCollectionViewModel.Section] = []
+    private static let emptyHeaderId = "app8.emptySectionHeader"
     private var cancellables = Set<AnyCancellable>()
     private var isViewHierarchySetup = false
     /// The page this pager itself shows, as last observed from its offset (or
@@ -189,6 +190,14 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                 collectionView.register(CCollectionCell.self, forCellWithReuseIdentifier: reuseId)
             }
         }
+
+        // Fallback header (no template for a section, or a stale index): UIKit
+        // requires every supplementary view to be dequeued.
+        collectionView.register(
+            UICollectionReusableView.self,
+            forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
+            withReuseIdentifier: Self.emptyHeaderId
+        )
 
         if let sectionHeader = viewModel.component.defaultSectionHeader {
             collectionView.register(
@@ -895,6 +904,8 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                 if let insets = config.contentInsets {
                     section.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: insets.left ?? 0, bottom: insets.bottom ?? 0, trailing: insets.right ?? 0)
                 }
+                // Section headers (groupBy / sectionDefinitions) above each section's rows.
+                self?.addSectionHeader(to: section, sectionIndex: sectionIndex)
                 return section
             }
         }
@@ -942,6 +953,19 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             )
         }
 
+        // Section headers (groupBy / sectionDefinitions): one section per data
+        // section, each with its header above its rows.
+        if viewModel?.component.defaultSectionHeader != nil || viewModel?.component.sectionHeaders != nil {
+            let spacing = section.interGroupSpacing
+            let insets = section.contentInsets
+            return UICollectionViewCompositionalLayout { [weak self] sectionIndex, _ in
+                let headed = NSCollectionLayoutSection(group: group)
+                headed.interGroupSpacing = spacing
+                headed.contentInsets = insets
+                self?.addSectionHeader(to: headed, sectionIndex: sectionIndex)
+                return headed
+            }
+        }
         return UICollectionViewCompositionalLayout(section: section)
     }
 
@@ -1842,9 +1866,11 @@ extension CCollectionView: UICollectionViewDataSource {
         viewForSupplementaryElementOfKind kind: String,
         at indexPath: IndexPath
     ) -> UICollectionReusableView {
+        let empty = { collectionView.dequeueReusableSupplementaryView(ofKind: kind, withReuseIdentifier: Self.emptyHeaderId, for: indexPath) }
         guard kind == UICollectionView.elementKindSectionHeader,
-              let viewModel = viewModel else {
-            return UICollectionReusableView()
+              let viewModel = viewModel,
+              indexPath.section < sections.count else {
+            return empty()
         }
 
         let section = sections[indexPath.section]
@@ -1852,7 +1878,7 @@ extension CCollectionView: UICollectionViewDataSource {
         let headerTemplate = viewModel.component.sectionHeaders?[sectionKey]
                           ?? viewModel.component.defaultSectionHeader
 
-        guard let headerTemplate else { return UICollectionReusableView() }
+        guard let headerTemplate else { return empty() }
 
         guard let header = collectionView.dequeueReusableSupplementaryView(
             ofKind: kind,
@@ -1860,7 +1886,7 @@ extension CCollectionView: UICollectionViewDataSource {
             for: indexPath
         ) as? CCollectionHeaderView else {
             viewModel.service.context.logger.error("CCollectionView: dequeued header for template '\(headerTemplate.templateId ?? headerTemplate.id)' is not a CCollectionHeaderView — returning empty placeholder")
-            return UICollectionReusableView()
+            return empty()
         }
 
         // "section" is defined as a dictionary so {{section.key}} works via member access.
@@ -1868,6 +1894,7 @@ extension CCollectionView: UICollectionViewDataSource {
         do {
             let sectionData: [String: Any] = [
                 "key": section.key,
+                "items": section.items.map { $0.data.value ?? NSNull() },
                 "$index": indexPath.section
             ]
             try sectionStore.defineVariable(
