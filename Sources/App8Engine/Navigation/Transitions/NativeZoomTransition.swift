@@ -246,7 +246,8 @@ enum NativeZoomTransition {
         case .none:
             return false
         case .down:
-            return velocity.y > 0 && abs(velocity.y) > abs(velocity.x)
+            guard velocity.y > 0 && abs(velocity.y) > abs(velocity.x) else { return false }
+            return !verticalScrollerClaims(location: location, velocityY: velocity.y, in: zoomedView)
         case .any:
             // `willBegin` is UIKit's own default: false while a scroll view under
             // the finger could use the drag. It is not trusted either way (it
@@ -280,11 +281,49 @@ enum NativeZoomTransition {
                     if !horizontal, velocity.y > 0, let zooming = scroll as? App8ZoomingScrollView, zooming.claimsPullDown {
                         return false
                     }
+                    // A vertical scroller scrolls with a vertical drag; only a
+                    // pull down at its top reaches the dismiss (as UIKit's zoom).
+                    if !horizontal, claimsVerticalPan(scroll, velocityY: velocity.y) { return false }
                 }
                 view = current.superview
             }
             return true
         }
+    }
+
+    /// Whether a vertical scroller under `location` keeps a vertical drag.
+    private static func verticalScrollerClaims(location: CGPoint, velocityY: CGFloat, in root: UIView?) -> Bool {
+        guard let root, let hit = root.hitTest(location, with: nil) else { return false }
+        var view: UIView? = hit
+        while let current = view, current !== root.superview {
+            if let scroll = current as? UIScrollView {
+                if velocityY > 0, let zooming = scroll as? App8ZoomingScrollView, zooming.claimsPullDown { return true }
+                if claimsVerticalPan(scroll, velocityY: velocityY) { return true }
+            }
+            view = current.superview
+        }
+        return false
+    }
+
+    /// Whether a vertical scroller keeps a vertical drag rather than leaving it
+    /// to the dismiss: always while it is moving (decelerating or bouncing
+    /// back from an edge), for an upward drag (it scrolls the content
+    /// on, or rubber-bands at the end), and for a downward drag while it is
+    /// scrolled down. Only a pull down on a scroller resting at its top
+    /// (contentOffset at or above the top inset) reaches the dismiss.
+    static func claimsVerticalPan(_ scroll: UIScrollView, velocityY: CGFloat) -> Bool {
+        guard scroll.isScrollEnabled else { return false }
+        let inset = scroll.adjustedContentInset
+        let minY = -inset.top
+        let maxY = scroll.contentSize.height + inset.bottom - scroll.bounds.height
+        guard maxY > minY + 1 else { return false }
+        // Not `isDragging`: the scroll view's own pan may already have begun
+        // with this very drag (at the top, the pull down must still dismiss).
+        if scroll.isDecelerating { return true }
+        let y = scroll.contentOffset.y
+        if y > maxY + 0.5 { return true }   // bouncing back from the end
+        if velocityY < 0 { return true }
+        return y > minY + 0.5
     }
 
     /// Whether a horizontal scroller keeps a horizontal pan rather than leaving

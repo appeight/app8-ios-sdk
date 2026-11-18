@@ -166,6 +166,65 @@ struct ZoomDismissGestureTests {
         #expect(pan.isEnabled)
     }
 
+    // MARK: Vertical: a long pushed screen without a stretchy top
+
+    /// root ⊃ a 3000 pt tall plain vertical scroll view at `offset`.
+    private func makeLongScreen(offset: CGFloat, scrollClass: UIScrollView.Type = UIScrollView.self) -> (UIView, UIScrollView) {
+        let root = UIView(frame: CGRect(x: 0, y: 0, width: width, height: 844))
+        let scroll = scrollClass.init(frame: root.bounds)
+        scroll.contentInsetAdjustmentBehavior = .never
+        scroll.contentInset.top = 20
+        scroll.contentSize = CGSize(width: width, height: 3000)
+        scroll.addSubview(UIView(frame: CGRect(x: 0, y: 0, width: width, height: 3000)))
+        scroll.contentOffset.y = offset
+        root.addSubview(scroll)
+        return (root, scroll)
+    }
+
+    private let down = CGPoint(x: 6, y: 600)
+    private let up = CGPoint(x: -6, y: -600)
+    private let mid = CGPoint(x: 202, y: 420)
+
+    @Test func scrollingBackUpOnAScrolledScreenScrolls() {
+        // Scrolled down, then a drag down (scroll back up): the content scrolls.
+        let (root, _) = makeLongScreen(offset: 900)
+        #expect(!begins(root, at: mid, velocity: down))
+        #expect(!begins(root, at: mid, velocity: down, willBegin: true))
+        // A drag up scrolls on, scrolled or not.
+        #expect(!begins(root, at: mid, velocity: up))
+        let (top, _) = makeLongScreen(offset: -20)
+        #expect(!begins(top, at: mid, velocity: up))
+    }
+
+    @Test func pullDownAtTheTopDismisses() {
+        let (top, _) = makeLongScreen(offset: -20)   // at the top inset
+        #expect(begins(top, at: mid, velocity: down))
+        let (pulled, _) = makeLongScreen(offset: -60)  // already past the top
+        #expect(begins(pulled, at: mid, velocity: down))
+        // A few points down from the top: still scrolling.
+        let (near, _) = makeLongScreen(offset: -12)
+        #expect(!begins(near, at: mid, velocity: down))
+    }
+
+    @Test func movingScrollViewKeepsAVerticalDrag() {
+        // Flung back to the top and still decelerating: the drag catches the content.
+        let (root, scroll) = makeLongScreen(offset: -20, scrollClass: MovingScrollView.self)
+        (scroll as! MovingScrollView).movingByMomentum = true
+        #expect(!begins(root, at: mid, velocity: down))
+    }
+
+    @Test func downGestureAlsoWaitsForTheTop() {
+        let (root, _) = makeLongScreen(offset: 900)
+        #expect(!NativeZoomTransition.shouldBeginDismiss(gesture: .down, location: mid, velocity: down, willBegin: true, zoomedView: root))
+        let (top, _) = makeLongScreen(offset: -20)
+        #expect(NativeZoomTransition.shouldBeginDismiss(gesture: .down, location: mid, velocity: down, willBegin: true, zoomedView: top))
+    }
+
+    @Test func leadingEdgeSwipeDismissesAScrolledScreen() {
+        let (root, _) = makeLongScreen(offset: 900)
+        #expect(begins(root, at: CGPoint(x: 10, y: 420), velocity: right))
+    }
+
     @Test func disabledScrollerNeverKeepsThePan() {
         let (root, gallery) = makeScreen(page: 1)
         gallery.isScrollEnabled = false
