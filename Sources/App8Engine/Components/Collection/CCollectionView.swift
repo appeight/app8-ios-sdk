@@ -47,7 +47,9 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     /// Last offset seen by the page tracker. Compositional layout calls the
     /// visible-items handler on every layout pass; only a real offset change
     /// is a page report.
-    private var lastPageTrackingOffset: CGPoint?
+    private var lastPageTrackingOffset: CGFloat?
+    /// Vertical pager: the page a drag started on (a swipe turns at most one page).
+    private var dragStartPage: Int?
     /// Page requested by a write to `currentPageVariable` that could not be
     /// applied yet (no layout / width). Applied in `layoutSubviews`.
     private var pendingPageIndex: Int?
@@ -280,6 +282,13 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             collectionView.keepsTopRestOnInsetChange = scrollEnabled && viewModel?.component.properties.inverted != true
             collectionView.alwaysBounceVertical = scrollEnabled
             collectionView.alwaysBounceHorizontal = false
+            // A vertical pager or full-height feed: every page is the
+            // collection's own frame, so no automatic safe-area insets (the
+            // templates handle the safe area). One page is exactly the frame:
+            // UIKit's paging; otherwise scrollViewWillEndDragging snaps.
+            if isVerticalFullFrame { collectionView.contentInsetAdjustmentBehavior = .never }
+            collectionView.isPagingEnabled = usesNativeVerticalPaging
+            if usesVerticalPaging, !usesNativeVerticalPaging { collectionView.decelerationRate = .fast }
             selfSizingHeightConstraint?.isActive = false
             selfSizingHeightConstraint = nil
             isSelfSizing = !scrollEnabled
@@ -332,6 +341,10 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         // Swipe actions require list configuration (UIKit native path)
         if viewModel?.component.properties.swipeActions != nil {
             return createSwipeableListLayout(config: config)
+        }
+
+        if let config, config.itemHeightFill || config.itemHeight != nil {
+            return createFixedHeightVerticalLayout(config: config)
         }
 
         let estimatedHeight = config?.estimatedItemHeight ?? 44
@@ -481,6 +494,99 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             && (config.rows ?? 1) <= 1
     }
 
+    /// A plain vertical list: no per-section layouts, section headers or swipe actions.
+    private var isPlainVertical: Bool {
+        guard let component = viewModel?.component else { return false }
+        let type = component.properties.layout?.type
+        guard type == .vertical || type == nil else { return false }
+        return component.properties.defaultSectionLayout == nil
+            && component.properties.sectionLayouts == nil
+            && component.sectionHeaders == nil
+            && component.properties.swipeActions == nil
+    }
+
+    /// A vertical feed: `pagingStyle: paging` on a plain vertical list. It
+    /// pages by the item height plus spacing.
+    private var usesVerticalPaging: Bool {
+        isPlainVertical && viewModel?.component.properties.layout?.pagingStyle == .paging
+    }
+
+    /// Pages or `itemHeight: "fill"` items: the page is the collection's frame.
+    private var isVerticalFullFrame: Bool {
+        isPlainVertical && (usesVerticalPaging || viewModel?.component.properties.layout?.itemHeightFill == true)
+    }
+
+    /// One page is exactly the frame (fill, no spacing, no insets): UIKit's own paging.
+    private var usesNativeVerticalPaging: Bool {
+        guard usesVerticalPaging, let config = viewModel?.component.properties.layout else { return false }
+        let insets = config.contentInsets
+        return config.itemHeightFill && (config.itemSpacing ?? 0) == 0
+            && (insets?.top ?? 0) == 0 && (insets?.bottom ?? 0) == 0
+    }
+
+    /// Vertical page length: the item height (the frame minus the vertical
+    /// insets for "fill") plus spacing; the frame for self-sizing items.
+    private var verticalPageLength: CGFloat {
+        let bounds = collectionView.bounds.height
+        // Not laid out yet: no pages (a page length of 1 pt would turn the
+        // first offsets into page numbers and write them to the variable).
+        guard bounds > 0 else { return 0 }
+        guard let config = viewModel?.component.properties.layout else { return bounds }
+        let spacing = config.itemSpacing ?? 0
+        if config.itemHeightFill {
+            let insets = config.contentInsets
+            return max(1, bounds - (insets?.top ?? 0) - (insets?.bottom ?? 0)) + spacing
+        }
+        if let height = config.itemHeight { return height + spacing }
+        return bounds
+    }
+
+    /// The page at a vertical content offset.
+    private func verticalPage(at offsetY: CGFloat) -> Int {
+        let length = verticalPageLength
+        guard length > 0, offsetY.isFinite else { return 0 }
+        return max(0, Int(((offsetY + collectionView.contentInset.top) / length).rounded()))
+    }
+
+    /// A vertical list with `itemHeight` (a number, or "fill": the collection's
+    /// frame minus the vertical insets, re-measured when it resizes).
+    private func createFixedHeightVerticalLayout(config: DSL.Model.Component.Collection.Layout) -> UICollectionViewCompositionalLayout {
+        let spacing = config.itemSpacing ?? 0
+        let insets = config.contentInsets
+        let top = insets?.top ?? 0
+        let bottom = insets?.bottom ?? 0
+        let full = isVerticalFullFrame
+        // Top and bottom insets are the collection view's contentInset
+        // (configureLayout); the section keeps only the sides, except a list
+        // that is not full-frame, which keeps its bottom inset as before.
+        let sectionInsets = NSDirectionalEdgeInsets(top: 0, leading: insets?.left ?? 0, bottom: full ? 0 : bottom, trailing: insets?.right ?? 0)
+        let fixed = config.itemHeightFill ? nil : config.itemHeight
+        let header = viewModel?.component.defaultSectionHeader != nil
+        let sticky = viewModel?.component.properties.stickyHeaders == true
+        let layoutConfig = UICollectionViewCompositionalLayoutConfiguration()
+        if full { layoutConfig.contentInsetsReference = .none }
+        return UICollectionViewCompositionalLayout(sectionProvider: { _, environment in
+            let height = fixed ?? max(1, environment.container.contentSize.height - top - bottom)
+            let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0), heightDimension: .absolute(height))
+            let item = NSCollectionLayoutItem(layoutSize: size)
+            let group = NSCollectionLayoutGroup.vertical(layoutSize: size, subitems: [item])
+            let section = NSCollectionLayoutSection(group: group)
+            section.interGroupSpacing = spacing
+            section.contentInsets = sectionInsets
+            if full { section.contentInsetsReference = .none }
+            if header {
+                let headerItem = NSCollectionLayoutBoundarySupplementaryItem(
+                    layoutSize: NSCollectionLayoutSize(widthDimension: .fractionalWidth(1.0), heightDimension: .estimated(44)),
+                    elementKind: UICollectionView.elementKindSectionHeader,
+                    alignment: .top
+                )
+                headerItem.pinToVisibleBounds = sticky
+                section.boundarySupplementaryItems = [headerItem]
+            }
+            return section
+        }, configuration: layoutConfig)
+    }
+
     private func createHorizontalLayout(config: DSL.Model.Component.Collection.Layout) -> UICollectionViewCompositionalLayout {
         let itemHeight = config.itemHeight ?? 100
 
@@ -526,7 +632,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
 
         if config.currentPageVariable != nil, !nativePaging {
             section.visibleItemsInvalidationHandler = { [weak self] items, offset, environment in
-                self?.handlePageChange(offset: offset, containerWidth: environment.container.effectiveContentSize.width)
+                self?.handlePageChange(position: offset.x, pageLength: environment.container.effectiveContentSize.width)
             }
         }
 
@@ -584,10 +690,13 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
     private func bindCurrentPageVariable() {
         guard let viewModel,
               let config = viewModel.component.properties.layout,
-              config.type == .horizontal,
+              config.type == .horizontal || usesVerticalPaging,
               let varName = config.currentPageVariable else { return }
         if let initial = Self.pageIndex(viewModel.variableStore.getValue(name: varName)), initial > 0 {
             pendingPageIndex = initial
+            // The items may already be laid out (bound synchronously before
+            // this): apply the page on the next layout pass.
+            setNeedsLayout()
         }
         viewModel.variableStore.anyVariableChanged
             .filter { $0 == varName }
@@ -615,6 +724,11 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         guard let page = pendingPageIndex,
               collectionView.bounds.width > 0,
               collectionView.numberOfSections > 0 else { return }
+        // A vertical pager needs its content laid out to know where page N is.
+        if usesVerticalPaging, collectionView.contentSize.height <= 0 {
+            collectionView.layoutIfNeeded()
+            guard collectionView.collectionViewLayout.collectionViewContentSize.height > 0 else { return }
+        }
         let count = collectionView.numberOfItems(inSection: 0)
         guard count > 0 else { return }
         // A pager with fewer pages than the variable asks for goes to its last
@@ -635,7 +749,13 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
                 self.isScrollingFromVariable = false
             }
         }
-        if usesNativeHorizontalPaging {
+        if usesVerticalPaging {
+            let top = collectionView.contentInset.top
+            let contentHeight = max(collectionView.contentSize.height, collectionView.collectionViewLayout.collectionViewContentSize.height)
+            let maxY = contentHeight + collectionView.contentInset.bottom - collectionView.bounds.height
+            let y = max(-top, min(CGFloat(clamped) * verticalPageLength - top, maxY))
+            collectionView.setContentOffset(CGPoint(x: collectionView.contentOffset.x, y: y), animated: animated)
+        } else if usesNativeHorizontalPaging {
             let width = collectionView.bounds.width
             var x = CGFloat(clamped) * width
             // Never past the content's end, so the scroll can finish.
@@ -721,19 +841,23 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
               collectionView.bounds.width > 0,
               collectionView.numberOfSections > 0,
               collectionView.numberOfItems(inSection: 0) > 0 else { return }
-        ownPageIndex = Int((collectionView.contentOffset.x / collectionView.bounds.width).rounded())
+        ownPageIndex = usesVerticalPaging
+            ? verticalPage(at: collectionView.contentOffset.y)
+            : Int((collectionView.contentOffset.x / collectionView.bounds.width).rounded())
     }
 
-    /// Handles page change detection for horizontal paging collections
-    private func handlePageChange(offset: CGPoint, containerWidth: CGFloat) {
+    /// Handles page change detection for paging collections: `position` is
+    /// the offset along the paging axis (from the first page), `pageLength`
+    /// the distance between pages.
+    private func handlePageChange(position: CGFloat, pageLength: CGFloat) {
         guard let config = viewModel?.component.properties.layout,
               let varName = config.currentPageVariable,
-              containerWidth > 0 else { return }
+              pageLength > 0 else { return }
 
-        guard offset.x.isFinite, offset != lastPageTrackingOffset else { return }
-        lastPageTrackingOffset = offset
+        guard position.isFinite, position != lastPageTrackingOffset else { return }
+        lastPageTrackingOffset = position
         guard !isScrollingFromVariable else { return }
-        let currentPage = Int((offset.x / containerWidth).rounded())
+        let currentPage = max(0, Int((position / pageLength).rounded()))
         // The first report only records where the pager is.
         guard let previous = ownPageIndex else {
             ownPageIndex = currentPage
@@ -1799,14 +1923,34 @@ extension CCollectionView: UICollectionViewDelegate {
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         // The user took over from a variable-driven scroll.
         isScrollingFromVariable = false
+        dragStartPage = usesVerticalPaging ? verticalPage(at: scrollView.contentOffset.y) : nil
         // The user took over; don't snap back to a restored offset.
         pendingRestoreToken = nil
+    }
+
+    /// Vertical pager whose page is not the frame (spacing, insets, a fixed
+    /// item height): snap to a page, never more than one from where the drag
+    /// started; a flick turns one page in its direction.
+    func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+        guard usesVerticalPaging, !usesNativeVerticalPaging, collectionView.numberOfSections > 0 else { return }
+        let length = verticalPageLength
+        let count = collectionView.numberOfItems(inSection: 0)
+        guard length > 0, count > 0 else { return }
+        let start = dragStartPage ?? verticalPage(at: scrollView.contentOffset.y)
+        let flicked = abs(velocity.y) > 0.3 ? start + (velocity.y > 0 ? 1 : -1) : verticalPage(at: scrollView.contentOffset.y)
+        let page = max(0, min(count - 1, max(start - 1, min(start + 1, flicked))))
+        let top = scrollView.contentInset.top
+        let maxY = scrollView.contentSize.height + scrollView.contentInset.bottom - scrollView.bounds.height
+        targetContentOffset.pointee.y = max(-top, min(CGFloat(page) * length - top, maxY))
+        dragStartPage = nil
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         // Native pager: the page index comes from the collection view's own offset.
         if usesNativeHorizontalPaging {
-            handlePageChange(offset: scrollView.contentOffset, containerWidth: scrollView.bounds.width)
+            handlePageChange(position: scrollView.contentOffset.x, pageLength: scrollView.bounds.width)
+        } else if usesVerticalPaging {
+            handlePageChange(position: scrollView.contentOffset.y + scrollView.contentInset.top, pageLength: verticalPageLength)
         }
         // Offset is adjusted for contentInset so it reads 0 at the rest position.
         if let outputVar = viewModel?.component.properties.scrollOffsetVariable {
