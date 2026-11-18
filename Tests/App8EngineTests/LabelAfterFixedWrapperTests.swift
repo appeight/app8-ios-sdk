@@ -34,6 +34,8 @@ final class LabelAfterFixedWrapperTests: XCTestCase {
             let fits = label.sizeThatFits(CGSize(width: label.bounds.width, height: .greatestFiniteMagnitude)).height
             XCTAssertGreaterThanOrEqual(label.bounds.height + 0.5, fits, "\(label.text!.prefix(2)) is cut: \(label.bounds) needs \(fits)")
             XCTAssertGreaterThan(label.bounds.height, 25, "\(label.text!.prefix(2)) wraps to two lines")
+            // Wrapped at the label's real width, not a few points narrower.
+            XCTAssertEqual(label.preferredMaxLayoutWidth, label.bounds.width, accuracy: 0.5, "\(label.text!.prefix(2)) wrap width")
         }
     }
 }
