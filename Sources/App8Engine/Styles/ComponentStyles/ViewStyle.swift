@@ -26,6 +26,19 @@ extension DSL.Model.Style {
         private(set) var alpha: CGFloat?
         private(set) var transform: Transform?
         private(set) var blendMode: BlendMode?
+        /// stackView only: insets of the arranged subviews (`top`, `leading`, `bottom`, `trailing`).
+        private(set) var layoutMargins: LayoutMargins?
+
+        struct LayoutMargins: Decodable, Sendable, Equatable {
+            var top: CGFloat?
+            var leading: CGFloat?
+            var bottom: CGFloat?
+            var trailing: CGFloat?
+
+            var directional: NSDirectionalEdgeInsets {
+                NSDirectionalEdgeInsets(top: top ?? 0, leading: leading ?? 0, bottom: bottom ?? 0, trailing: trailing ?? 0)
+            }
+        }
 
         static func decode<CodingKeys: CodingKey>(fromContainer container: KeyedDecodingContainer<CodingKeys>, key: CodingKeys) throws -> Self {
             if container.contains(key) {
