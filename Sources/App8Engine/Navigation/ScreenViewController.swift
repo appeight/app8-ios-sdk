@@ -31,6 +31,8 @@ final class ScreenViewController: BaseViewController {
     private var searchWidthConstraint: NSLayoutConstraint?
     /// Writes to `search.bindVariable` from elsewhere (a recent search tapped) reach the field.
     private var searchTextSubscription: AnyCancellable?
+    /// Re-resolves an expression `navigationBar.title` when its variables change.
+    private var titleSubscription: AnyCancellable?
     /// `search.autoFocus` runs on the first appearance only: coming back from a
     /// result keeps the results without raising the keyboard again.
     private var didAutoFocusSearch = false
@@ -306,9 +308,26 @@ final class ScreenViewController: BaseViewController {
             }
         } else if let rawTitle = config.title {
             if let store = titleViewVariableStore, rawTitle.contains("{{") {
-                let resolver = PropertyResolver()
-                let context = VariableContext(store: store)
-                title = (try? resolver.resolveToString(rawTitle, context: context)) ?? rawTitle
+                let resolve: () -> String = { [weak store] in
+                    guard let store else { return rawTitle }
+                    return (try? PropertyResolver().resolveToString(rawTitle, context: VariableContext(store: store))) ?? rawTitle
+                }
+                title = resolve()
+                // The title is an expression like any text: it follows its variables.
+                let names = ExpressionDependencies.names(in: [rawTitle])
+                titleSubscription = store.anyVariableChanged
+                    .filter { names?.contains($0) ?? true }
+                    .receive(on: DispatchQueue.main)
+                    .sink { [weak self] _ in
+                        guard let self else { return }
+                        let text = resolve()
+                        guard self.title != text else { return }
+                        self.title = text
+                        if let label = self.navigationItem.titleView as? UILabel {
+                            label.text = text
+                            label.sizeToFit()
+                        }
+                    }
             } else {
                 title = rawTitle
             }
