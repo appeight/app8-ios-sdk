@@ -23,6 +23,7 @@ public final class ExpressionEvaluator {
         // Array manipulation
         "sort", "reverse", "join", "concat", "slice", "sum",
         "prepend", "append", "uniqueBy", "remove",
+        "sortBy", "merge",
         // Clock + date arithmetic
         "now", "today", "addDays", "addHours", "startOfDay"
     ])
@@ -127,6 +128,11 @@ public final class ExpressionEvaluator {
         case .arrayLiteral(let elements):
             // nil elements become NSNull so positions are preserved.
             return try elements.map { try evaluate($0, context: context) ?? NSNull() }
+
+        case .objectLiteral(let entries):
+            var object: [String: Any] = [:]
+            for entry in entries { object[entry.key] = try evaluate(entry.value, context: context) ?? NSNull() }
+            return object
         }
     }
 
@@ -471,6 +477,30 @@ public final class ExpressionEvaluator {
                 let cmp = compareForSort(a, b)
                 return ascending ? cmp < 0 : cmp > 0
             }
+
+        case "sortBy":
+            guard (2...3).contains(arguments.count) else {
+                throw ExpressionError.parseError("sortBy() expects 2 or 3 arguments (array, key, ascending?)")
+            }
+            let source = try evaluate(arguments[0], context: context)
+            guard let arr = source as? [Any] else { return source as Any }
+            let key = try evaluate(arguments[1], context: context).map { "\($0)" } ?? ""
+            let ascending = arguments.count == 3
+                ? !((try evaluate(arguments[2], context: context) as? Bool) == false)
+                : true
+            return Self.sortBy(arr, key: key, ascending: ascending)
+
+        case "merge":
+            guard arguments.count == 2 else {
+                throw ExpressionError.parseError("merge() expects 2 arguments")
+            }
+            let a = try evaluate(arguments[0], context: context)
+            let b = try evaluate(arguments[1], context: context)
+            if let da = a as? [String: Any], let db = b as? [String: Any] {
+                return da.merging(db) { _, new in new }
+            }
+            if let aa = a as? [Any], let ab = b as? [Any] { return aa + ab }
+            return a ?? NSNull()
 
         case "reverse":
             guard arguments.count == 1 else {
@@ -1215,5 +1245,61 @@ public final class ExpressionEvaluator {
             return Int(result)
         }
         return result
+    }
+}
+
+// MARK: - sortBy (variables.md, sortBy)
+
+extension ExpressionEvaluator {
+    private enum SortKey {
+        case number(Double)
+        case string(String)
+    }
+
+    /// A number (not a JSON boolean), a string, or nil (missing).
+    private static func sortKey(_ value: Any?) -> SortKey? {
+        switch value {
+        case let n as NSNumber:
+            if CFGetTypeID(n) == CFBooleanGetTypeID() { return nil }
+            return n.doubleValue.isFinite ? .number(n.doubleValue) : nil
+        case is Bool: return nil
+        case let i as Int: return .number(Double(i))
+        case let d as Double: return d.isFinite ? .number(d) : nil
+        case let s as String: return .string(s)
+        default: return nil
+        }
+    }
+
+    private static func value(at path: String, in element: Any) -> Any? {
+        var current: Any? = element
+        for part in path.split(separator: ".", omittingEmptySubsequences: false) {
+            guard let dict = current as? [String: Any] else { return nil }
+            current = dict[String(part)]
+        }
+        return current
+    }
+
+    /// Stable: numbers numerically before strings (ascending), strings by
+    /// Unicode code point; descending reverses that; missing values last.
+    static func sortBy(_ array: [Any], key: String, ascending: Bool) -> [Any] {
+        let keyed = array.enumerated().map { (index: $0.offset, element: $0.element, key: sortKey(value(at: key, in: $0.element))) }
+        let sorted = keyed.sorted { a, b in
+            guard let ka = a.key, let kb = b.key else {
+                if (a.key == nil) == (b.key == nil) { return a.index < b.index }
+                return a.key != nil
+            }
+            var c: Int
+            switch (ka, kb) {
+            case let (.number(x), .number(y)): c = x < y ? -1 : (x > y ? 1 : 0)
+            case let (.string(x), .string(y)):
+                c = x.unicodeScalars.lexicographicallyPrecedes(y.unicodeScalars) ? -1
+                    : (y.unicodeScalars.lexicographicallyPrecedes(x.unicodeScalars) ? 1 : 0)
+            case (.number, .string): c = -1
+            case (.string, .number): c = 1
+            }
+            if !ascending { c = -c }
+            return c != 0 ? c < 0 : a.index < b.index
+        }
+        return sorted.map(\.element)
     }
 }

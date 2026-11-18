@@ -69,6 +69,11 @@ public final class DependencyExtractor: Sendable {
                 extractDependenciesRecursive(from: element, into: &dependencies)
             }
 
+        case .objectLiteral(let entries):
+            for entry in entries {
+                extractDependenciesRecursive(from: entry.value, into: &dependencies)
+            }
+
         case .literal:
             break
         }

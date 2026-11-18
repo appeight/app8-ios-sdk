@@ -14,6 +14,8 @@ enum TokenType: Equatable {
     case rightParen
     case leftBracket
     case rightBracket
+    case leftBrace
+    case rightBrace
     case comma
     case dot
     case question
@@ -26,6 +28,8 @@ enum TokenType: Equatable {
              (.rightParen, .rightParen),
              (.leftBracket, .leftBracket),
              (.rightBracket, .rightBracket),
+             (.leftBrace, .leftBrace),
+             (.rightBrace, .rightBrace),
              (.comma, .comma),
              (.dot, .dot),
              (.question, .question),
@@ -82,11 +86,11 @@ public final class ExpressionParser: Sendable {
                 }
                 remaining = remaining[openRange.upperBound...]
 
-                guard let closeRange = remaining.range(of: "}}") else {
+                guard let close = ExpressionText.closingBraces(in: remaining) else {
                     throw ExpressionError.parseError("Unmatched {{ in expression: \(str)")
                 }
-                let inner = String(remaining[..<closeRange.lowerBound]).trimmingCharacters(in: .whitespaces)
-                remaining = remaining[closeRange.upperBound...]
+                let inner = String(remaining[..<close]).trimmingCharacters(in: .whitespaces)
+                remaining = remaining[remaining.index(close, offsetBy: 2)...]
 
                 parts.append(try parseSingleExpression(inner))
             } else {
@@ -153,6 +157,14 @@ public final class ExpressionParser: Sendable {
 
             case "]":
                 tokens.append(Token(type: .rightBracket, position: position))
+                index = input.index(after: index)
+
+            case "{":
+                tokens.append(Token(type: .leftBrace, position: position))
+                index = input.index(after: index)
+
+            case "}":
+                tokens.append(Token(type: .rightBrace, position: position))
                 index = input.index(after: index)
 
             case ",":
@@ -558,6 +570,26 @@ private struct ParserState {
             return .arrayLiteral(elements)
         }
 
+        // Object literal: `{ key: value, 'quoted key': value }`.
+        if match(.leftBrace) {
+            var entries: [ExpressionNode.ObjectEntry] = []
+            if !check(.rightBrace) {
+                repeat {
+                    let key: String
+                    switch current().type {
+                    case .identifier(let name): key = name
+                    case .literal(.string(let s)): key = s
+                    default: throw ExpressionError.parseError("Expected a string or a name as an object key")
+                    }
+                    advance()
+                    try consume(.colon, message: "Expected ':' after an object key")
+                    entries.append(ExpressionNode.ObjectEntry(key: key, value: try parseTernary()))
+                } while match(.comma)
+            }
+            try consume(.rightBrace, message: "Expected '}' after object entries")
+            return .objectLiteral(entries)
+        }
+
         throw ExpressionError.unexpectedToken(position: current().position)
     }
 
@@ -592,6 +624,8 @@ private struct ParserState {
              (.rightParen, .rightParen),
              (.leftBracket, .leftBracket),
              (.rightBracket, .rightBracket),
+             (.leftBrace, .leftBrace),
+             (.rightBrace, .rightBrace),
              (.comma, .comma),
              (.dot, .dot),
              (.question, .question),
@@ -637,5 +671,43 @@ private struct ParserState {
 
     func current() -> Token {
         return tokens[currentIndex]
+    }
+}
+
+// MARK: - Expression boundaries
+
+enum ExpressionText {
+    /// Where the `}}` that closes an expression starts in `text` (the text
+    /// after its `{{`): the first `}}` outside quoted strings and outside the
+    /// braces the expression opened itself, so `{{ {'a': {'b': 1}} }}` is one
+    /// expression.
+    static func closingBraces(in text: Substring) -> String.Index? {
+        var depth = 0
+        var quote: Character?
+        var i = text.startIndex
+        while i < text.endIndex {
+            let c = text[i]
+            if let q = quote {
+                if c == "\\" {
+                    i = text.index(after: i)
+                    if i == text.endIndex { break }
+                } else if c == q {
+                    quote = nil
+                }
+            } else if c == "'" || c == "\"" {
+                quote = c
+            } else if c == "{" {
+                depth += 1
+            } else if c == "}" {
+                if depth > 0 {
+                    depth -= 1
+                } else {
+                    let next = text.index(after: i)
+                    if next < text.endIndex, text[next] == "}" { return i }
+                }
+            }
+            i = text.index(after: i)
+        }
+        return nil
     }
 }
