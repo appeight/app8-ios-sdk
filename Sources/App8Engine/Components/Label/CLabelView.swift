@@ -24,6 +24,10 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
 
     // MARK: - Inline span overrides (per-character-range style)
     private var currentSpans: [DSL.Model.Component.Label.Properties.Span]?
+    /// `properties.numberOfLines`; wins over the text style's `numberOfLines`.
+    private var propertyNumberOfLines: Int?
+    /// Last applied text style, re-applied when `properties.numberOfLines` changes.
+    private var currentTextModel: DSL.Model.Style.TextModel?
 
     // MARK: - Manual autoshrink (binary-search shrink-to-fit)
     // UILabel.adjustsFontSizeToFitWidth is unreliable for multi-line + attributed
@@ -346,6 +350,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     private func applyProperties(_ properties: DSL.Model.Component.Label.Properties) {
         // Capture spans before setLabelText so it can apply per-range overrides.
         currentSpans = properties.spans
+        applyPropertyNumberOfLines(properties.numberOfLines)
         // Cache the per-property animation descriptor (if supplied via the
         // wrapped form) once per properties update.
         backgroundColorAnimation = properties.backgroundColor?.animation?.inlineOrNil
@@ -478,7 +483,31 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         }
     }
 
+    /// Max lines: `properties.numberOfLines` wins over the text style's
+    /// `numberOfLines`; 0 (or negative) means unlimited.
+    static func effectiveNumberOfLines(property: Int?, style: Int?) -> Int? {
+        guard let lines = property ?? style else { return nil }
+        return max(0, lines)
+    }
+
+    private func applyPropertyNumberOfLines(_ lines: Int?) {
+        guard lines != propertyNumberOfLines else { return }
+        propertyNumberOfLines = lines
+        if let textModel = currentTextModel {
+            // Rebuilds autoshrink and paragraph attributes for the new cap too.
+            applyTextModel(textModel)
+        } else if let lines {
+            label.numberOfLines = max(0, lines)
+        } else {
+            label.numberOfLines = 1  // UILabel default without a text style
+        }
+        lastWrapNatural = -1
+        invalidateIntrinsicContentSize()
+        setNeedsLayout()
+    }
+
     private func applyTextModel(_ textModel: DSL.Model.Style.TextModel) {
+        currentTextModel = textModel
         if let alignment = textModel.alignment {
             label.textAlignment = alignment.ui
         }
@@ -489,7 +518,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         }
 
         label.font = textModel.resolveUIFont()
-        let maxLines = textModel.numberOfLines ?? 0
+        let maxLines = Self.effectiveNumberOfLines(property: propertyNumberOfLines, style: textModel.numberOfLines) ?? 0
         label.numberOfLines = maxLines
         if let lineBreakMode = textModel.lineBreakMode {
             label.lineBreakMode = lineBreakMode.ui
@@ -557,7 +586,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             // over the label's, so a line-limited label lost its ellipsis as
             // soon as it had a lineHeight. Carry the label's mode over.
             // Unlimited labels keep word wrapping.
-            if (textModel.numberOfLines ?? 0) > 0 {
+            if (Self.effectiveNumberOfLines(property: propertyNumberOfLines, style: textModel.numberOfLines) ?? 0) > 0 {
                 paragraphStyle.lineBreakMode = textModel.lineBreakMode?.ui ?? .byTruncatingTail
             }
             attrs[.paragraphStyle] = paragraphStyle

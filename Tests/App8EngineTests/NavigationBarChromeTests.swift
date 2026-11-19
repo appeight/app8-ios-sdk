@@ -134,7 +134,9 @@ final class NavigationBarChromeTests: XCTestCase {
         // Without a tracked scroll view the bar draws a blurred band instead
         // of the scroll view's edge effect.
         XCTAssertTrue(home.contentScrollView(for: .top) === page, "bar tracks \(String(describing: home.contentScrollView(for: .top)))")
-        // Left automatic, UIKit draws the hard style here: a solid band.
-        XCTAssertTrue(page.topEdgeEffect.style == .soft, "top edge \(page.topEdgeEffect.style)")
+        // Left automatic, UIKit draws the hard style here: a solid band. App8
+        // hides UIKit's effect and draws the soft one itself.
+        XCTAssertTrue(page.topEdgeEffect.isHidden, "system top edge effect still shown")
+        XCTAssertEqual(home.topEdgeEffectOverlay?.style, .soft)
     }
 }
