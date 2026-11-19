@@ -24,6 +24,8 @@ final class MaterialView: UIView {
         /// Container glass — the owning view's content is hosted inside this
         /// effect view's `contentView`.
         var isContainerGlass: Bool = false
+        /// `glass: normal` on any iOS: adapts to its backdrop (clear glass does not).
+        var isRegularGlass: Bool = false
     }
 
     private var trackedLayers: [TrackedLayer] = []
@@ -41,10 +43,10 @@ final class MaterialView: UIView {
     private var sampledDark: Bool?
     private var sampleTimer: Timer?
 
-    private var hasGlass: Bool { trackedViews.contains { $0.isGlass } }
+    private var hasGlass: Bool { trackedViews.contains { $0.isRegularGlass } }
 
     private func applyGlassAppearance() {
-        for tracked in trackedViews where tracked.isGlass {
+        for tracked in trackedViews where tracked.isGlass || tracked.isRegularGlass {
             guard let v = tracked.view as? UIVisualEffectView else { continue }
             if #available(iOS 26.0, *) {
                 // The system glass adapts to what is behind it whatever the
@@ -61,6 +63,7 @@ final class MaterialView: UIView {
                     v.effect = glass
                 }
             } else {
+                guard tracked.isRegularGlass else { continue }
                 let dark: Bool
                 switch glassAppearance {
                 case .light: dark = false
@@ -122,13 +125,14 @@ final class MaterialView: UIView {
     }
 
     /// Classify a visual-effect style as iOS 26 glass / container glass.
-    private static func glassInfo(_ style: DSL.Model.Style.`Any`) -> (isGlass: Bool, isContainer: Bool) {
+    private static func glassInfo(_ style: DSL.Model.Style.`Any`) -> (isGlass: Bool, isContainer: Bool, isRegular: Bool) {
         guard let entity: VisualEffect.Entity = style.asConcreteEntity(),
-              entity.content.glass != nil else { return (false, false) }
+              let glass = entity.content.glass else { return (false, false, false) }
+        let regular = entity.content.blur == nil && glass == .normal
         if #available(iOS 26.0, *) {
-            return (true, entity.content.container == true)
+            return (true, entity.content.container == true, regular)
         }
-        return (false, false)
+        return (false, false, regular)
     }
 
     /// Corner of the current material, kept so a `fraction` radius can be
@@ -330,16 +334,16 @@ final class MaterialView: UIView {
                 if let newView {
                     newView.frame = bounds
                     insertSubview(newView, at: index)
-                    let g = entry.typeKey == .visualEffect ? Self.glassInfo(entry.style) : (isGlass: false, isContainer: false)
-                    trackedViews[index] = TrackedView(view: newView, typeKey: entry.typeKey, isGlass: g.isGlass, isContainerGlass: g.isContainer)
+                    let g = entry.typeKey == .visualEffect ? Self.glassInfo(entry.style) : (isGlass: false, isContainer: false, isRegular: false)
+                    trackedViews[index] = TrackedView(view: newView, typeKey: entry.typeKey, isGlass: g.isGlass, isContainerGlass: g.isContainer, isRegularGlass: g.isRegular)
                 }
             } else {
                 let newView = createUIView(typeKey: entry.typeKey, style: entry.style, cornerStyle: cornerStyle)
                 if let newView {
                     newView.frame = bounds
                     addSubview(newView)
-                    let g = entry.typeKey == .visualEffect ? Self.glassInfo(entry.style) : (isGlass: false, isContainer: false)
-                    trackedViews.append(TrackedView(view: newView, typeKey: entry.typeKey, isGlass: g.isGlass, isContainerGlass: g.isContainer))
+                    let g = entry.typeKey == .visualEffect ? Self.glassInfo(entry.style) : (isGlass: false, isContainer: false, isRegular: false)
+                    trackedViews.append(TrackedView(view: newView, typeKey: entry.typeKey, isGlass: g.isGlass, isContainerGlass: g.isContainer, isRegularGlass: g.isRegular))
                 }
             }
         }
