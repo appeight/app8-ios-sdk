@@ -2,9 +2,9 @@
 //  TopEdgeEffectTests.swift
 //  App8EngineTests
 //
-//  The top scroll-edge effect (iOS 26+): nothing at rest; it fades in over
-//  16pt once content reaches the bar's bottom edge. Over a hero (an
-//  edge-to-edge carousel at the top) only once the hero's bottom gets there.
+//  The top scroll-edge effect (iOS 26+) is UIKit's own UIScrollEdgeEffect:
+//  `navigationBar.topEdgeEffect` maps one to one to its style, `hidden` hides
+//  it, and App8 draws nothing of its own over or under the bar.
 //
 
 import XCTest
@@ -140,94 +140,66 @@ final class TopEdgeEffectTests: XCTestCase {
         for _ in 0..<4 { try await Task.sleep(nanoseconds: 100_000_000) }
     }
 
-    private typealias Rule = ScreenTopEdgeEffect
-    private typealias F = ScreenTopEdgeEffect.Frame
-    private let screen = CGSize(width: 402, height: 874)
-
-    // MARK: - Rule
-
-    func testHeroStartsWhenItsBottomReachesTheBar() {
-        let frames = [F(x: 0, y: 0, w: 402, h: 480), F(x: 16, y: 492, w: 370, h: 40)]
-        XCTAssertEqual(Rule.edgeEffectStart(frames, barBottom: 116, screen: screen), 364)
+    /// Scroll views of the screen, the nested horizontal carousel included.
+    private func scrollViews(_ vc: ScreenViewController) -> [UIScrollView] {
+        Self.views(vc.rootContainerView).compactMap { $0 as? UIScrollView }
     }
 
-    func testNoHeroStartsWhenFirstContentReachesTheBar() {
-        // Content right under the bar: at once.
-        XCTAssertEqual(Rule.edgeEffectStart([F(x: 16, y: 116, w: 370, h: 40)], barBottom: 116, screen: screen), 0)
-        // Content further down: once it gets to the bar.
-        XCTAssertEqual(Rule.edgeEffectStart([F(x: 16, y: 200, w: 370, h: 40), F(x: 16, y: 260, w: 370, h: 40)], barBottom: 116, screen: screen), 84)
-        // Content already under the bar (no hero): at once.
-        XCTAssertEqual(Rule.edgeEffectStart([F(x: 16, y: 20, w: 370, h: 40)], barBottom: 116, screen: screen), 0)
-        XCTAssertEqual(Rule.edgeEffectStart([], barBottom: 116, screen: screen), 0)
-    }
-
-    func testNotAHero() {
-        // Not full width, not from the top, not taller than the bar, or (nearly) the whole screen.
-        for f in [F(x: 16, y: 0, w: 370, h: 480), F(x: 0, y: 40, w: 402, h: 480),
-                  F(x: 0, y: 0, w: 402, h: 100), F(x: 0, y: 0, w: 402, h: 800)] {
-            XCTAssertEqual(Rule.heroScrollDistance([f], barBottom: 116, screen: screen), 0, "\(f)")
+    /// Views App8 added to the screen outside its content: none (no overlay,
+    /// tint or backdrop of its own between the content and the bar).
+    private func chromeOverlays(_ vc: ScreenViewController) -> [UIView] {
+        Self.views(vc.view).filter { v in
+            v !== vc.view && !v.isDescendant(of: vc.rootContainerView)
+                && (v is UIVisualEffectView || v.layer is CAGradientLayer
+                    || (v.backgroundColor.map { $0.cgColor.alpha > 0.01 } ?? false))
         }
     }
 
-    func testFadesInOverSixteenPoints() {
-        XCTAssertEqual(Rule.visibility(scrolled: 0, start: 0), 0)
-        XCTAssertEqual(Rule.visibility(scrolled: 8, start: 0), 0.5)
-        XCTAssertEqual(Rule.visibility(scrolled: 16, start: 0), 1)
-        XCTAssertEqual(Rule.visibility(scrolled: -40, start: 0), 0)
-        XCTAssertEqual(Rule.visibility(scrolled: 363, start: 364), 0)
-        XCTAssertEqual(Rule.visibility(scrolled: 372, start: 364), 0.5)
-        XCTAssertEqual(Rule.visibility(scrolled: 600, start: 364), 1)
-    }
-
-    // MARK: - Screens
-
-    private func alpha(_ vc: ScreenViewController) -> CGFloat { vc.topEdgeEffectOverlay?.alpha ?? -1 }
-
-    func testHeroScreen() async throws {
+    func testDefaultIsTheSystemEffect() async throws {
         guard #available(iOS 26.0, *) else { throw XCTSkip("iOS 26 edge effect") }
-        let window = try await Self.start(try Self.envelope(Self.heroScreen, id: "hero"))
-        defer { window.rootViewController = nil }
-        let vc = try Self.screen("hero", in: window)
-        let bar = try XCTUnwrap(vc.navigationController?.navigationBar)
-        let start = 480 - bar.convert(bar.bounds, to: vc.view).maxY
-        XCTAssertEqual(alpha(vc), 0, "at rest")
-        try await Self.scroll(vc, to: 200)
-        XCTAssertEqual(alpha(vc), 0, "hero still under the bar")
-        try await Self.scroll(vc, to: start + 8)
-        XCTAssertEqual(alpha(vc), 0.5, accuracy: 0.05, "half way into the ramp")
-        try await Self.scroll(vc, to: start + 40)
-        XCTAssertEqual(alpha(vc), 1, "hero gone")
-        for sv in Self.views(vc.view).compactMap({ $0 as? UIScrollView }) {
-            XCTAssertTrue(sv.topEdgeEffect.isHidden, "system effect shown on \(sv)")
+        for (json, id) in [(Self.listScreen, "list"), (Self.heroScreen, "hero")] {
+            let window = try await Self.start(try Self.envelope(json, id: id))
+            let vc = try Self.screen(id, in: window)
+            for distance: CGFloat in [0, 200, 700] {
+                try await Self.scroll(vc, to: distance)
+                for sv in scrollViews(vc) {
+                    XCTAssertFalse(sv.topEdgeEffect.isHidden, "\(id) @\(distance): \(sv)")
+                    XCTAssertEqual(sv.topEdgeEffect.style, .automatic, "\(id) @\(distance)")
+                }
+                XCTAssertEqual(chromeOverlays(vc), [], "\(id) @\(distance)")
+            }
+            window.rootViewController = nil
         }
     }
 
-    func testListScreen() async throws {
+    func testAuthoredStylesMapToTheSystemStyles() async throws {
         guard #available(iOS 26.0, *) else { throw XCTSkip("iOS 26 edge effect") }
-        let window = try await Self.start(try Self.envelope(Self.listScreen, id: "list"))
-        defer { window.rootViewController = nil }
-        let vc = try Self.screen("list", in: window)
-        XCTAssertEqual(alpha(vc), 0, "at rest")
-        try await Self.scroll(vc, to: 8)
-        XCTAssertEqual(alpha(vc), 0.5, accuracy: 0.05)
-        try await Self.scroll(vc, to: 200)
-        XCTAssertEqual(alpha(vc), 1)
-    }
-
-    func testHiddenAndHard() async throws {
-        guard #available(iOS 26.0, *) else { throw XCTSkip("iOS 26 edge effect") }
-        for (value, expected) in [("hidden", nil), ("hard", ScreenTopEdgeEffect.Style.hard)] as [(String, ScreenTopEdgeEffect.Style?)] {
+        let cases: [(String, UIScrollEdgeEffect.Style?)] = [("automatic", .automatic), ("soft", .soft), ("hard", .hard), ("hidden", nil)]
+        for (value, expected) in cases {
             let screenJSON = Self.listScreen.replacingOccurrences(
                 of: #""navigationBar": { "title": "List" }"#,
                 with: #""navigationBar": { "title": "List", "topEdgeEffect": "\#(value)" }"#)
             let window = try await Self.start(try Self.envelope(screenJSON, id: "list"))
             let vc = try Self.screen("list", in: window)
-            XCTAssertEqual(vc.topEdgeEffectOverlay?.style, expected, value)
-            for sv in Self.views(vc.view).compactMap({ $0 as? UIScrollView }) {
-                XCTAssertTrue(sv.topEdgeEffect.isHidden, value)
+            try await Self.scroll(vc, to: 200)
+            let page = try XCTUnwrap(ScreenViewController.firstVerticalScrollView(in: vc.rootContainerView))
+            if let expected {
+                XCTAssertFalse(page.topEdgeEffect.isHidden, value)
+                XCTAssertEqual(page.topEdgeEffect.style, expected, value)
+            } else {
+                for sv in scrollViews(vc) { XCTAssertTrue(sv.topEdgeEffect.isHidden, value) }
             }
+            XCTAssertEqual(chromeOverlays(vc), [], value)
             window.rootViewController = nil
         }
+    }
+
+    func testStyleMapping() {
+        guard #available(iOS 26.0, *) else { return }
+        XCTAssertEqual(ScreenViewController.systemTopEdgeStyle(.automatic), .automatic)
+        XCTAssertEqual(ScreenViewController.systemTopEdgeStyle(.soft), .soft)
+        XCTAssertEqual(ScreenViewController.systemTopEdgeStyle(.hard), .hard)
+        XCTAssertNil(ScreenViewController.systemTopEdgeStyle(.hidden))
     }
 }
 

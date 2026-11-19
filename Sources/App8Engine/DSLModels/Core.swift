@@ -201,7 +201,7 @@ extension DSL.Model {
         /// Bar button tint (back chevron, bar actions) as hex. Applied while
         /// this screen is on top; nil restores the system tint.
         let tintColor: String?
-        /// iOS 26 scroll-edge effect under the bar (the blur + tint over content
+        /// iOS 26 scroll-edge effect under the bar (UIKit's own, over content
         /// scrolling behind it): `automatic` (default), `soft`, `hard`, `hidden`.
         let topEdgeEffect: EdgeEffect?
 

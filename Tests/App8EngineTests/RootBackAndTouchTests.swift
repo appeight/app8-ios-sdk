@@ -187,21 +187,7 @@ final class RootBackAndTouchTests: XCTestCase {
         XCTAssertTrue(App8CollectionView.isRubberBanding(outer), "past the end")
     }
 
-    // MARK: - Top edge effect follows the content
-
-    func testTintFollowsTheContentUnderTheBar() {
-        let dark = UIColor(red: 0.05, green: 0.05, blue: 0.05, alpha: 1)
-        XCTAssertTrue(TopEdgeEffectView.isDark(dark))
-        XCTAssertFalse(TopEdgeEffectView.isDark(.white))
-        // Matching content: the screen's own background.
-        XCTAssertEqual(TopEdgeEffectView.tintBase(background: dark, contentDark: true), dark)
-        XCTAssertEqual(TopEdgeEffectView.tintBase(background: .white, contentDark: false), .white)
-        // A light section on a dark screen (and the other way round).
-        XCTAssertEqual(TopEdgeEffectView.tintBase(background: dark, contentDark: false), .white)
-        XCTAssertEqual(TopEdgeEffectView.tintBase(background: .white, contentDark: true), .black)
-        // Not sampled yet: the background.
-        XCTAssertEqual(TopEdgeEffectView.tintBase(background: dark, contentDark: nil), dark)
-    }
+    // MARK: - Backdrop sampling
 
     func testMeanLuminanceReadsThePixels() throws {
         func image(_ color: UIColor) throws -> CGImage {
@@ -213,42 +199,5 @@ final class RootBackAndTouchTests: XCTestCase {
         }
         XCTAssertEqual(try XCTUnwrap(BackdropLuminance.meanLuminance(try image(.white))), 1, accuracy: 0.02)
         XCTAssertEqual(try XCTUnwrap(BackdropLuminance.meanLuminance(try image(.black))), 0, accuracy: 0.02)
-    }
-
-    func testDarkScreenWithALightSection() async throws {
-        guard #available(iOS 26.0, *) else { throw XCTSkip("iOS 26 edge effect") }
-        // A dark screen (`material` fill) with a tall white section further down.
-        let screen = """
-        { "type": "screen", "id": "s", "content": {
-          "navigationBar": { "title": "T" },
-          "style": \(TopEdgeEffectTests.fill("#0C0D0D")),
-          "children": [
-            { "type": "scrollView", "id": "page", "content": {
-                "properties": { "direction": "vertical" },
-                "layout": { "constraints": [
-                  { "type": "top", "target": "superview" }, { "type": "bottom", "target": "superview" },
-                  { "type": "leading", "target": "superview" }, { "type": "trailing", "target": "superview" } ] },
-                "children": [
-                  { "type": "stackView", "id": "column", "content": {
-                      "properties": { "axis": "vertical" },
-                      "layout": { "constraints": [
-                        { "type": "top", "target": "superview" }, { "type": "bottom", "target": "superview" },
-                        { "type": "leading", "target": "superview" }, { "type": "trailing", "target": "superview" } ] },
-                      "children": [
-                        { "type": "view", "id": "darkPart", "content": { "style": \(TopEdgeEffectTests.fill("#111111")), "layout": { "height": 900 } } },
-                        { "type": "view", "id": "lightPart", "content": { "style": \(TopEdgeEffectTests.fill("#FFFFFF")), "layout": { "height": 1600 } } }
-                      ] } }
-                ] } }
-          ] } }
-        """
-        let window = try await Harness.start(try Harness.envelope(screen, id: "s"))
-        defer { window.rootViewController = nil }
-        let vc = try Harness.screen("s", in: window)
-        try await Harness.scroll(vc, to: 300)
-        let overlay = try XCTUnwrap(vc.topEdgeEffectOverlay)
-        XCTAssertEqual(overlay.contentDark, true, "over the dark part")
-        try await Harness.scroll(vc, to: 1400)
-        try await Task.sleep(nanoseconds: 300_000_000)
-        XCTAssertEqual(overlay.contentDark, false, "over the white part")
     }
 }
