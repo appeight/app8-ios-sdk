@@ -117,7 +117,13 @@ enum HiddenTransition {
             // size (the stack's hiding constraint is only 999.999), so this
             // pass is what moves it to zero; nothing visible changes.
             view.alpha = 0
-            UIView.performWithoutAnimation { root.layoutIfNeeded() }
+            UIView.performWithoutAnimation {
+                root.layoutIfNeeded()
+                // A multi-line label settles its wrap width over a few passes;
+                // settle it now, or the animated pass grows it from a
+                // one-line height and the text visibly resizes.
+                view.settleWrappingLabels()
+            }
         }
 
         let generation = record.generation
