@@ -119,8 +119,23 @@ class CImageView: App8BaseView<DSL.Model.Component.Image.C>, CViewProtocol {
         case .asset(let asset):
             guard lastLoadedImageKey != asset.name else { return }
             lastLoadedImageKey = asset.name
-            imageView.image = UIImage(named: asset.name)?
-                .withRenderingMode(viewModel.currentStyle?.renderingMode?.ui ?? .automatic)
+            // A local asset name resolves (image.md, Image source): 1. in the
+            // app's asset map, through the host data source (the bundle's
+            // assets), 2. as an image compiled into the host app, 3. nothing.
+            // The compiled image (if any) shows at once; the data source's
+            // replaces it when it has one.
+            let renderingMode = viewModel.currentStyle?.renderingMode?.ui ?? .automatic
+            let name = asset.name
+            imageView.image = UIImage(named: name)?.withRenderingMode(renderingMode)
+            let dataSource = viewModel.service.dataSource
+            Task { [weak self] in
+                guard let data = try? await dataSource.getAsset(assetId: nil, assetName: name),
+                      let decoded = await ImageLoader.decodeForDisplay(data: data) else { return }
+                await MainActor.run {
+                    guard let self, self.lastLoadedImageKey == name else { return }
+                    self.imageView.image = decoded.withRenderingMode(renderingMode)
+                }
+            }
 
         case .remoteAsset(let remoteAsset):
             let resolvedUrl: String?
@@ -160,7 +175,7 @@ class CImageView: App8BaseView<DSL.Model.Component.Image.C>, CViewProtocol {
             let assetId = remoteAsset.id
             Task { [weak self] in
                 if let imageData = try? await dataSource.getAsset(assetId: assetId, assetName: resolvedName),
-                   let decoded = await UIImage(data: imageData)?.byPreparingForDisplay() {
+                   let decoded = await ImageLoader.decodeForDisplay(data: imageData) {
                     await MainActor.run { self?.imageView.image = decoded }
                     return
                 }

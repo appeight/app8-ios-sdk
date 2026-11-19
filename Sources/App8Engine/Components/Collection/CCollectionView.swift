@@ -257,8 +257,10 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             collectionView.transform = CGAffineTransform(scaleX: 1, y: -1)
         }
 
-        let showIndicator = viewModel?.component.properties.layout?.showsScrollIndicator ?? true
         let isHorizontal = viewModel?.component.properties.layout?.type == .horizontal
+        // Horizontal collections (carousels, chip rows) show no indicator
+        // unless asked; vertical lists show one (collections.md).
+        let showIndicator = viewModel?.component.properties.layout?.showsScrollIndicator ?? !isHorizontal
         if isHorizontal {
             collectionView.showsHorizontalScrollIndicator = showIndicator
             collectionView.showsVerticalScrollIndicator = false
@@ -832,6 +834,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        applyOrthogonalScrollIndicators()
         if isSelfSizing {
             observeContentSizeIfNeeded()
         }
@@ -840,6 +843,30 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             applyPendingPage(animated: false)
         }
         recordRestingPageIfNeeded()
+    }
+
+    /// Horizontal sections scroll in scroll views UIKit embeds for orthogonal
+    /// sections, which show a horizontal indicator by default. A horizontal
+    /// collection, or a horizontal section of a mixed one, shows it only with
+    /// `showsScrollIndicator: true` (its own layout's, or the collection's).
+    private var orthogonalIndicatorsScheduled = false
+
+    private func applyOrthogonalScrollIndicators() {
+        let props = viewModel?.component.properties
+        for case let scroller as UIScrollView in collectionView.subviews where scroller !== collectionView {
+            var shows = props?.layout?.type == .horizontal ? (props?.layout?.showsScrollIndicator ?? false) : false
+            if let cell = scroller.subviews.lazy.compactMap({ $0 as? UICollectionViewCell }).first,
+               let section = collectionView.indexPath(for: cell)?.section,
+               let viewModel, section < viewModel.currentSections.count {
+                let key = viewModel.currentSections[section].key
+                if let sectionLayout = props?.sectionLayouts?[key] ?? props?.defaultSectionLayout,
+                   sectionLayout.type == .horizontal {
+                    shows = sectionLayout.showsScrollIndicator ?? false
+                }
+            }
+            if scroller.showsHorizontalScrollIndicator != shows { scroller.showsHorizontalScrollIndicator = shows }
+            if scroller.showsVerticalScrollIndicator { scroller.showsVerticalScrollIndicator = false }
+        }
     }
 
     /// Once the pager has pages and a width, the page it rests on is its own
@@ -1941,6 +1968,14 @@ extension CCollectionView: UICollectionViewDelegate {
     ) {
         // A `native` component in the cell may now be on screen.
         NativeVisibility.invalidate()
+        // A horizontal section's embedded scroller may be new (once per run loop).
+        if !orthogonalIndicatorsScheduled {
+            orthogonalIndicatorsScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                self?.orthogonalIndicatorsScheduled = false
+                self?.applyOrthogonalScrollIndicators()
+            }
+        }
     }
 
     func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {

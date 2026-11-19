@@ -24,10 +24,95 @@ final class MaterialView: UIView {
         /// Container glass — the owning view's content is hosted inside this
         /// effect view's `contentView`.
         var isContainerGlass: Bool = false
+        /// `glass: normal` on any iOS: adapts to its backdrop (clear glass does not).
+        var isRegularGlass: Bool = false
     }
 
     private var trackedLayers: [TrackedLayer] = []
     private var trackedViews: [TrackedView] = []
+
+    // MARK: - Adaptive glass (styles.md, glassAppearance)
+
+    /// How the material's glass looks: `auto` follows the content behind it
+    /// (iOS 26: the system glass does; earlier: a light or dark blur chosen from
+    /// the sampled backdrop), `light` / `dark` pin it.
+    var glassAppearance: DSL.Model.Style.GlassAppearance = .auto {
+        didSet { applyGlassAppearance() }
+    }
+    /// Below iOS 26: whether the backdrop last read as dark (nil: not sampled yet).
+    private var sampledDark: Bool?
+    private var sampleTimer: Timer?
+
+    private var hasGlass: Bool { trackedViews.contains { $0.isRegularGlass } }
+
+    private func applyGlassAppearance() {
+        for tracked in trackedViews where tracked.isGlass || tracked.isRegularGlass {
+            guard let v = tracked.view as? UIVisualEffectView else { continue }
+            if #available(iOS 26.0, *) {
+                // The system glass adapts to what is behind it whatever the
+                // interface style: a pinned one gets a light or dark tint.
+                v.overrideUserInterfaceStyle = glassAppearance.interfaceStyle
+                if glassAppearance != .auto || appliedPin != .auto {
+                    let glass = UIGlassEffect(style: .regular)
+                    glass.isInteractive = tracked.isContainerGlass
+                    switch glassAppearance {
+                    case .dark: glass.tintColor = UIColor(white: 0.08, alpha: 0.62)
+                    case .light: glass.tintColor = UIColor(white: 1, alpha: 0.7)
+                    case .auto: break
+                    }
+                    v.effect = glass
+                }
+            } else {
+                guard tracked.isRegularGlass else { continue }
+                let dark: Bool
+                switch glassAppearance {
+                case .light: dark = false
+                case .dark: dark = true
+                case .auto: dark = sampledDark ?? (traitCollection.userInterfaceStyle == .dark)
+                }
+                v.effect = UIBlurEffect(style: dark ? .systemUltraThinMaterialDark : .systemUltraThinMaterialLight)
+            }
+        }
+        appliedPin = glassAppearance
+        updateBackdropSampling()
+    }
+    /// The pin the glass views were last drawn with (to drop a tint when it goes back to auto).
+    private var appliedPin: DSL.Model.Style.GlassAppearance = .auto
+
+    private func updateBackdropSampling() {
+        var needed = false
+        if #unavailable(iOS 26.0) { needed = glassAppearance == .auto && window != nil && hasGlass }
+        if needed, sampleTimer == nil {
+            sampleTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.sampleBackdrop() }
+            }
+            sampleBackdrop()
+        } else if !needed {
+            sampleTimer?.invalidate()
+            sampleTimer = nil
+        }
+    }
+
+    private func sampleBackdrop() {
+        // The owning component (its glass and its content) is left out of the sample.
+        guard let l = BackdropLuminance.sample(behind: superview ?? self) else { return }
+        let next = BackdropLuminance.nextDark(current: sampledDark, luminance: l)
+        guard next != sampledDark else { return }
+        let first = sampledDark == nil
+        sampledDark = next
+        if first {
+            applyGlassAppearance()
+        } else {
+            UIView.transition(with: self, duration: 0.3, options: [.transitionCrossDissolve, .allowUserInteraction]) {
+                self.applyGlassAppearance()
+            }
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updateBackdropSampling()
+    }
 
     /// The container glass effect view, if the current material declares one.
     /// The owning component reparents its `contentView` into this view's
@@ -40,13 +125,14 @@ final class MaterialView: UIView {
     }
 
     /// Classify a visual-effect style as iOS 26 glass / container glass.
-    private static func glassInfo(_ style: DSL.Model.Style.`Any`) -> (isGlass: Bool, isContainer: Bool) {
+    private static func glassInfo(_ style: DSL.Model.Style.`Any`) -> (isGlass: Bool, isContainer: Bool, isRegular: Bool) {
         guard let entity: VisualEffect.Entity = style.asConcreteEntity(),
-              entity.content.glass != nil else { return (false, false) }
+              let glass = entity.content.glass else { return (false, false, false) }
+        let regular = entity.content.blur == nil && glass == .normal
         if #available(iOS 26.0, *) {
-            return (true, entity.content.container == true)
+            return (true, entity.content.container == true, regular)
         }
-        return (false, false)
+        return (false, false, regular)
     }
 
     /// Corner of the current material, kept so a `fraction` radius can be
@@ -248,16 +334,16 @@ final class MaterialView: UIView {
                 if let newView {
                     newView.frame = bounds
                     insertSubview(newView, at: index)
-                    let g = entry.typeKey == .visualEffect ? Self.glassInfo(entry.style) : (isGlass: false, isContainer: false)
-                    trackedViews[index] = TrackedView(view: newView, typeKey: entry.typeKey, isGlass: g.isGlass, isContainerGlass: g.isContainer)
+                    let g = entry.typeKey == .visualEffect ? Self.glassInfo(entry.style) : (isGlass: false, isContainer: false, isRegular: false)
+                    trackedViews[index] = TrackedView(view: newView, typeKey: entry.typeKey, isGlass: g.isGlass, isContainerGlass: g.isContainer, isRegularGlass: g.isRegular)
                 }
             } else {
                 let newView = createUIView(typeKey: entry.typeKey, style: entry.style, cornerStyle: cornerStyle)
                 if let newView {
                     newView.frame = bounds
                     addSubview(newView)
-                    let g = entry.typeKey == .visualEffect ? Self.glassInfo(entry.style) : (isGlass: false, isContainer: false)
-                    trackedViews.append(TrackedView(view: newView, typeKey: entry.typeKey, isGlass: g.isGlass, isContainerGlass: g.isContainer))
+                    let g = entry.typeKey == .visualEffect ? Self.glassInfo(entry.style) : (isGlass: false, isContainer: false, isRegular: false)
+                    trackedViews.append(TrackedView(view: newView, typeKey: entry.typeKey, isGlass: g.isGlass, isContainerGlass: g.isContainer, isRegularGlass: g.isRegular))
                 }
             }
         }

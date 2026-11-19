@@ -81,6 +81,8 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     private var wrapPhase: WrapPhase = .idle
     private var lastWrapContainerWidth: CGFloat = -1
     private var lastWrapNatural: CGFloat = -1
+    /// Re-measures scheduled because an ancestor had no width (see `syncWrapWidth`).
+    private var remeasureAfterUnsized = 0
 
     /// Keep `preferredMaxLayoutWidth` equal to the width our container is actually
     /// willing to give us, determined by MEASUREMENT rather than by inspecting the
@@ -155,6 +157,15 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
                 // Make sure the committing pass reaches us even when no
                 // ancestor frame changes (else the label stays unwrapped).
                 setNeedsLayout()
+                // A label only a little wider than its container (one line
+                // that needs two) keeps its frame, so no pass may come: finish
+                // the measurement after this layout cycle if none did.
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.wrapPhase == .measuring else { return }
+                    self.superview?.layoutIfNeeded()
+                    guard self.wrapPhase == .measuring else { return }
+                    self.syncWrapWidth()
+                }
                 return
             }
         }
@@ -172,6 +183,34 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         lastWrapContainerWidth = referenceWidth
         lastWrapNatural = natural
         setPreferredMaxWidth(target)
+        // Measured while an ancestor had no width yet (the first pass of a card
+        // whose width comes from its container): that ancestor's content
+        // showed only the insets around us, a bogus narrow boundary. Once
+        // this layout cycle is over the ancestors have their widths; measure
+        // again then (a few times at most).
+        if hasUnsizedAncestor(), remeasureAfterUnsized < 3 {
+            remeasureAfterUnsized += 1
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.hasUnsizedAncestor() || self.remeasureAfterUnsized < 3 else { return }
+                self.lastWrapNatural = -1
+                self.setNeedsLayout()
+                self.superview?.setNeedsLayout()
+            }
+        } else if !hasUnsizedAncestor() {
+            remeasureAfterUnsized = 0
+        }
+    }
+
+    /// Whether an ancestor up to and including the nearest scroll view has no
+    /// width yet (not laid out).
+    private func hasUnsizedAncestor() -> Bool {
+        var node: UIView? = label.superview
+        while let view = node {
+            if view.bounds.width <= 0.5 { return true }
+            if view is UIScrollView { return false }
+            node = view.superview
+        }
+        return false
     }
 
     /// The narrowest laid-out width this label is actually subject to: the minimum

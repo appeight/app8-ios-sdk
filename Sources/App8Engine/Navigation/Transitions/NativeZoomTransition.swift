@@ -119,7 +119,7 @@ enum NativeZoomTransition {
         }
 
         let sourceExpression = zoom.sourceKeyExpression
-        viewController.preferredTransition = .zoom(options: options) { [weak presentingScreen] _ in
+        viewController.preferredTransition = .zoom(options: options) { [weak presentingScreen] context in
             MainActor.assumeIsolated {
                 guard let presentingScreen else { return nil }
                 // Re-evaluated in the presenting screen's scope (dismissal can
@@ -129,7 +129,7 @@ enum NativeZoomTransition {
                 candidates.append(initialKey)
                 for key in candidates {
                     if let view = TransitionKeyLocator.view(forKey: key, in: presentingScreen.view) {
-                        return view
+                        return SourceProxy.source(for: view, in: presentingScreen.view, coordinator: context.zoomedViewController.transitionCoordinator)
                     }
                 }
                 return nil
@@ -246,7 +246,8 @@ enum NativeZoomTransition {
         case .none:
             return false
         case .down:
-            return velocity.y > 0 && abs(velocity.y) > abs(velocity.x)
+            guard velocity.y > 0 && abs(velocity.y) > abs(velocity.x) else { return false }
+            return !verticalScrollerClaims(location: location, velocityY: velocity.y, in: zoomedView)
         case .any:
             // `willBegin` is UIKit's own default: false while a scroll view under
             // the finger could use the drag. It is not trusted either way (it
@@ -280,11 +281,49 @@ enum NativeZoomTransition {
                     if !horizontal, velocity.y > 0, let zooming = scroll as? App8ZoomingScrollView, zooming.claimsPullDown {
                         return false
                     }
+                    // A vertical scroller scrolls with a vertical drag; only a
+                    // pull down at its top reaches the dismiss (as UIKit's zoom).
+                    if !horizontal, claimsVerticalPan(scroll, velocityY: velocity.y) { return false }
                 }
                 view = current.superview
             }
             return true
         }
+    }
+
+    /// Whether a vertical scroller under `location` keeps a vertical drag.
+    private static func verticalScrollerClaims(location: CGPoint, velocityY: CGFloat, in root: UIView?) -> Bool {
+        guard let root, let hit = root.hitTest(location, with: nil) else { return false }
+        var view: UIView? = hit
+        while let current = view, current !== root.superview {
+            if let scroll = current as? UIScrollView {
+                if velocityY > 0, let zooming = scroll as? App8ZoomingScrollView, zooming.claimsPullDown { return true }
+                if claimsVerticalPan(scroll, velocityY: velocityY) { return true }
+            }
+            view = current.superview
+        }
+        return false
+    }
+
+    /// Whether a vertical scroller keeps a vertical drag rather than leaving it
+    /// to the dismiss: always while it is moving (decelerating or bouncing
+    /// back from an edge), for an upward drag (it scrolls the content
+    /// on, or rubber-bands at the end), and for a downward drag while it is
+    /// scrolled down. Only a pull down on a scroller resting at its top
+    /// (contentOffset at or above the top inset) reaches the dismiss.
+    static func claimsVerticalPan(_ scroll: UIScrollView, velocityY: CGFloat) -> Bool {
+        guard scroll.isScrollEnabled else { return false }
+        let inset = scroll.adjustedContentInset
+        let minY = -inset.top
+        let maxY = scroll.contentSize.height + inset.bottom - scroll.bounds.height
+        guard maxY > minY + 1 else { return false }
+        // Not `isDragging`: the scroll view's own pan may already have begun
+        // with this very drag (at the top, the pull down must still dismiss).
+        if scroll.isDecelerating { return true }
+        let y = scroll.contentOffset.y
+        if y > maxY + 0.5 { return true }   // bouncing back from the end
+        if velocityY < 0 { return true }
+        return y > minY + 0.5
     }
 
     /// Whether a horizontal scroller keeps a horizontal pan rather than leaving
@@ -321,5 +360,51 @@ enum NativeZoomTransition {
         if velocityX > 0 { return scroll.contentOffset.x > minX + 0.5 }
         if velocityX < 0 { return scroll.contentOffset.x < maxX - 0.5 }
         return true
+    }
+}
+
+/// The view UIKit's zoom uses as its source. UIKit hides the source view for
+/// the whole transition (and an interactive dismissal): for a card in a grid
+/// that leaves the card's slot empty, as the system does. A source that fills
+/// (most of) the presenting screen, such as the photo of a full-screen pager
+/// page, would leave the screen black behind the shrinking screen; it stays
+/// visible instead, and UIKit gets a transparent stand-in at its frame (same
+/// corners) to measure and hide.
+@MainActor
+enum SourceProxy {
+    /// Area share of the presenting screen above which the source stays visible.
+    static let fillsScreen: CGFloat = 0.8
+
+    private static var proxies: [ObjectIdentifier: UIView] = [:]
+
+    static func source(for view: UIView, in screen: UIView, coordinator: UIViewControllerTransitionCoordinator?) -> UIView {
+        guard covers(view, screen), let host = view.superview else { return view }
+        let key = ObjectIdentifier(view)
+        proxies[key]?.removeFromSuperview()
+        let proxy = UIView(frame: view.frame)
+        proxy.isUserInteractionEnabled = false
+        proxy.backgroundColor = .clear
+        proxy.layer.cornerRadius = view.layer.cornerRadius
+        proxy.layer.cornerCurve = view.layer.cornerCurve
+        proxy.layer.maskedCorners = view.layer.maskedCorners
+        proxy.transform = view.transform
+        host.insertSubview(proxy, aboveSubview: view)
+        proxies[key] = proxy
+        coordinator?.animate(alongsideTransition: nil) { _ in
+            MainActor.assumeIsolated {
+                if proxies[key] === proxy { proxies[key] = nil }
+                proxy.removeFromSuperview()
+            }
+        }
+        return proxy
+    }
+
+    /// Whether `view`, on screen, covers at least `fillsScreen` of `screen`.
+    static func covers(_ view: UIView, _ screen: UIView) -> Bool {
+        let area = screen.bounds.width * screen.bounds.height
+        guard area > 0 else { return false }
+        let frame = view.convert(view.bounds, to: screen).intersection(screen.bounds)
+        guard !frame.isNull else { return false }
+        return frame.width * frame.height >= area * fillsScreen
     }
 }
