@@ -121,15 +121,21 @@ class CImageView: App8BaseView<DSL.Model.Component.Image.C>, CViewProtocol {
         let props = viewModel.component.properties
         switch props.model {
         case .asset(let asset):
-            guard lastLoadedImageKey != asset.name else { return }
-            lastLoadedImageKey = asset.name
+            // The name is an expression like any text (`{{item.image}}` in a
+            // collection cell): resolve it before looking the asset up.
+            let name = asset.name.contains("{{") ? viewModel.resolvePropertyToString(asset.name) : asset.name
+            guard lastLoadedImageKey != name else { return }
+            lastLoadedImageKey = name
+            guard !name.isEmpty else {
+                imageView.image = nil
+                return
+            }
             // A local asset name resolves (image.md, Image source): 1. in the
             // app's asset map, through the host data source (the bundle's
             // assets), 2. as an image compiled into the host app, 3. nothing.
             // The compiled image (if any) shows at once; the data source's
             // replaces it when it has one.
             let renderingMode = viewModel.currentStyle?.renderingMode?.ui ?? .automatic
-            let name = asset.name
             imageView.image = UIImage(named: name)?.withRenderingMode(renderingMode)
             let dataSource = viewModel.service.dataSource
             Task { [weak self] in

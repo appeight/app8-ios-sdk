@@ -46,6 +46,24 @@ enum BackdropLuminance {
         return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
     }
 
+    /// Mean relative luminance of an image's pixels (drawn into RGBA first,
+    /// whatever its own pixel format).
+    static func meanLuminance(_ image: CGImage) -> CGFloat? {
+        let w = image.width, h = image.height
+        guard w > 0, h > 0,
+              let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let data = ctx.data else { return nil }
+        let pixels = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
+        var sum: CGFloat = 0
+        for i in 0..<(w * h) {
+            sum += luminance(r: CGFloat(pixels[i * 4]) / 255, g: CGFloat(pixels[i * 4 + 1]) / 255, b: CGFloat(pixels[i * 4 + 2]) / 255)
+        }
+        return sum / CGFloat(w * h)
+    }
+
     /// Mean luminance of the window's content behind `view` (the view itself
     /// left out), or nil off screen. Renders the window's model layer tree
     /// into an 8 × 4 bitmap; hiding the view for that render commits nothing.
@@ -53,8 +71,9 @@ enum BackdropLuminance {
         guard let window = view.window, view.bounds.width > 0, view.bounds.height > 0 else { return nil }
         let rect = view.convert(view.bounds, to: window)
         let w = 8, h = 4
-        var pixels = [UInt8](repeating: 0, count: w * h * 4)
-        guard let ctx = CGContext(data: &pixels, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+        // The context owns its buffer: `&array` would only be valid during the
+        // initializer, and the render would land elsewhere (always black).
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
                                   space: CGColorSpaceCreateDeviceRGB(),
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         ctx.translateBy(x: 0, y: CGFloat(h))
@@ -64,6 +83,8 @@ enum BackdropLuminance {
         view.isHidden = true
         window.layer.render(in: ctx)
         view.isHidden = wasHidden
+        guard let data = ctx.data else { return nil }
+        let pixels = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
         var sum: CGFloat = 0
         for i in 0..<(w * h) {
             sum += luminance(r: CGFloat(pixels[i * 4]) / 255, g: CGFloat(pixels[i * 4 + 1]) / 255, b: CGFloat(pixels[i * 4 + 2]) / 255)
