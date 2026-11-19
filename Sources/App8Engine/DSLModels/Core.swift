@@ -286,16 +286,33 @@ extension DSL.Model {
 
     /// Action for navigation bar buttons
     struct BarAction: Decodable, Sendable {
-        /// Button label text
+        /// Button label text (expression allowed, follows its variables)
         let label: String?
-        /// SF Symbol icon name
+        /// SF Symbol icon name (expression allowed, follows its variables)
         let icon: String?
-        /// Action to execute when tapped
-        let action: Action
+        /// The first action to execute when tapped
+        var action: Action { actions[0] }
+        /// Actions to execute when tapped, in order: `action` is a single action or an array
+        let actions: [Action]
         /// Button style: "bold", "destructive"
         let style: String?
-        /// Tint color override (hex string) — overrides style
+        /// Tint color override (hex string or color expression) — overrides style
         let color: String?
+
+        enum CodingKeys: String, CodingKey { case label, icon, action, style, color }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            label = try c.decodeIfPresent(String.self, forKey: .label)
+            icon = try c.decodeIfPresent(String.self, forKey: .icon)
+            style = try c.decodeIfPresent(String.self, forKey: .style)
+            color = try c.decodeIfPresent(String.self, forKey: .color)
+            if let list = try? c.decode([Action].self, forKey: .action), !list.isEmpty {
+                actions = list
+            } else {
+                actions = [try c.decode(Action.self, forKey: .action)]
+            }
+        }
     }
 }
 
