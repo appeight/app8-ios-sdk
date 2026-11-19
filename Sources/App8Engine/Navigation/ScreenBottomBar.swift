@@ -264,8 +264,19 @@ final class ScreenBottomBar {
     /// The screen's bottom safe area without any additional inset: home
     /// indicator / gesture bar, plus a shown tab bar.
     var baseBottomInset: CGFloat {
-        guard let view = host?.viewIfLoaded else { return 0 }
-        return max(0, view.safeAreaInsets.bottom - (host?.additionalSafeAreaInsets.bottom ?? 0))
+        guard let host, let view = host.viewIfLoaded else { return 0 }
+        let own = max(0, view.safeAreaInsets.bottom - host.additionalSafeAreaInsets.bottom)
+        // In a sheet moving to an edge-attached detent, UIKit moves the sheet
+        // frame by frame; the screen's last layout pass comes before the sheet
+        // rests and UIKit hands the screen its safe area only on its next
+        // pass, while the sheet's container already has the home-indicator
+        // inset (seen: screen 19 pt, container 34 pt). Nothing else lays the
+        // screen out, so the bar stayed in the display's corner until a tap.
+        guard host.sheetPresentationController != nil,
+              let container = host.navigationController?.view ?? host.parent?.view,
+              container !== view else { return own }
+        let gap = max(0, container.bounds.maxY - view.convert(view.bounds, to: container).maxY)
+        return max(own, container.safeAreaInsets.bottom - gap)
     }
 
     /// Height of a shown tab bar over the screen's bottom (the bar's
