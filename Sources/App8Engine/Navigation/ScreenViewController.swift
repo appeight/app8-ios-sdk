@@ -55,9 +55,6 @@ final class ScreenViewController: BaseViewController {
 
     /// `bottomBar` content pinned to the bottom of the screen (see `ScreenBottomBar`).
     var bottomBar: ScreenBottomBar?
-    /// Draws the top scroll-edge effect (iOS 26+), see `applyTopEdgeEffect`.
-    private var topEdge: ScreenTopEdgeEffect?
-
     /// Active streaming session (non-nil for screens with streaming: true).
     private var streamingSession: StreamingSession?
 
@@ -637,83 +634,28 @@ final class ScreenViewController: BaseViewController {
         return nil
     }
 
-    /// `navigationBar.topEdgeEffect` on iOS 26+. UIKit's own scroll-edge
-    /// effect is hidden on every scroll view of the screen (it showed over a
-    /// hero photo at rest); `ScreenTopEdgeEffect` draws `soft` / `hard` instead,
-    /// fading in once content reaches the bar's bottom edge. Re-run on layout
-    /// so scroll views the DSL renders later (collections, async content) are
-    /// picked up too.
+    /// `navigationBar.topEdgeEffect` on iOS 26+: the system's own
+    /// `UIScrollEdgeEffect` on the screen's scroll views, with the authored
+    /// style as is (`automatic`, `soft`, `hard`) or hidden. App8 adds no
+    /// overlay, tint or background of its own; the blur under the bar is the
+    /// one any UIKit app gets. Re-run on layout so scroll views the DSL renders
+    /// later (collections, async content) are picked up too. Before iOS 26 the
+    /// bar keeps the system's default appearance.
     private func applyTopEdgeEffect() {
-        let effect = Self.resolvedTopEdgeEffect(navigationBarConfig?.topEdgeEffect)
-        guard effect != .automatic else { return }
         guard #available(iOS 26.0, *) else { return }
-        func hideSystemEffect(in view: UIView) {
-            if let scrollView = view as? UIScrollView, !scrollView.topEdgeEffect.isHidden {
-                scrollView.topEdgeEffect.isHidden = true
+        let effect = navigationBarConfig?.topEdgeEffect ?? .automatic
+        let hidden = effect == .hidden
+        let style = Self.systemTopEdgeStyle(effect)
+        func apply(in view: UIView) {
+            if let scrollView = view as? UIScrollView {
+                let edge = scrollView.topEdgeEffect
+                if edge.isHidden != hidden { edge.isHidden = hidden }
+                if let style, edge.style != style { edge.style = style }
             }
-            view.subviews.forEach(hideSystemEffect(in:))
+            view.subviews.forEach(apply(in:))
         }
-        hideSystemEffect(in: rootContainerView)
-        guard effect != .hidden else {
-            topEdge?.detach()
-            topEdge = nil
-            return
-        }
-        let edge = topEdge ?? ScreenTopEdgeEffect()
-        topEdge = edge
-        edge.attach(
-            host: view,
-            above: rootContainerView,
-            scrollView: Self.firstVerticalScrollView(in: rootContainerView),
-            style: effect == .hard ? .hard : .soft,
-            barBottom: topBarBottom,
-            background: screenBackgroundColor
-        )
+        apply(in: rootContainerView)
     }
-
-    /// The bottom of the navigation bar (the status bar's without one), in
-    /// this view's coordinates.
-    private var topBarBottom: CGFloat {
-        if hasNavigationBar, let bar = navigationController?.navigationBar, !bar.isHidden, bar.window != nil {
-            return max(0, bar.convert(bar.bounds, to: view).maxY)
-        }
-        return view.window?.windowScene?.statusBarManager?.statusBarFrame.height ?? view.safeAreaInsets.top
-    }
-
-    /// The color the soft effect fades into: the screen's background, which
-    /// is its `material`'s solid fill when it has one (a dark screen in a
-    /// light app fades into its own dark, not into white).
-    private var screenBackgroundColor: UIColor {
-        for color in [rootContainerView.backgroundColor, view.backgroundColor] {
-            if let color, color.cgColor.alpha > 0.01 { return color }
-        }
-        if let fill = Self.screenMaterialFill(in: rootContainerView, size: view.bounds.size) { return fill }
-        return .systemBackground
-    }
-
-    /// The solid fill of a full-screen material at the top of the screen's
-    /// view tree (the screen component's own `style.material`).
-    static func screenMaterialFill(in container: UIView, size: CGSize) -> UIColor? {
-        var level: [UIView] = [container]
-        for _ in 0..<3 {
-            var next: [UIView] = []
-            for view in level {
-                for sub in view.subviews {
-                    if let material = sub as? MaterialView,
-                       material.bounds.width >= size.width - 1, material.bounds.height >= size.height * 0.9,
-                       let color = material.solidFillColor {
-                        return color
-                    }
-                    if !(sub is UIScrollView) { next.append(sub) }
-                }
-            }
-            level = next
-        }
-        return nil
-    }
-
-    /// The custom top scroll-edge effect, for tests.
-    var topEdgeEffectOverlay: TopEdgeEffectView? { topEdge?.overlay.superview == nil ? nil : topEdge?.overlay }
 
     private func searchBarPlacement(_ placement: DSL.Model.SearchBar.Placement) -> UINavigationItem.SearchBarPlacement {
         switch placement {

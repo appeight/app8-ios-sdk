@@ -12,14 +12,15 @@ extension ScreenViewController {
         return false
     }
 
-    /// `navigationBar.topEdgeEffect`, with `automatic` (and no value) as
-    /// `soft` on iOS 26+: the progressive blur of the system bars. Left to
-    /// UIKit, a DSL page resolves to the hard style, a solid band with a
-    /// sharp lower edge across the top of the screen.
-    static func resolvedTopEdgeEffect(_ authored: DSL.Model.NavigationBar.EdgeEffect?) -> DSL.Model.NavigationBar.EdgeEffect {
-        let effect = authored ?? .automatic
-        guard effect == .automatic else { return effect }
-        if #available(iOS 26.0, *) { return .soft }
-        return .automatic
+    /// The system style for `navigationBar.topEdgeEffect`, one to one; nil
+    /// for `hidden`, which hides the effect instead.
+    @available(iOS 26.0, *)
+    static func systemTopEdgeStyle(_ effect: DSL.Model.NavigationBar.EdgeEffect) -> UIScrollEdgeEffect.Style? {
+        switch effect {
+        case .automatic: return .automatic
+        case .soft: return .soft
+        case .hard: return .hard
+        case .hidden: return nil
+        }
     }
 }
