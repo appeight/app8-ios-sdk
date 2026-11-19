@@ -89,7 +89,20 @@ extension DSL.Model.Component {
 
             init(from decoder: any Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
-                self.kind = try container.decode(Kind.self, forKey: .type)
+                // `type` may be omitted (as on web): a `name` or `id` is an asset
+                // the host resolves, a bare `url` is loaded, a `time` is that
+                // frame, nothing else is the first frame.
+                if let kind = try container.decodeIfPresent(Kind.self, forKey: .type) {
+                    self.kind = kind
+                } else if container.contains(.name) || container.contains(.id) {
+                    self.kind = .remoteAsset
+                } else if container.contains(.url) {
+                    self.kind = .url
+                } else if container.contains(.time) {
+                    self.kind = .frameAtTime
+                } else {
+                    self.kind = .firstFrame
+                }
                 self.name = try container.decodeIfPresent(String.self, forKey: .name)
                 self.id = try container.decodeIfPresent(String.self, forKey: .id)
                 self.url = try container.decodeIfPresent(String.self, forKey: .url)
@@ -189,12 +202,22 @@ extension DSL.Model.Component.Video {
 
         enum CodingKeys: String, CodingKey {
             case type, autoplay, loop, muted, audioMix
+            case name, id, url
             case endBehavior, poster, endPoster, startDelay, startTime, rate, marks
         }
 
         init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.type = try container.decode(`Type`.self, forKey: .type)
+            // `type` may be omitted (as on web and for `image`): a `name`, `id`
+            // or `url` is an asset the host resolves (data source by id/name,
+            // then the URL), so a bundle's `assets.json` names play everywhere.
+            if let type = try container.decodeIfPresent(`Type`.self, forKey: .type) {
+                self.type = type
+            } else if container.contains(.name) || container.contains(.id) || container.contains(.url) {
+                self.type = .remoteAsset
+            } else {
+                self.type = .none
+            }
             switch self.type {
             case .localAsset:
                 self.model = .asset(try LocalAsset(from: decoder))
