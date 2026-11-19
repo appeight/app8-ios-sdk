@@ -148,6 +148,22 @@ extension DSL.Model {
         var onGranted: ActionList?
         var onDenied: ActionList?
 
+        // capturePhoto (photos.md); `source` above is camera | library | cameraOrLibrary
+        /// capturePhoto: `back` (default) or `front`.
+        var camera: String?
+        /// capturePhoto: width ÷ height center crop (number or expression).
+        var aspectRatio: AnyCodableValue?
+        /// capturePhoto: longest side in pixels (default 1600, 256…4096).
+        var maxDimension: AnyCodableValue?
+        /// capturePhoto: JPEG quality (default 0.8, 0.1…1).
+        var quality: AnyCodableValue?
+        /// capturePhoto: chooser texts `camera`, `library`, `cancel` (expressions).
+        var labels: [String: String]?
+        /// capturePhoto: runs when the user closes the camera, library or chooser.
+        var onCancel: ActionList?
+        /// deletePhoto: the `photo://` reference (expression).
+        var ref: String?
+
         enum URLPresentation: String, Decodable, Sendable {
             case external   // Default: hand off to system (UIApplication.shared.open) — Safari app, Phone, Mail, etc.
             case sheet      // In-app SFSafariViewController presented as a sheet
@@ -232,6 +248,10 @@ extension DSL.Model {
 
             // Notification permission: system prompt once, then onGranted / onDenied
             case requestNotificationPermission
+
+            // Photos (photos.md): camera / library into a stored `photo://` reference
+            case capturePhoto
+            case deletePhoto
 
             /// Variable-store actions run by `VariableActionHandler`.
             var isVariableAction: Bool {

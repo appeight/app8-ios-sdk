@@ -13,6 +13,10 @@ class CImageView: App8BaseView<DSL.Model.Component.Image.C>, CViewProtocol {
     override var intrinsicContentSource: UIView? { imageView }
 
     private var variablesCancellable: AnyCancellable?
+    /// Observer that clears a shown stored photo when it is deleted (photos.md).
+    private var photoDeletion: NSObjectProtocol? {
+        didSet { oldValue.map(NotificationCenter.default.removeObserver) }
+    }
 
     override func setup() {
         super.setup()
@@ -162,6 +166,12 @@ class CImageView: App8BaseView<DSL.Model.Component.Image.C>, CViewProtocol {
             guard lastLoadedImageKey != imageKey else { return }
             lastLoadedImageKey = imageKey
 
+            // A `photo://` reference (photos.md): the stored photo, or nothing.
+            if let id = PhotoStore.photoId(resolvedUrl) ?? PhotoStore.photoId(resolvedName) {
+                showStoredPhoto(id: id, appId: viewModel.service.context.persistenceId, key: imageKey)
+                return
+            }
+
             // An image already decoded in memory (the card this screen was
             // opened from, say) shows at once; the load below still runs and
             // lets the data source replace it.
@@ -189,6 +199,26 @@ class CImageView: App8BaseView<DSL.Model.Component.Image.C>, CViewProtocol {
             guard lastLoadedImageKey != nil else { return }
             lastLoadedImageKey = nil
             imageView.image = nil
+        }
+    }
+
+    /// Shows a stored photo; clears it when the photo is deleted.
+    private func showStoredPhoto(id: String, appId: String, key: String?) {
+        imageView.image = PhotoStore.cachedImage(appId: appId, id: id)
+        photoDeletion = NotificationCenter.default.addObserver(forName: .app8PhotoDeleted, object: nil, queue: .main) { [weak self] note in
+            let info = note.userInfo
+            guard info == nil || (info?["appId"] as? String == appId && info?["id"] as? String == id) else { return }
+            MainActor.assumeIsolated {
+                guard let self, self.lastLoadedImageKey == key else { return }
+                self.imageView.image = nil
+                self.lastLoadedImageKey = nil
+            }
+        }
+        guard imageView.image == nil else { return }
+        Task { [weak self] in
+            let image = await PhotoStore.loadImage(appId: appId, id: id)
+            guard let self, self.lastLoadedImageKey == key else { return }
+            self.imageView.image = image
         }
     }
 
