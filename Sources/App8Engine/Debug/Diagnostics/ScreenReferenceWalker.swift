@@ -122,26 +122,18 @@ struct ScreenReferenceWalker {
         }
 
         if let navBar = extractNavigationBar(from: content) {
-            if let leftAction = navBar.leftAction {
-                refs.append(contentsOf: extractScreenRefs(
-                    from: leftAction.action,
-                    screenId: screenId,
-                    path: "\(componentPath).navigationBar.leftAction"
-                ))
-            }
-            if let rightAction = navBar.rightAction {
-                refs.append(contentsOf: extractScreenRefs(
-                    from: rightAction.action,
-                    screenId: screenId,
-                    path: "\(componentPath).navigationBar.rightAction"
-                ))
-            }
-            for (i, barAction) in (navBar.rightActions ?? []).enumerated() {
-                refs.append(contentsOf: extractScreenRefs(
-                    from: barAction.action,
-                    screenId: screenId,
-                    path: "\(componentPath).navigationBar.rightActions[\(i)]"
-                ))
+            var barActions: [(String, DSL.Model.BarAction)] = []
+            if let leftAction = navBar.leftAction { barActions.append(("leftAction", leftAction)) }
+            if let rightAction = navBar.rightAction { barActions.append(("rightAction", rightAction)) }
+            for (i, barAction) in (navBar.rightActions ?? []).enumerated() { barActions.append(("rightActions[\(i)]", barAction)) }
+            for (name, barAction) in barActions {
+                for (j, action) in barAction.actions.enumerated() {
+                    refs.append(contentsOf: extractScreenRefs(
+                        from: action,
+                        screenId: screenId,
+                        path: "\(componentPath).navigationBar.\(name)" + (barAction.actions.count > 1 ? "[\(j)]" : "")
+                    ))
+                }
             }
             let searchTriggers: [(String, [DSL.Model.Action]?)] = [
                 ("onTap", navBar.search?.onTap), ("onSubmit", navBar.search?.onSubmit), ("onCancel", navBar.search?.onCancel)

@@ -200,10 +200,11 @@ struct AssetReferenceCollector {
             }
         }
         if let navBar = extractNavigationBar(from: content) {
-            if let left = navBar.leftAction { enqueueScreenRefs(from: left.action, visitedScreens: &visitedScreens, queue: &queue) }
-            if let right = navBar.rightAction { enqueueScreenRefs(from: right.action, visitedScreens: &visitedScreens, queue: &queue) }
-            for barAction in navBar.rightActions ?? [] {
-                enqueueScreenRefs(from: barAction.action, visitedScreens: &visitedScreens, queue: &queue)
+            let barActions = [navBar.leftAction, navBar.rightAction].compactMap { $0 } + (navBar.rightActions ?? [])
+            for barAction in barActions {
+                for action in barAction.actions {
+                    enqueueScreenRefs(from: action, visitedScreens: &visitedScreens, queue: &queue)
+                }
             }
         }
     }

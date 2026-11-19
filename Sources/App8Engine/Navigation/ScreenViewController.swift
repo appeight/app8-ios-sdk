@@ -33,6 +33,8 @@ final class ScreenViewController: BaseViewController {
     private var searchTextSubscription: AnyCancellable?
     /// Re-resolves an expression `navigationBar.title` when its variables change.
     private var titleSubscription: AnyCancellable?
+    /// Re-resolve expression bar items (`icon`, `label`, `color`) when their variables change.
+    private var barItemSubscriptions: [AnyCancellable] = []
     /// `search.autoFocus` runs on the first appearance only: coming back from a
     /// result keeps the results without raising the keyboard again.
     private var didAutoFocusSearch = false
@@ -696,13 +698,14 @@ final class ScreenViewController: BaseViewController {
         // Create a native UIBarButtonItem so iOS 26 Liquid Glass automatically applies
         // the shared circular glass background. Wrapping in a customView would bypass it.
         let uiAction = UIAction { [weak self] _ in
-            self?.executeBarAction(barAction.action)
+            for action in barAction.actions { self?.executeBarAction(action) }
         }
+        // `icon` and `label` are expressions like the title (navigation.md, Bar Action).
         let item: UIBarButtonItem
-        if let iconName = barAction.icon {
-            item = UIBarButtonItem(image: UIImage(systemName: iconName), primaryAction: uiAction)
-        } else if let label = barAction.label {
-            item = UIBarButtonItem(title: label, primaryAction: uiAction)
+        if let rawIcon = barAction.icon {
+            item = UIBarButtonItem(image: barSymbol(resolveString(rawIcon)), primaryAction: uiAction)
+        } else if let rawLabel = barAction.label {
+            item = UIBarButtonItem(title: resolveString(rawLabel), primaryAction: uiAction)
         } else {
             item = UIBarButtonItem(primaryAction: uiAction)
         }
@@ -722,16 +725,60 @@ final class ScreenViewController: BaseViewController {
             break
         }
 
-        if let color = resolveColor(barAction.color) {
-            item.tintColor = color
-        } else if barAction.style != "destructive", let barTint = resolveColor(navigationBarConfig?.tintColor) {
-            // iOS 26 draws bar buttons in the shared glass group with the label
-            // color and ignores `navigationBar.tintColor`; the bar's `tintColor`
-            // tints its buttons (navigation.md), so set it on the item.
-            item.tintColor = barTint
-        }
-
+        if let tint = barItemTint(barAction) { item.tintColor = tint }
+        observeBarItem(item, barAction)
         return item
+    }
+
+    /// The item's tint: `color`, else the bar's `tintColor` (not on a destructive item).
+    private func barItemTint(_ barAction: DSL.Model.BarAction) -> UIColor? {
+        if let color = resolveColor(barAction.color) { return color }
+        guard barAction.style != "destructive" else { return nil }
+        // iOS 26 draws bar buttons in the shared glass group with the label
+        // color and ignores `navigationBar.tintColor`; the bar's `tintColor`
+        // tints its buttons (navigation.md), so set it on the item.
+        return resolveColor(navigationBarConfig?.tintColor)
+    }
+
+    private func barSymbol(_ name: String) -> UIImage? {
+        name.isEmpty ? nil : UIImage(systemName: name)
+    }
+
+    /// An item whose `icon`, `label` or `color` is an expression follows its variables:
+    /// the same `UIBarButtonItem` gets the new image, title or tint in place (no new
+    /// item, so the glass group does not rebuild or flicker). A symbol swap uses the
+    /// system replace transition, like an SF Symbol toggled in a button.
+    private func observeBarItem(_ item: UIBarButtonItem, _ barAction: DSL.Model.BarAction) {
+        let raws = [barAction.icon, barAction.label, barAction.color, navigationBarConfig?.tintColor]
+        guard let store = titleViewVariableStore, raws.contains(where: { $0?.contains("{{") == true }) else { return }
+        let names = ExpressionDependencies.names(in: raws)
+        var icon = barAction.icon.map(resolveString)
+        var label = item.title
+        barItemSubscriptions.append(store.anyVariableChanged
+            .filter { names?.contains($0) ?? true }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak item] _ in
+                guard let self, let item else { return }
+                if let rawIcon = barAction.icon {
+                    let name = self.resolveString(rawIcon)
+                    if name != icon {
+                        icon = name
+                        if let image = self.barSymbol(name) {
+                            item.setSymbolImage(image, contentTransition: .replace)
+                        } else {
+                            item.image = nil
+                        }
+                    }
+                } else if let rawLabel = barAction.label {
+                    let text = self.resolveString(rawLabel)
+                    if text != label {
+                        label = text
+                        item.title = text
+                    }
+                }
+                let tint = self.barItemTint(barAction) ?? (barAction.style == "destructive" ? .systemRed : nil)
+                if item.tintColor != tint { item.tintColor = tint }
+            })
     }
 
     @objc private func customBackTapped() {
