@@ -161,9 +161,11 @@ class CVideoView: App8BaseView<DSL.Model.Component.Video.C>, CViewProtocol {
             guard lastLoadedKey != asset.name else { return }
             lastLoadedKey = asset.name
             guard let url = VideoAssetLocator.url(forResource: asset.name) else {
-                viewModel.service.context.logger.error("Video asset '\(asset.name)' not found in bundle (looked for extensions: \(VideoAssetLocator.supportedExtensions.joined(separator: ", "))). Add it to the app bundle, or run App8 diagnostics [VID001] to catch this at validation time.")
-                hidePoster()
-                teardownPlayer()
+                // Not compiled into the app: the host's asset map (a stored
+                // bundle's assets.json) may have it, as for `image` localAssets.
+                // Logs and renders empty when the data source has nothing either.
+                lastLoadedKey = nil
+                loadRemoteVideo(DSL.Model.Asset(id: nil, name: asset.name, url: nil), viewModel: viewModel)
                 return
             }
             buildPlayer(url: url)
@@ -187,10 +189,16 @@ class CVideoView: App8BaseView<DSL.Model.Component.Video.C>, CViewProtocol {
         _ remoteAsset: DSL.Model.Asset,
         viewModel: CVideoViewModel
     ) {
-        let resolvedName: String? = remoteAsset.name.map { viewModel.resolvePropertyToString($0) }
-        let resolvedUrl: String? = remoteAsset.url
+        var resolvedName: String? = remoteAsset.name.map { viewModel.resolvePropertyToString($0) }
+        var resolvedUrl: String? = remoteAsset.url
             .map { viewModel.resolvePropertyToString($0) }
             .flatMap { $0.isEmpty ? nil : $0 }
+        // A `url` that is not an absolute URL names an asset (as for `image`):
+        // it goes to the data source by name.
+        if let relative = resolvedUrl, URL(string: relative)?.scheme == nil {
+            resolvedName = resolvedName ?? relative
+            resolvedUrl = nil
+        }
         // Effective URL: explicit `url`, or `name` if it's itself a URL.
         let effectiveUrl = resolvedUrl
             ?? (resolvedName.flatMap { $0.hasPrefix("http://") || $0.hasPrefix("https://") ? $0 : nil })
@@ -498,7 +506,11 @@ class CVideoView: App8BaseView<DSL.Model.Component.Video.C>, CViewProtocol {
     private func resolvePosterImage(_ source: DSL.Model.Component.Video.PosterSource, videoURL: URL?) async -> UIImage? {
         switch source.kind {
         case .localAsset:
-            return source.name.flatMap { UIImage(named: $0) }
+            if let image = source.name.flatMap({ UIImage(named: $0) }) { return image }
+            // Not in the app: the host's asset map, as for `image` localAssets.
+            guard let viewModel, let name = source.name,
+                  let data = try? await viewModel.service.dataSource.getAsset(assetId: nil, assetName: name) else { return nil }
+            return await ImageLoader.decodeForDisplay(data: data)
 
         case .remoteAsset, .url:
             guard let viewModel else { return nil }

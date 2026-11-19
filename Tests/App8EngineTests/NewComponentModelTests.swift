@@ -368,6 +368,51 @@ func videoDecodesAudioMix() throws {
 }
 
 @Test
+func videoWithoutTypeIsAnAssetName() throws {
+    // Web plays a video by its assets.json name alone; iOS used to fail the decode.
+    let json = componentJSON(type: "video", properties: """
+    { "name": "launch-loop", "poster": { "name": "launch-poster" } }
+    """)
+    let content = try decodeComponent(json, as: DSL.Model.Component.Video.C.self)
+    guard case .remoteAsset(let asset) = content.properties.model else {
+        Issue.record("Expected .remoteAsset model")
+        return
+    }
+    #expect(asset.name == "launch-loop")
+    #expect(content.properties.poster?.kind == .remoteAsset)
+    #expect(content.properties.poster?.name == "launch-poster")
+    #expect(content.properties.poster?.remoteAsset?.name == "launch-poster")
+}
+
+@Test
+func videoWithoutTypeUsesUrl() throws {
+    let json = componentJSON(type: "video", properties: """
+    { "url": "https://example.com/a.mp4", "poster": { "url": "https://example.com/a.jpg" }, "endPoster": { "time": 2 } }
+    """)
+    let content = try decodeComponent(json, as: DSL.Model.Component.Video.C.self)
+    guard case .remoteAsset(let asset) = content.properties.model else {
+        Issue.record("Expected .remoteAsset model")
+        return
+    }
+    #expect(asset.url == "https://example.com/a.mp4")
+    #expect(content.properties.poster?.kind == .url)
+    #expect(content.properties.endPoster?.kind == .frameAtTime)
+}
+
+@Test
+func videoWithoutTypeOrSourceIsNone() throws {
+    let json = componentJSON(type: "video", properties: """
+    { "autoplay": true, "poster": {} }
+    """)
+    let content = try decodeComponent(json, as: DSL.Model.Component.Video.C.self)
+    guard case .none = content.properties.model else {
+        Issue.record("Expected .none model")
+        return
+    }
+    #expect(content.properties.poster?.kind == .firstFrame)
+}
+
+@Test
 func videoDecodesNoneType() throws {
     let json = componentJSON(type: "video", properties: """
     { "type": "none" }
