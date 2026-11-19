@@ -225,6 +225,17 @@ final class MaterialView: UIView {
         trackedLayers.append(TrackedLayer(layer: fillLayer, typeKey: .fill))
     }
 
+    /// The first opaque solid fill (not a gradient), as drawn: what a
+    /// screen's `material` paints behind its content.
+    var solidFillColor: UIColor? {
+        for tracked in trackedLayers where tracked.typeKey == .fill {
+            guard let layer = tracked.layer, !(layer is CAGradientLayer),
+                  let color = layer.backgroundColor, color.alpha > 0.01 else { continue }
+            return UIColor(cgColor: color)
+        }
+        return nil
+    }
+
     func update(material: DSL.Model.Style.Material) {
         let cornerStyle = Self.cornerStyle(inMaterial: material)
         cornerStyleForLayout = cornerStyle?.content

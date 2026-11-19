@@ -52,6 +52,42 @@ final class ScreenTopEdgeEffect {
         min(1, max(0, (scrolled - start) / ramp))
     }
 
+    /// Mean relative luminance of the scroll view's content in `rect` (its
+    /// own coordinates), composited over `background`: 8 × 4 px rendered
+    /// from the model layer tree, the scroll view only (no bars, no effect).
+    static func luminance(of scrollView: UIScrollView, in rect: CGRect, over background: UIColor) -> CGFloat? {
+        guard rect.width > 0, rect.height > 0, scrollView.window != nil else { return nil }
+        let w = 8, h = 4
+        let sx = CGFloat(w) / rect.width, sy = CGFloat(h) / rect.height
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.preferredRange = .standard
+        let image = UIGraphicsImageRenderer(size: CGSize(width: w, height: h), format: format).image { context in
+            background.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            // What is on screen: the scroll view's visible bounds, placed so
+            // that `rect` (its own coordinates) fills the bitmap. In an app,
+            // `layer.render(in:)` came back empty for this tree on iOS 26;
+            // without a render server (tests) the snapshot fails and the
+            // model layer tree is drawn instead.
+            let b = scrollView.bounds
+            let target = CGRect(x: (b.minX - rect.minX) * sx, y: (b.minY - rect.minY) * sy,
+                                width: b.width * sx, height: b.height * sy)
+            if !scrollView.drawHierarchy(in: target, afterScreenUpdates: false) {
+                let ctx = context.cgContext
+                ctx.scaleBy(x: sx, y: sy)
+                ctx.translateBy(x: -rect.minX, y: -rect.minY)
+                scrollView.layer.render(in: ctx)
+            }
+        }
+        return image.cgImage.flatMap(BackdropLuminance.meanLuminance)
+    }
+
+    /// The colour behind the scroll view: the overlay's configured background.
+    private static func screenBackground(_ host: UIView) -> UIColor? {
+        host.subviews.compactMap { $0 as? TopEdgeEffectView }.first?.backgroundForSampling
+    }
+
     // MARK: - Instance
 
     let overlay = TopEdgeEffectView()
@@ -122,6 +158,51 @@ final class ScreenTopEdgeEffect {
         }
         let alpha = Self.visibility(scrolled: scrolled(sv), start: start)
         if overlay.alpha != alpha { overlay.alpha = alpha }
+        sampleContentIfNeeded(scrolled: scrolled(sv))
+    }
+
+    /// Scroll position and time of the last content sample (nil: sample again).
+    private var sampledAt: CGFloat?
+    private var sampledTime: CFTimeInterval = 0
+    private var trailingSample: DispatchWorkItem?
+    /// Points of scrolling between two samples of the content under the bar.
+    static let sampleStep: CGFloat = 12
+    /// Seconds between two samples, at most (a snapshot costs a few ms).
+    static let sampleInterval: CFTimeInterval = 0.1
+    /// A last sample this long after the scroll view stops moving.
+    static let settleDelay: TimeInterval = 0.15
+
+    /// Like the system effect, the blur and tint follow the content under the
+    /// bar: dark over a dark section, light over a light one, whatever the
+    /// app's appearance. Sampled (8 × 4 px, with hysteresis) while the effect
+    /// shows, every `sampleStep` points and `sampleInterval` seconds of
+    /// scrolling, and once more when scrolling settles: a snapshot shows the
+    /// last frame on screen, so a jump (a scroll-to action) is judged again.
+    private func sampleContentIfNeeded(scrolled: CGFloat) {
+        guard overlay.alpha > 0, overlay.window != nil else { sampledAt = nil; return }
+        trailingSample?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let sv = self.scrollView else { return }
+            self.trailingSample = nil
+            self.sampleContent(scrolled: self.scrolled(sv))
+        }
+        trailingSample = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleDelay, execute: work)
+        if let last = sampledAt {
+            if abs(scrolled - last) < Self.sampleStep { return }
+            if CACurrentMediaTime() - sampledTime < Self.sampleInterval { return }
+        }
+        sampleContent(scrolled: scrolled)
+    }
+
+    private func sampleContent(scrolled: CGFloat) {
+        guard overlay.alpha > 0, overlay.window != nil, let sv = scrollView, let host else { return }
+        sampledAt = scrolled
+        sampledTime = CACurrentMediaTime()
+        let rect = overlay.convert(overlay.bounds, to: sv)
+        let behind = Self.screenBackground(host) ?? .systemBackground
+        guard let luminance = Self.luminance(of: sv, in: rect, over: behind) else { return }
+        overlay.setContentDark(BackdropLuminance.nextDark(current: overlay.contentDark, luminance: luminance))
     }
 
     /// Frames (in `target` coordinates) of the App8 components inside the
@@ -144,7 +225,8 @@ final class ScreenTopEdgeEffect {
 }
 
 /// The drawn effect: soft = a blur and a fade of the screen's background
-/// that end below the bar; hard = a near-opaque band with a hairline.
+/// that end below the bar; hard = a near-opaque band with a hairline. Both
+/// follow the content under the bar, dark or light (`setContentDark`).
 @MainActor
 final class TopEdgeEffectView: UIView {
     private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .regular))
@@ -153,6 +235,8 @@ final class TopEdgeEffectView: UIView {
     private let hairline = UIView()
     private(set) var style: ScreenTopEdgeEffect.Style = .soft
     private var background: UIColor = .systemBackground
+    /// The screen's background, which shows where the content is transparent.
+    var backgroundForSampling: UIColor { background.resolvedColor(with: traitCollection) }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -180,8 +264,34 @@ final class TopEdgeEffectView: UIView {
         applyColors()
     }
 
+    /// The content under the bar is dark (sampled); nil before the first sample.
+    private(set) var contentDark: Bool?
+
+    func setContentDark(_ dark: Bool) {
+        guard dark != contentDark else { return }
+        contentDark = dark
+        applyColors()
+    }
+
+    /// Light or dark from a colour's relative luminance.
+    static func isDark(_ color: UIColor) -> Bool {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard color.getRed(&r, green: &g, blue: &b, alpha: &a) else { return false }
+        return BackdropLuminance.luminance(r: r, g: g, b: b) < (BackdropLuminance.darkBelow + BackdropLuminance.lightAbove) / 2
+    }
+
+    /// The colour the effect fades into: the screen's background when it
+    /// matches the content under the bar (dark or light), else black or white.
+    static func tintBase(background: UIColor, contentDark: Bool?) -> UIColor {
+        guard let contentDark, contentDark != isDark(background) else { return background }
+        return contentDark ? .black : .white
+    }
+
     private func applyColors() {
-        let base = background.resolvedColor(with: traitCollection)
+        let base = Self.tintBase(background: background.resolvedColor(with: traitCollection), contentDark: contentDark)
+        let dark = contentDark ?? Self.isDark(base)
+        let appearance: UIUserInterfaceStyle = dark ? .dark : .light
+        if blur.overrideUserInterfaceStyle != appearance { blur.overrideUserInterfaceStyle = appearance }
         switch style {
         case .soft:
             tint.gradient.colors = [base.withAlphaComponent(0.8), base.withAlphaComponent(0.55), base.withAlphaComponent(0)].map(\.cgColor)
@@ -189,7 +299,7 @@ final class TopEdgeEffectView: UIView {
         case .hard:
             tint.gradient.colors = [base.withAlphaComponent(0.92), base.withAlphaComponent(0.92)].map(\.cgColor)
             tint.gradient.locations = [0, 1]
-            hairline.backgroundColor = traitCollection.userInterfaceStyle == .dark
+            hairline.backgroundColor = dark
                 ? UIColor(white: 1, alpha: 0.15) : UIColor(white: 0, alpha: 0.12)
         }
     }

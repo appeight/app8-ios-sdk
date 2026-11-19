@@ -157,6 +157,7 @@ final class ScreenViewController: BaseViewController {
         enableLargeTitlesIfNeeded()
         super.viewWillAppear(animated)
         attachLeftTitleViewIfNeeded()
+        updateCustomBackItem()
         installSearchFillIfNeeded()
         applySearchFillTopGap()
         navigationController?.navigationBar.tintColor = resolveColor(navigationBarConfig?.tintColor)
@@ -355,7 +356,8 @@ final class ScreenViewController: BaseViewController {
             cfg.imagePadding = 4
             let btn = UIButton(configuration: cfg)
             btn.addTarget(self, action: #selector(customBackTapped), for: .touchUpInside)
-            navigationItem.leftBarButtonItem = UIBarButtonItem(customView: btn)
+            customBackItem = UIBarButtonItem(customView: btn)
+            updateCustomBackItem()
         }
 
         // Left action (skipped when titleView is left-aligned — it already occupies leftBarButtonItem).
@@ -678,12 +680,36 @@ final class ScreenViewController: BaseViewController {
         return view.window?.windowScene?.statusBarManager?.statusBarFrame.height ?? view.safeAreaInsets.top
     }
 
-    /// The color the soft effect fades into: the screen's background.
+    /// The color the soft effect fades into: the screen's background, which
+    /// is its `material`'s solid fill when it has one (a dark screen in a
+    /// light app fades into its own dark, not into white).
     private var screenBackgroundColor: UIColor {
         for color in [rootContainerView.backgroundColor, view.backgroundColor] {
             if let color, color.cgColor.alpha > 0.01 { return color }
         }
+        if let fill = Self.screenMaterialFill(in: rootContainerView, size: view.bounds.size) { return fill }
         return .systemBackground
+    }
+
+    /// The solid fill of a full-screen material at the top of the screen's
+    /// view tree (the screen component's own `style.material`).
+    static func screenMaterialFill(in container: UIView, size: CGSize) -> UIColor? {
+        var level: [UIView] = [container]
+        for _ in 0..<3 {
+            var next: [UIView] = []
+            for view in level {
+                for sub in view.subviews {
+                    if let material = sub as? MaterialView,
+                       material.bounds.width >= size.width - 1, material.bounds.height >= size.height * 0.9,
+                       let color = material.solidFillColor {
+                        return color
+                    }
+                    if !(sub is UIScrollView) { next.append(sub) }
+                }
+            }
+            level = next
+        }
+        return nil
     }
 
     /// The custom top scroll-edge effect, for tests.
@@ -809,6 +835,31 @@ final class ScreenViewController: BaseViewController {
                 let tint = self.barItemTint(barAction) ?? (barAction.style == "destructive" ? .systemRed : nil)
                 if item.tintColor != tint { item.tintColor = tint }
             })
+    }
+
+    /// `backLabel`'s back button, shown only where there is something to go
+    /// back to: never on the root of a stack (a tab's first screen, a flow's
+    /// start screen, a modal's first screen).
+    private var customBackItem: UIBarButtonItem?
+
+    private func updateCustomBackItem() {
+        guard let item = customBackItem else { return }
+        let show = canGoBack
+        if show, navigationItem.leftBarButtonItem == nil {
+            navigationItem.leftBarButtonItem = item
+        } else if !show, navigationItem.leftBarButtonItem === item {
+            navigationItem.leftBarButtonItem = nil
+        }
+    }
+
+    /// True when this screen (or the container it sits in, such as a tab
+    /// bar screen) is above the first screen of its navigation stack.
+    var canGoBack: Bool {
+        guard let nav = navigationController else { return false }
+        var vc: UIViewController? = self
+        while let current = vc, current.parent !== nav { vc = current.parent }
+        guard let entry = vc, let index = nav.viewControllers.firstIndex(of: entry) else { return false }
+        return index > 0
     }
 
     @objc private func customBackTapped() {

@@ -1947,6 +1947,14 @@ extension CCollectionView: UICollectionViewDataSource {
 
 extension CCollectionView: UICollectionViewDelegate {
 
+    func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath) -> Bool {
+        !((collectionView as? App8CollectionView)?.touchStoppedMovingAncestor ?? false)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath) -> Bool {
+        !((collectionView as? App8CollectionView)?.touchStoppedMovingAncestor ?? false)
+    }
+
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         viewModel?.handleSelection(at: indexPath)
     }
@@ -2067,6 +2075,47 @@ extension CCollectionView: NestedScrollStateRestorable {
 /// mostly vertical drag, so an enclosing gesture (zoom dismiss) can take it.
 final class App8CollectionView: UICollectionView {
     var refusesVerticalPans = false
+
+    // MARK: Touches that stop a moving parent
+
+    /// The current touch began while an enclosing scroll view was still
+    /// moving (decelerating, or bouncing back from a pull). That touch stops
+    /// the parent, like any touch on a moving scroll view, and must not also
+    /// select an item: a pull on a screen, released and touched again while
+    /// it bounced back, opened the item under the finger.
+    private(set) var touchStoppedMovingAncestor = false
+    private var lastTouchTimestamp: TimeInterval = -1
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        // Hit-testing runs at touch-down, before the parent's pan stops it;
+        // the cell's own touchesBegan may come later (delaysContentTouches).
+        if hit != nil, let event, event.type == .touches, event.timestamp != lastTouchTimestamp {
+            lastTouchTimestamp = event.timestamp
+            touchStoppedMovingAncestor = Self.hasMovingAncestor(self)
+        }
+        return hit
+    }
+
+    /// An enclosing scroll view that is decelerating or out of its bounds
+    /// (rubber-banding after a pull).
+    static func hasMovingAncestor(_ view: UIView) -> Bool {
+        var current = view.superview
+        while let v = current {
+            if let sv = v as? UIScrollView, sv.isDecelerating || isRubberBanding(sv) { return true }
+            current = v.superview
+        }
+        return false
+    }
+
+    static func isRubberBanding(_ sv: UIScrollView) -> Bool {
+        let inset = sv.adjustedContentInset
+        let minY = -inset.top, minX = -inset.left
+        let maxY = max(minY, sv.contentSize.height + inset.bottom - sv.bounds.height)
+        let maxX = max(minX, sv.contentSize.width + inset.right - sv.bounds.width)
+        let o = sv.contentOffset
+        return o.y < minY - 1 || o.y > maxY + 1 || o.x < minX - 1 || o.x > maxX + 1
+    }
 
     /// A vertical list that should stay at its top rest position when its
     /// adjusted inset changes while nobody scrolled it: a tab's screen is laid

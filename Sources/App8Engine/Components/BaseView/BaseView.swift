@@ -47,6 +47,34 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
         set { objc_setAssociatedObject(self, &_styleRegKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
     }
     
+    // MARK: - Hit-testing children that overflow
+
+    /// A child laid out outside its parent's bounds still draws (no clipping)
+    /// and takes taps on the web and Android; UIKit's hit-testing stops at the
+    /// parent's bounds, so it was visible but dead (e.g. options under a
+    /// container whose height was left to its content and resolved to 0).
+    /// Outside its bounds, an unclipped component looks into its children.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if let hit = super.hitTest(point, with: event) { return hit }
+        guard self.point(inside: point, with: event) == false,
+              isUserInteractionEnabled, !isHidden, alpha > 0.01, !clipsToBounds, !layer.masksToBounds else { return nil }
+        return Self.overflowHit(in: self, at: point, with: event)
+    }
+
+    /// The deepest child of `view` (outside `view`'s bounds) under `point`,
+    /// through unclipped plain containers; a component child does its own.
+    static func overflowHit(in view: UIView, at point: CGPoint, with event: UIEvent?) -> UIView? {
+        for sub in view.subviews.reversed() where !sub.isHidden && sub.alpha > 0.01 && sub.isUserInteractionEnabled {
+            let local = sub.convert(point, from: view)
+            if let hit = sub.hitTest(local, with: event) { return hit }
+            if !(sub is App8BaseViewProtocol), !(sub is UIScrollView), !sub.clipsToBounds, !sub.layer.masksToBounds,
+               let hit = overflowHit(in: sub, at: local, with: event) {
+                return hit
+            }
+        }
+        return nil
+    }
+
     // MARK: - Constraint cache
 
     /// Constraints installed by the App8 layout engine; only these are ever removed.
