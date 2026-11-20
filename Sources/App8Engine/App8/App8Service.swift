@@ -401,6 +401,13 @@ extension App8Service: ComponentRenderer, ComponentService {
     @discardableResult
     func renderComponent(_ component: DSL.Model.Component.`Any`, superview: UIView, parentPath: String? = nil, parentVariableStore: VariableStoreProtocol? = nil, reuseViewModel: ComponentViewModelAbstract? = nil) -> RenderResult {
         let result = renderComponentImpl(component, superview: superview, parentPath: parentPath, parentVariableStore: parentVariableStore, reuseViewModel: reuseViewModel)
+        // Callers pin the returned view to `superview` (cells, headers, stacks).
+        // Error results (unknown type, a pointer without a template, nesting
+        // too deep) are built detached; pinning a view with no common ancestor
+        // throws in UIKit, so every result goes into `superview`.
+        if result.view.superview == nil {
+            superview.addSubview(result.view)
+        }
         // Apply universal, expression-reactive props (interaction + accessibility)
         // once here — after `renderComponentImpl` ran the component's own
         // `configure()`, so an explicit `interaction.enabled` wins over the

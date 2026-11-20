@@ -327,7 +327,7 @@ final class CMapViewModel: CBaseViewModel<MapContent> {
     private func buildPolyline() {
         guard let polylineValue = component.properties.polyline else { return }
 
-        let coords = resolvePolylineCoordinates(polylineValue)
+        let coords = resolvePolylineCoordinates(polylineValue).filter { CLLocationCoordinate2DIsValid($0) }
 
         guard coords.count >= 2 else {
             polylineCalculationTask?.cancel()
