@@ -109,7 +109,9 @@ struct PersistedVariableTests {
     @Test func persistenceIdFallsBack() throws {
         let app = try JSONDecoder().decode(DSL.Model.App.self, from: Data(#"{ "title": "My App", "bundleId": "com.example.app" }"#.utf8))
         #expect(app.persistenceId == "com.example.app")
-        let bare = try JSONDecoder().decode(DSL.Model.App.self, from: Data(#"{ "title": "My App" }"#.utf8))
+        let titled = try JSONDecoder().decode(DSL.Model.App.self, from: Data(#"{ "title": "My App" }"#.utf8))
+        #expect(titled.persistenceId == "My App")
+        let bare = try JSONDecoder().decode(DSL.Model.App.self, from: Data(#"{ "title": "  " }"#.utf8))
         #expect(bare.persistenceId == (Bundle.main.bundleIdentifier ?? "default"))
         let withId = try JSONDecoder().decode(DSL.Model.App.self, from: Data(#"{ "id": "my-app", "bundleId": "com.example.app" }"#.utf8))
         #expect(withId.persistenceId == "my-app")

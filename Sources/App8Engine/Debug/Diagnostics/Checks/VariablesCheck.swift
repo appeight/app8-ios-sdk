@@ -19,11 +19,7 @@ enum VariablesCheck {
         for screenId in screenIds.sorted() {
             guard let data = try? await dataSource.getScreen(screenId: screenId) else { continue }
 
-            var processedData = data
-            if let resolver = templateResolver {
-                let preprocessor = TemplatePreprocessor(resolver: resolver)
-                processedData = preprocessor.preprocess(data) ?? data
-            }
+            let processedData = (try? TemplatePreprocessor.prepareScreen(data, resolver: templateResolver)) ?? data
 
             guard let extraction = try? decoder.decode(VariablesExtractor.self, from: processedData) else { continue }
             guard let variables = extraction.content?.variables else { continue }

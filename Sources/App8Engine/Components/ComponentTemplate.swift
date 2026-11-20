@@ -22,6 +22,17 @@ extension DSL.Model.Component {
         }
 
         public init(from decoder: Decoder) throws {
+            // Per-node platform overrides (platforms.md) are applied when the
+            // template loads, like the Android engine: only a template that
+            // uses them pays for the re-decode.
+            let raw = try JSONValue(from: decoder)
+            let resolved = try PlatformOverrides.resolveDocument(raw)
+            if resolved != raw {
+                let nested = JSONDecoder()
+                nested.userInfo = decoder.userInfo
+                self = try nested.decode(Self.self, from: PlatformOverrides.encode(resolved))
+                return
+            }
             let container = try decoder.container(keyedBy: CodingKeys.self)
             id = try container.decode(String.self, forKey: .id)
             templateId = try container.decodeIfPresent(String.self, forKey: .templateId)

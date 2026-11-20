@@ -70,10 +70,7 @@ struct ScreenReferenceWalker {
         do {
             var data = try await dataSource.getScreen(screenId: screenId)
 
-            if let resolver = templateResolver {
-                let preprocessor = TemplatePreprocessor(resolver: resolver)
-                data = preprocessor.preprocess(data) ?? data
-            }
+            data = (try? TemplatePreprocessor.prepareScreen(data, resolver: templateResolver)) ?? data
 
             let component = try decoder.decode(DSL.Model.Component.`Any`.self, from: data)
             return walkComponent(component, screenId: screenId, path: "")

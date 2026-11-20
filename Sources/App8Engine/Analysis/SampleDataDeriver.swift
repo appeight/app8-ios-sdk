@@ -57,13 +57,7 @@ struct SampleDataDeriver {
             return nil
         }
 
-        let processedData: Data
-        if let resolver = templateResolver {
-            let preprocessor = TemplatePreprocessor(resolver: resolver)
-            processedData = preprocessor.preprocess(screenData) ?? screenData
-        } else {
-            processedData = screenData
-        }
+        let processedData = (try? TemplatePreprocessor.prepareScreen(screenData, resolver: templateResolver)) ?? screenData
 
         guard let json = try? JSONSerialization.jsonObject(with: processedData) as? [String: Any] else {
             return nil

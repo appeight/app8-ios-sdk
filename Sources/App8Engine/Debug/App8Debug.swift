@@ -139,8 +139,7 @@ extension App8 {
             let templateResolver = try await fetchAndResolveTemplates()
 
             // Merge templates into JSON before decoding
-            let preprocessor = TemplatePreprocessor(resolver: templateResolver)
-            let processedData = preprocessor.preprocess(componentData) ?? componentData
+            let processedData = try TemplatePreprocessor.prepareScreen(componentData, resolver: templateResolver)
 
             var component: DSL.Model.Component.`Any`
             do {
