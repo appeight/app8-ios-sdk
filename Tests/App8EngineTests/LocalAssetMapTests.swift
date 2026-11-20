@@ -13,14 +13,18 @@ import UIKit
 
 private final class AssetMapDataSource: App8DataSource, @unchecked Sendable {
     let files: [String: Data]
-    private(set) var asked: [String] = []
+    private let lock = NSLock()
+    private var _asked: [String] = []
+    /// Names looked up so far. `getAsset` runs off the main actor, so reads
+    /// and writes go through the lock.
+    var asked: [String] { lock.withLock { _asked } }
     init(files: [String: Data]) { self.files = files }
     func getApp() async throws -> Data { Data() }
     func getStyles() async throws -> [Data] { [] }
     func getComponents() async throws -> [Data] { [] }
     func getComponent(componentId: String) async throws -> Data { Data() }
     func getAsset(assetId: String?, assetName: String?) async throws -> Data? {
-        if let assetName { asked.append(assetName) }
+        if let assetName { lock.withLock { _asked.append(assetName) } }
         return assetName.flatMap { files[$0] }
     }
     func getScreen(screenId: String) async throws -> Data { Data() }
@@ -47,7 +51,12 @@ final class LocalAssetMapTests: XCTestCase {
             "layout": { "top": 40, "leading": 0, "width": 100, "height": 20 } } }
         ] } }
         """#)
-        for _ in 0..<20 where imageViews(in: harness.superview).first(where: { $0.image != nil }) == nil {
+        // Both lookups run asynchronously and in no fixed order: wait until
+        // both are recorded and the mapped image is set, not a fixed time.
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline,
+              !(source.asked.contains("stripe") && source.asked.contains("not-anywhere")
+                && imageViews(in: harness.superview).contains(where: { $0.image != nil })) {
             harness.drain(0.05)
         }
         let views = imageViews(in: harness.superview)
