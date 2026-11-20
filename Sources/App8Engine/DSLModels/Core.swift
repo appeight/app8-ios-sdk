@@ -163,9 +163,52 @@ extension DSL.Model {
         var badgeTextColor: String? = nil
         /// `style.glassAppearance`: the tab bar's glass, adaptive by default.
         var style: TabBarStyle? = nil
+        /// `barStyle` (tab-bar-screen.md, Bar style): a text bar or a
+        /// component template instead of the system items. Nil: system bar.
+        var barStyle: BarStyle? = nil
 
         struct TabBarStyle: Decodable, Sendable {
             var glassAppearance: DSL.Model.Style.GlassAppearance?
+        }
+
+        /// tab-bar-screen.md "Bar style". `text` / `selectedText` stay raw JSON:
+        /// they are handed to the label components the bar renders, where the
+        /// engine resolves them like any label style (style ids included).
+        struct BarStyle: Decodable, Sendable {
+            enum Variant: String, Decodable, Sendable { case system, text }
+            enum Selection: String, Decodable, Sendable { case capsule, underline, box, opacity }
+
+            var variant: Variant = .system
+            /// `glass` (default), `solid`, or the id of a fill / material style.
+            var background: String = "glass"
+            var selection: Selection = .capsule
+            var text: AnyCodableValue?
+            var selectedText: AnyCodableValue?
+            var unselectedOpacity: Double = 0.5
+            var indicatorColor: String?
+            var height: Double?
+            /// A component template that draws the whole bar.
+            var component: String?
+
+            /// True when the engine draws the bar instead of the system items.
+            var isCustom: Bool { component != nil || variant == .text }
+
+            enum CodingKeys: String, CodingKey {
+                case variant, background, selection, text, selectedText, unselectedOpacity, indicatorColor, height, component
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                variant = (try? c.decodeIfPresent(Variant.self, forKey: .variant)) ?? .system
+                background = (try? c.decodeIfPresent(String.self, forKey: .background)) ?? "glass"
+                selection = (try? c.decodeIfPresent(Selection.self, forKey: .selection)) ?? .capsule
+                text = try c.decodeIfPresent(AnyCodableValue.self, forKey: .text)
+                selectedText = try c.decodeIfPresent(AnyCodableValue.self, forKey: .selectedText)
+                unselectedOpacity = min(1, max(0, (try? c.decodeIfPresent(Double.self, forKey: .unselectedOpacity)) ?? 0.5))
+                indicatorColor = try c.decodeIfPresent(String.self, forKey: .indicatorColor)
+                height = try? c.decodeIfPresent(Double.self, forKey: .height)
+                component = try c.decodeIfPresent(String.self, forKey: .component)
+            }
         }
     }
 

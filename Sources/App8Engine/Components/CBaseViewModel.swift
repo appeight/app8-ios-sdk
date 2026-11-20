@@ -1089,7 +1089,9 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
             NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
 
         case .selectTab:
-            let request = NavigationRequest(type: .selectTab(index: action.tabIndex, id: action.tabId))
+            // `tabId` may be an expression (`{{item.id}}` in a tab bar template).
+            let tabId = action.tabId.map { $0.contains("{{") ? resolvePropertyToString($0) : $0 }
+            let request = NavigationRequest(type: .selectTab(index: action.tabIndex, id: tabId))
             NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
 
         case .focus:
