@@ -17,6 +17,20 @@ public struct App8 {
         return A8(dataSource: dataSource)
     }
 
+    /// Draw a component that fails to build (an unknown type, a template that
+    /// does not exist, nesting past the depth limit) as a red box, so authors
+    /// see it. Off: it renders nothing and only logs a warning, as apps should.
+    /// Default: on in DEBUG builds, off in release builds. Preview and
+    /// authoring hosts may turn it on (the web renderer's `showErrors`).
+    @MainActor
+    public static var showErrors: Bool = {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }()
+
     /// Removes the `persist: true` variables and the stored photos (photos.md) of every app on this device
     /// (Android `App8.clearPersistedData(context)`). Hosts call it when their
     /// signed-in user changes so the next user's apps start from their initial

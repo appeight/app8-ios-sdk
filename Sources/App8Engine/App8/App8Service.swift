@@ -968,10 +968,20 @@ extension App8Service: ComponentRenderer, ComponentService {
         return vc
     }
     
+    /// A component that failed to build: a red box when `App8.showErrors` is
+    /// on (debug builds, preview and authoring hosts), otherwise an empty
+    /// hidden view, so apps render nothing for it (docs/index.md, "Unknown and
+    /// mistyped values"). Either way one warning is logged.
     @MainActor
     func renderErrorView() -> UIView {
         let view = UIView()
-        view.backgroundColor = .red
+        if App8.showErrors {
+            view.backgroundColor = .red
+            context.logger.warning("component.build.failed: drawn as the error view")
+        } else {
+            view.isHidden = true
+            context.logger.warning("component.build.failed: rendered nothing")
+        }
         return view
     }
 

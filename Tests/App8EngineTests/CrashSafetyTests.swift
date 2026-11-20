@@ -142,6 +142,26 @@ final class CrashSafetyTests: XCTestCase {
         NSLayoutConstraint.activate([result.view.topAnchor.constraint(equalTo: host.topAnchor)])
     }
 
+    /// Apps render nothing for a component that fails to build; hosts that
+    /// show errors (debug builds, previews) draw the red error view.
+    func testFailedComponentIsHiddenUnlessHostShowsErrors() throws {
+        let saved = App8.showErrors
+        defer { App8.showErrors = saved }
+        let pointer = try JSONDecoder().decode(DSL.Model.Component.`Any`.self,
+                                               from: Data(#"{ "type": "view", "id": "missing" }"#.utf8))
+
+        App8.showErrors = false
+        let harness = RenderHarness(size: CGSize(width: 390, height: 400))
+        let quiet = harness.service.renderComponent(pointer, superview: harness.superview).view
+        XCTAssertTrue(quiet.isHidden, "release behaviour: nothing is drawn")
+        XCTAssertNotEqual(quiet.backgroundColor, .red)
+
+        App8.showErrors = true
+        let loud = harness.service.renderComponent(pointer, superview: harness.superview).view
+        XCTAssertFalse(loud.isHidden)
+        XCTAssertEqual(loud.backgroundColor, .red)
+    }
+
     // MARK: - Map
 
     /// MKMapView.setRegion throws "Invalid Region" on a huge span or an
