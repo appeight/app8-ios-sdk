@@ -34,6 +34,9 @@ extension DSL.Model.Component {
             /// Badge text color (hex).
             let badgeTextColor: String?
 
+            /// `barStyle`: a text bar or a component template (tab-bar-screen.md).
+            let barStyle: DSL.Model.TabBarContent.BarStyle?
+
             // MARK: - EntityContent conformance
 
             var properties: EmptyProperties { EmptyProperties() }
@@ -58,6 +61,7 @@ extension DSL.Model.Component {
                 case unselectedColor
                 case badgeColor
                 case badgeTextColor
+                case barStyle
             }
 
             init(from decoder: Decoder) throws {
@@ -68,6 +72,7 @@ extension DSL.Model.Component {
                 unselectedColor = try container.decodeIfPresent(String.self, forKey: .unselectedColor)
                 badgeColor = try container.decodeIfPresent(String.self, forKey: .badgeColor)
                 badgeTextColor = try container.decodeIfPresent(String.self, forKey: .badgeTextColor)
+                barStyle = try? container.decodeIfPresent(DSL.Model.TabBarContent.BarStyle.self, forKey: .barStyle)
             }
         }
 

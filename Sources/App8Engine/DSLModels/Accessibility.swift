@@ -16,12 +16,25 @@ extension DSL.Model {
         let hint: String?
         /// Spoken value (string expression), e.g. a slider's current value.
         let value: String?
-        /// Accessibility traits, e.g. `["button", "header"]`.
+        /// Accessibility traits, e.g. `["button", "header"]`. Unknown names are
+        /// ignored (a newer DSL's trait must not drop the component).
         let traits: [Trait]?
         /// `isAccessibilityElement` override (bool expression).
         let isElement: String?
         /// `accessibilityElementsHidden` override (bool expression).
         let hidden: String?
+
+        enum CodingKeys: String, CodingKey { case label, hint, value, traits, isElement, hidden }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            label = try c.decodeIfPresent(String.self, forKey: .label)
+            hint = try c.decodeIfPresent(String.self, forKey: .hint)
+            value = try c.decodeIfPresent(String.self, forKey: .value)
+            traits = try c.decodeIfPresent([String].self, forKey: .traits).map { $0.compactMap(Trait.init(rawValue:)) }
+            isElement = try c.decodeIfPresent(String.self, forKey: .isElement)
+            hidden = try c.decodeIfPresent(String.self, forKey: .hidden)
+        }
 
         var hasBindings: Bool {
             label != nil || hint != nil || value != nil
@@ -33,6 +46,9 @@ extension DSL.Model {
             case button, link, header, image, selected, notEnabled = "disabled"
             case adjustable, search = "searchField", staticText, summaryElement
             case updatesFrequently, startsMediaSession, allowsDirectInteraction
+            /// An item of a custom tab bar (tab-bar-screen.md, Bar style): a
+            /// button; its bar is a `.tabBar` container.
+            case tab
 
             var uiTrait: UIAccessibilityTraits {
                 switch self {
@@ -49,6 +65,7 @@ extension DSL.Model {
                 case .updatesFrequently:        return .updatesFrequently
                 case .startsMediaSession:       return .startsMediaSession
                 case .allowsDirectInteraction:  return .allowsDirectInteraction
+                case .tab:                      return .button
                 }
             }
         }

@@ -18,6 +18,23 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     /// Re-resolves tab `badge` expressions when an app variable changes.
     private var badgeSubscription: AnyCancellable?
 
+    /// `barStyle`: the engine-drawn bar inside the system one (nil: system items).
+    private var styledBar: StyledTabBarView?
+    /// Pins the styled bar over the system bar until it moves into the iOS 26 platter.
+    private var styledBarConstraints: [NSLayoutConstraint] = []
+
+    override var selectedIndex: Int {
+        didSet { styledBar?.select(selectedIndex, animated: true) }
+    }
+
+    override var selectedViewController: UIViewController? {
+        didSet {
+            guard let styledBar, let vc = selectedViewController,
+                  let index = viewControllers?.firstIndex(where: { $0 === vc }) else { return }
+            styledBar.select(index, animated: true)
+        }
+    }
+
     // MARK: - UIGestureRecognizerDelegate
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -176,6 +193,9 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     /// In-flight builds, so a tap and the idle prewarm never build a tab twice.
     private var tabBuilds: [String: Task<Void, Never>] = [:]
 
+    /// Badge values for the styled bar, by tab id.
+    private var styledBadges: [String: String] = [:]
+
     /// Set up all tabs — must be called after init to load screens asynchronously.
     /// Only the initial tab's screen is built before the tab bar appears; the
     /// others are built in idle time once it is showing (or at once when the
@@ -219,6 +239,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         }
 
         self.viewControllers = viewControllers
+        installStyledBarIfNeeded(selectedIndex: initialIndex)
         bindBadges()
         selectedIndex = initialIndex
         prewarmTabs()
@@ -378,8 +399,111 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
             guard let raw = tab.badge, let nav = tabNavigationControllers[tab.id] else { continue }
             let value = (try? resolver.resolveToString(raw, context: variables)) ?? raw
             let badge = value.isEmpty || value == "0" ? nil : value
+            if styledBar != nil {
+                styledBadges[tab.id] = badge
+                continue
+            }
             if nav.tabBarItem.badgeValue != badge { nav.tabBarItem.badgeValue = badge }
         }
+        styledBar?.setItems(badges: tabBarContent.tabs.map { styledBadges[$0.id] })
+    }
+
+    // MARK: - Styled bar (barStyle)
+
+    /// Blanks the system items and lays the engine-drawn bar over them. The
+    /// system bar stays (hidden on push, safe area, slide back on pop).
+    private func installStyledBarIfNeeded(selectedIndex: Int) {
+        guard let style = tabBarContent.barStyle, style.isCustom, styledBar == nil else { return }
+        for item in tabBar.items ?? [] {
+            item.title = nil
+            item.image = UIImage()
+            item.selectedImage = UIImage()
+            item.isEnabled = false
+            item.accessibilityElementsHidden = true
+        }
+        if style.background != "glass" {
+            let appearance = UITabBarAppearance()
+            appearance.configureWithTransparentBackground()
+            tabBar.standardAppearance = appearance
+            tabBar.scrollEdgeAppearance = appearance
+        }
+        let items = tabBarContent.tabs.map { StyledTabBarView.Item(id: $0.id, label: $0.label, icon: $0.icon, badge: nil) }
+        let background: UIColor? = style.background == "solid" ? .systemBackground : style.background.hasPrefix("#") ? UIColor(withHexString: style.background) : nil
+        let bar = StyledTabBarView(
+            style: style, items: items, selectedIndex: selectedIndex, service: appService,
+            tint: resolveColor(tabBarContent.tintColor) ?? tabBar.tintColor,
+            unselected: resolveColor(tabBarContent.unselectedColor) ?? .secondaryLabel,
+            indicator: resolveColor(style.indicatorColor),
+            badge: resolveColor(tabBarContent.badgeColor), badgeText: resolveColor(tabBarContent.badgeTextColor),
+            background: background
+        )
+        if style.background != "glass", style.background != "solid", !style.background.hasPrefix("#") {
+            // A fill / material style id: drawn by a DSL view behind the items.
+            bar.backgroundStyleId = style.background
+        }
+        bar.onSelect = { [weak self] index in
+            guard let self, let controllers = self.viewControllers, controllers.indices.contains(index) else { return }
+            let target = controllers[index]
+            guard self.tabBarController(self, shouldSelect: target) else { return }
+            self.selectedIndex = index
+        }
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        tabBar.addSubview(bar)
+        let guide = tabBar.safeAreaLayoutGuide
+        styledBarConstraints = [
+            bar.topAnchor.constraint(equalTo: tabBar.topAnchor),
+            bar.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
+            bar.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: Self.styledBarInset),
+            bar.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -Self.styledBarInset),
+        ]
+        NSLayoutConstraint.activate(styledBarConstraints)
+        tabBar.accessibilityElements = [bar]
+        styledBar = bar
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        adoptGlassPlatter()
+    }
+
+    /// iOS 26 draws the bar as a floating glass platter with a "lens" that
+    /// marks the selected item. The styled bar takes the platter's frame
+    /// (same size and centre as the system items, and the platter's glass
+    /// behind it) and the lens is hidden: the styled selection replaces it.
+    /// The bar stays a subview of the tab bar, not of the platter, whose
+    /// content is drawn monochrome (a red badge came out white). Without a
+    /// platter (earlier iOS, or a changed hierarchy) the bar stays pinned
+    /// over the system bar.
+    private func adoptGlassPlatter() {
+        guard let bar = styledBar,
+              let platter = tabBar.subviews.first(where: { "\(type(of: $0))".contains("Platter") }) else { return }
+        for sub in platter.subviews where "\(type(of: sub))".contains("Lens") && !sub.isHidden {
+            sub.isHidden = true
+        }
+        // The platter's lens drag and the bar's own recognizers would take
+        // touches meant for a template bar's items (its system items are
+        // blank and disabled): the styled bar handles selection.
+        disableSystemBarGestures(in: tabBar, except: bar)
+        if !styledBarConstraints.isEmpty {
+            NSLayoutConstraint.deactivate(styledBarConstraints)
+            styledBarConstraints = []
+            bar.translatesAutoresizingMaskIntoConstraints = true
+        }
+        let frame = platter.convert(platter.bounds, to: tabBar)
+        if bar.frame != frame { bar.frame = frame }
+    }
+
+    private func disableSystemBarGestures(in view: UIView, except bar: UIView) {
+        guard view !== bar else { return }
+        for recognizer in view.gestureRecognizers ?? [] where recognizer.isEnabled { recognizer.isEnabled = false }
+        for sub in view.subviews { disableSystemBarGestures(in: sub, except: bar) }
+    }
+
+    /// Side inset of the styled bar inside the system one (the iOS 26 bar
+    /// floats as a capsule inset from the screen edges).
+    static var styledBarInset: CGFloat {
+        if #available(iOS 26.0, *) { return 20 }
+        return 0
     }
 
     // MARK: - Navigation Handling
