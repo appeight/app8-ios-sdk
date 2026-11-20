@@ -75,11 +75,7 @@ enum ScreenCheck {
             return ScreenResult(section: section, loaded: false)
         }
 
-        var processedData = screenData
-        if let resolver = templateResolver {
-            let preprocessor = TemplatePreprocessor(resolver: resolver)
-            processedData = preprocessor.preprocess(screenData) ?? screenData
-        }
+        let processedData = (try? TemplatePreprocessor.prepareScreen(screenData, resolver: templateResolver)) ?? screenData
 
         let collector = DecodeErrorCollector()
         DecodeErrorCollector.current = collector

@@ -51,6 +51,14 @@ public protocol App8DataSource: AnyObject, Sendable {
     /// Throwing rejects the request: the action's `onError` runs with
     /// `response.status == 0`. The engine itself adds no auth.
     func prepareRequest(_ request: URLRequest) async throws -> URLRequest
+
+    /// The identity of the app this data source serves, when the host knows
+    /// it (a server id, a share code). Names the storage of persisted
+    /// variables and stored photos, ahead of `app.json`'s `id`, `bundleId`
+    /// and `title`. Set it when one host opens several apps, so their
+    /// persisted state stays apart; keep it stable across launches.
+    /// Default: `nil` (the app's own fields decide).
+    var persistenceId: String? { get }
 }
 
 // MARK: - Default implementations for optional methods
@@ -94,6 +102,9 @@ extension App8DataSource {
     public func prepareRequest(_ request: URLRequest) async throws -> URLRequest {
         request
     }
+
+    /// Default: no host identity.
+    public var persistenceId: String? { nil }
 }
 
 // MARK: - Data Sources (Internal protocols)

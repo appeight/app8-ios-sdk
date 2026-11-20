@@ -22,6 +22,23 @@ struct TemplatePreprocessor {
         return try? JSONEncoder().encode(processed)
     }
 
+    /// Expands template references in an already-parsed tree.
+    func process(_ json: JSONValue) -> JSONValue {
+        processValue(json)
+    }
+
+    /// Prepares a screen document for decoding: expands templates (when a
+    /// resolver is given), then applies per-node platform overrides. Data
+    /// that is not valid JSON is returned unchanged so the decoder reports it.
+    /// Throws `PlatformOverrides.Excluded` when the screen does not exist on iOS.
+    static func prepareScreen(_ data: Data, resolver: TemplateResolver?) throws -> Data {
+        guard let resolver else { return try PlatformOverrides.resolveDocument(data) }
+        guard let json = try? JSONDecoder().decode(JSONValue.self, from: data) else { return data }
+        let expanded = TemplatePreprocessor(resolver: resolver).process(json)
+        let resolved = try PlatformOverrides.resolveDocument(expanded)
+        return (try? PlatformOverrides.encode(resolved)) ?? data
+    }
+
     /// Recursively processes a JSONValue, merging templates where found.
     private func processValue(_ value: JSONValue) -> JSONValue {
         switch value {

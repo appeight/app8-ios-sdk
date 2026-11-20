@@ -236,12 +236,13 @@ final class A8: App8.DebugInstance {
                     let model = try self.decoder.decode(DSL.Model.App.self, from: appData)
                     self.app = model
                     context.appId = model.id
-                    context.persistenceId = model.persistenceId
+                    let persistenceId = model.persistenceId(hostId: ds.persistenceId)
+                    context.persistenceId = persistenceId
                     if let variables = model.variables {
-                        await self.appService?.defineAppVariables(variables, appId: model.persistenceId)
+                        await self.appService?.defineAppVariables(variables, appId: persistenceId)
                     }
                     // Photos no persisted variable mentions any more (photos.md, Cleanup).
-                    PhotoStore.sweepInBackground(appId: model.persistenceId)
+                    PhotoStore.sweepInBackground(appId: persistenceId)
                     // Pointer-only entries would self-reference and are skipped (inlineOrNil → nil).
                     let registry: [String: DSL.Model.Animation.Inline] = (model.animations ?? [])
                         .reduce(into: [:]) { acc, entry in
@@ -338,6 +339,9 @@ final class A8: App8.DebugInstance {
                 let templateItems: [DSL.Model.Component.Template] = componentsData.compactMap { data in
                     do {
                         return try self.decoder.decode(DSL.Model.Component.Template.self, from: data)
+                    } catch let excluded as PlatformOverrides.Excluded {
+                        context.logger.debug("Skipping component template: \(excluded)")
+                        return nil
                     } catch {
                         context.logger.warning("Failed to decode component template: \(error)")
                         return nil
@@ -410,13 +414,8 @@ final class A8: App8.DebugInstance {
     }
     
     private func decodeComponent<T: Decodable>(_ data: Data, as type: T.Type) throws -> DSL.Model.Component.`Any` {
-        let processedData: Data
-        if let resolver = templateResolver {
-            let preprocessor = TemplatePreprocessor(resolver: resolver)
-            processedData = preprocessor.preprocess(data) ?? data
-        } else {
-            processedData = data
-        }
+        // Templates expanded, platform overrides applied (platforms.md).
+        let processedData = try TemplatePreprocessor.prepareScreen(data, resolver: templateResolver)
 
         var component = try self.decoder.decode(DSL.Model.Component.`Any`.self, from: processedData)
         component.resolveStylePointers(resolver: resolveStylePointer)
@@ -820,13 +819,7 @@ extension A8 {
         }
 
         // Preprocess templates so expressions inside expanded templates are found.
-        let processedData: Data
-        if let resolver = templateResolver {
-            let preprocessor = TemplatePreprocessor(resolver: resolver)
-            processedData = preprocessor.preprocess(screenData) ?? screenData
-        } else {
-            processedData = screenData
-        }
+        let processedData = (try? TemplatePreprocessor.prepareScreen(screenData, resolver: templateResolver)) ?? screenData
 
         let analyzer = ScreenAnalyzer()
         return analyzer.analyze(screenData: processedData, screenId: screenId)

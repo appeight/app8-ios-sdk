@@ -23,10 +23,14 @@ extension DSL.Model {
         /// app` lookup). They live as long as the app instance: a cart, a session.
         let variables: [String: VariableDefinition]?
 
-        /// Storage namespace for `persist: true` variables: `id`, else
-        /// `bundleId`, else the host app's bundle identifier.
-        var persistenceId: String {
-            for candidate in [id, bundleId, Bundle.main.bundleIdentifier] {
+        /// Storage namespace for `persist: true` variables and stored photos:
+        /// the host's id (`App8DataSource.persistenceId`), else `id`, else
+        /// `bundleId`, else `title`, else the host app's bundle identifier.
+        /// The title keeps two apps without ids in one host apart.
+        var persistenceId: String { persistenceId(hostId: nil) }
+
+        func persistenceId(hostId: String?) -> String {
+            for candidate in [hostId, id, bundleId, title, Bundle.main.bundleIdentifier] {
                 if let c = candidate?.trimmingCharacters(in: .whitespaces), !c.isEmpty { return c }
             }
             return "default"
