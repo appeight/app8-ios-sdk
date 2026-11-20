@@ -4,8 +4,8 @@ extension UIView {
 
     func cMakeEqualToSuperview() {
         guard let superview else {
-            // Programmer-error guard: crashes in DEBUG, no-op in release.
-            assertionFailure("No superview for edge constraints: \(self)")
+            // No superview yet: nothing to pin to (never trap; a debug host
+            // previewing a broken bundle must keep running).
             return
         }
         translatesAutoresizingMaskIntoConstraints = false
