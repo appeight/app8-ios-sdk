@@ -48,7 +48,8 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
                     unselectedColor: entity.content.unselectedColor,
                     badgeColor: entity.content.badgeColor,
                     badgeTextColor: entity.content.badgeTextColor,
-                    barStyle: entity.content.barStyle
+                    barStyle: entity.content.barStyle,
+                    selectionIndicatorColor: entity.content.selectionIndicatorColor
                 ),
                 screenLoader: screenLoader,
                 appService: appService,

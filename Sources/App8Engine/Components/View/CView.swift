@@ -41,6 +41,8 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
     private var lastTranslateX: CGFloat?
     private var lastTranslateY: CGFloat?
     private var lastRotation: CGFloat?
+    /// `repeat` loops of the transform and alpha properties (animations.md, "Repeating animations").
+    private lazy var repeatLoops = RepeatLoops(layer: layer)
 
     /// The transform properties as last resolved; `style.transform` composes
     /// with them (see `PropertyTransformHost`).
@@ -172,9 +174,14 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
     private func bindTransformExpression(viewModel: CViewModel) {
         let props = viewModel.component.properties
 
-        transformScaleExpression = props.transformScale?.value.contains("{{") == true ? props.transformScale?.value : nil
-        transformTranslateXExpression = props.transformTranslateX?.value.contains("{{") == true ? props.transformTranslateX?.value : nil
-        transformTranslateYExpression = props.transformTranslateY?.value.contains("{{") == true ? props.transformTranslateY?.value : nil
+        // A literal value with a `repeat` animation is bound too: its loop starts on first apply.
+        func bound(_ p: DSL.Model.AnimatedValue<String>?) -> String? {
+            guard let p else { return nil }
+            return p.value.contains("{{") || p.animation?.inlineOrNil?.options.contains(.repeat) == true ? p.value : nil
+        }
+        transformScaleExpression = bound(props.transformScale)
+        transformTranslateXExpression = bound(props.transformTranslateX)
+        transformTranslateYExpression = bound(props.transformTranslateY)
         transformRotationValue = props.transformRotation?.value
 
         transformScaleAnimation = props.transformScale?.animation?.inlineOrNil
@@ -202,13 +209,14 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
     private func updateTransform() {
         guard let viewModel = viewModel else { return }
 
-        let scale = transformScaleExpression.flatMap { viewModel.resolvePropertyToFloat($0) } ?? 1.0
-        let translateX = transformTranslateXExpression.flatMap { viewModel.resolvePropertyToFloat($0) } ?? 0.0
-        let translateY = transformTranslateYExpression.flatMap { viewModel.resolvePropertyToFloat($0) } ?? 0.0
-        let rotation = transformRotationValue.flatMap { value -> CGFloat? in
+        func number(_ value: String) -> CGFloat? {
             if let literal = Double(value.trimmingCharacters(in: .whitespaces)) { return CGFloat(literal) }
             return viewModel.resolvePropertyToFloat(value)
-        } ?? 0.0
+        }
+        let scale = transformScaleExpression.flatMap(number) ?? 1.0
+        let translateX = transformTranslateXExpression.flatMap(number) ?? 0.0
+        let translateY = transformTranslateYExpression.flatMap(number) ?? 0.0
+        let rotation = transformRotationValue.flatMap(number) ?? 0.0
 
         if lastTransformScale == scale && lastTranslateX == translateX && lastTranslateY == translateY && lastRotation == rotation {
             return
@@ -218,6 +226,21 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         let isInitial = lastTransformScale == nil && lastTranslateX == nil && lastTranslateY == nil && lastRotation == nil
         let onlyRotationChanged = !isInitial && lastTransformScale == scale
             && lastTranslateX == translateX && lastTranslateY == translateY
+
+        // `repeat` loops: from the previous value after a change, from the rest value
+        // when the view is set up (first apply, reuse, a style re-apply).
+        let previousRotation = lastRotation
+        var looped = false
+        func loop(_ property: RepeatLoop.Property, _ last: CGFloat?, _ value: CGFloat, _ animation: DSL.Model.Animation.Inline?) {
+            guard animation?.options.contains(.repeat) == true else { return }
+            looped = true
+            guard last != value || isInitial else { return }
+            repeatLoops.set(RepeatLoop(property: property, from: last ?? property.rest, to: value, animation: animation), for: property)
+        }
+        loop(.rotation, lastRotation, rotation, transformRotationAnimation)
+        loop(.translateX, lastTranslateX, translateX, transformTranslateXAnimation)
+        loop(.translateY, lastTranslateY, translateY, transformTranslateYAnimation)
+        loop(.scale, lastTransformScale, scale, transformScaleAnimation)
 
         lastTransformScale = scale
         lastTranslateX = translateX
@@ -229,7 +252,8 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         propertyTransform = parts
         let transform = parts.composed(with: styleTransform)
 
-        if isInitial {
+        if isInitial || looped {
+            // A loop animates on the layer; the model holds the target.
             self.transform = transform
             return
         }
@@ -239,7 +263,21 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         // legacy 0.3s spring (damping 0.75, velocity 0.3) so existing screens
         // animate identically to before; a rotation-only change is instant.
         let animation: DSL.Model.Animation.Inline?
-        if onlyRotationChanged {
+        if onlyRotationChanged, let spin = transformRotationAnimation, !UIAccessibility.isReduceMotionEnabled,
+           let previous = previousRotation {
+            // The angle animates, not the affine transform: 0 → 360 turns once instead of
+            // standing still (the two transforms are equal).
+            self.transform = transform
+            let anim = CABasicAnimation(keyPath: "transform.rotation.z")
+            anim.fromValue = (previous - rotation) * .pi / 180
+            anim.toValue = 0
+            anim.isAdditive = true
+            anim.duration = max(spin.duration, 0.01)
+            anim.timingFunction = spin.caTimingFunction ?? CAMediaTimingFunction(name: .easeOut)
+            if spin.delay > 0 { anim.beginTime = CACurrentMediaTime() + spin.delay; anim.fillMode = .backwards }
+            layer.add(anim, forKey: "a8.rotation")
+            return
+        } else if onlyRotationChanged {
             animation = transformRotationAnimation
         } else {
             animation = transformScaleAnimation
@@ -262,7 +300,8 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
     private func bindAlphaExpression(viewModel: CViewModel) {
         let props = viewModel.component.properties
 
-        alphaExpression = props.alpha?.value.contains("{{") == true ? props.alpha?.value : nil
+        alphaExpression = props.alpha?.value.contains("{{") == true
+            || props.alpha?.animation?.inlineOrNil?.options.contains(.repeat) == true ? props.alpha?.value : nil
         alphaAnimation = props.alpha?.animation?.inlineOrNil
 
         guard alphaExpression != nil else { return }
@@ -281,14 +320,19 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
         guard let viewModel = viewModel,
               let expression = alphaExpression else { return }
 
-        let alphaValue = viewModel.resolvePropertyToFloat(expression) ?? 1.0
+        let alphaValue = Double(expression.trimmingCharacters(in: .whitespaces)).map { CGFloat($0) }
+            ?? viewModel.resolvePropertyToFloat(expression) ?? 1.0
 
         if lastAlpha == alphaValue { return }
         // Nil lastAlpha = first apply after bind (or after reset); don't animate.
         let isInitial = lastAlpha == nil
+        let repeats = alphaAnimation?.options.contains(.repeat) == true
+        if repeats {
+            repeatLoops.set(RepeatLoop(property: .alpha, from: lastAlpha ?? 1, to: alphaValue, animation: alphaAnimation), for: .alpha)
+        }
         lastAlpha = alphaValue
 
-        if isInitial {
+        if isInitial || repeats {
             self.alpha = alphaValue
             return
         }
@@ -406,12 +450,21 @@ class CView: App8BaseView<DSL.Model.Component.View.C>, CViewProtocol, StreamingU
             lastAlpha = nil
             updateAlpha()
         }
-        if transformScaleExpression != nil || transformTranslateXExpression != nil || transformTranslateYExpression != nil {
+        if transformScaleExpression != nil || transformTranslateXExpression != nil || transformTranslateYExpression != nil
+            || transformRotationValue != nil {
             lastTransformScale = nil
             lastTranslateX = nil
             lastTranslateY = nil
+            lastRotation = nil
             updateTransform()
         }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // Back on screen (tab switch, pop, a cell scrolled back): loops the render tree
+        // dropped start over.
+        if window != nil, !repeatLoops.isEmpty { repeatLoops.restartAll() }
     }
     
     // MARK: - Content Diffing
@@ -657,6 +710,12 @@ extension CView: UIGestureRecognizerDelegate {
 }
 
 // MARK: - ReuseRefreshable
+
+extension CView: RepeatLoopHost {
+    func restartRepeatLoops() {
+        if !repeatLoops.isEmpty { repeatLoops.restartAll() }
+    }
+}
 
 extension CView: ReuseRefreshable {
     /// Collection cell reuse: apply the new item's dimension expressions now

@@ -502,6 +502,7 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         return config.pagingStyle == .paging
             && config.itemWidth == nil
             && config.estimatedItemWidth == nil
+            && !config.itemWidthAuto
             && (config.rows ?? 1) <= 1
     }
 
@@ -606,8 +607,9 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         if let itemWidth = config.itemWidth {
             widthDimension = .absolute(itemWidth)
             cellsSelfSizeWidth = false
-        } else if let estimatedWidth = config.estimatedItemWidth {
-            widthDimension = .estimated(estimatedWidth)
+        } else if config.itemWidthAuto || config.estimatedItemWidth != nil {
+            // `"auto"` (or the older form: no itemWidth, an estimate): cells hug their content.
+            widthDimension = .estimated(config.estimatedItemWidth ?? 80)
             cellsSelfSizeWidth = true
         } else {
             widthDimension = .fractionalWidth(1.0)
@@ -1976,6 +1978,8 @@ extension CCollectionView: UICollectionViewDelegate {
     ) {
         // A `native` component in the cell may now be on screen.
         NativeVisibility.invalidate()
+        // `repeat` loops in a cell scrolled (back) into view run again (animations.md).
+        RepeatLoopRestart.restart(in: cell.contentView)
         // A horizontal section's embedded scroller may be new (once per run loop).
         if !orthogonalIndicatorsScheduled {
             orthogonalIndicatorsScheduled = true

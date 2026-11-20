@@ -37,6 +37,9 @@ extension DSL.Model.Component {
             /// `barStyle`: a text bar or a component template (tab-bar-screen.md).
             let barStyle: DSL.Model.TabBarContent.BarStyle?
 
+            /// Platform bar: the selected item's highlight colour (hex with alpha, or an expression). Since 0.7.9.
+            let selectionIndicatorColor: String?
+
             // MARK: - EntityContent conformance
 
             var properties: EmptyProperties { EmptyProperties() }
@@ -62,6 +65,7 @@ extension DSL.Model.Component {
                 case badgeColor
                 case badgeTextColor
                 case barStyle
+                case selectionIndicatorColor
             }
 
             init(from decoder: Decoder) throws {
@@ -73,6 +77,7 @@ extension DSL.Model.Component {
                 badgeColor = try container.decodeIfPresent(String.self, forKey: .badgeColor)
                 badgeTextColor = try container.decodeIfPresent(String.self, forKey: .badgeTextColor)
                 barStyle = try? container.decodeIfPresent(DSL.Model.TabBarContent.BarStyle.self, forKey: .barStyle)
+                selectionIndicatorColor = try? container.decodeIfPresent(String.self, forKey: .selectionIndicatorColor)
             }
         }
 

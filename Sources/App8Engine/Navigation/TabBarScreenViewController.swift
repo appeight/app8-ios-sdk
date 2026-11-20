@@ -24,7 +24,11 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     private var styledBarConstraints: [NSLayoutConstraint] = []
 
     override var selectedIndex: Int {
-        didSet { styledBar?.select(selectedIndex, animated: true) }
+        didSet {
+            styledBar?.select(selectedIndex, animated: true)
+            // The lens may rebuild its selection view on a change: paint it again.
+            DispatchQueue.main.async { [weak self] in self?.applySelectionIndicator() }
+        }
     }
 
     override var selectedViewController: UIViewController? {
@@ -288,6 +292,11 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         }
     }
 
+    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
+        applySelectionIndicator()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.applySelectionIndicator() }
+    }
+
     // MARK: - Reselect
 
     func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
@@ -386,6 +395,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     /// Re-resolves the bar and badge colors after an app variable change.
     private func reapplyColors() {
         configureTabBarAppearance()
+        applySelectionIndicator()
         for tab in tabBarContent.tabs {
             guard let nav = tabNavigationControllers[tab.id] else { continue }
             applyBadgeColors(to: nav.tabBarItem, tab: tab)
@@ -464,6 +474,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         adoptGlassPlatter()
+        applySelectionIndicator()
     }
 
     /// iOS 26 draws the bar as a floating glass platter with a "lens" that
@@ -491,6 +502,57 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         }
         let frame = platter.convert(platter.bounds, to: tabBar)
         if bar.frame != frame { bar.frame = frame }
+    }
+
+    /// `selectionIndicatorColor` (tab-bar-screen.md, "Selection indicator colour") on the
+    /// platform bar. iOS 26 draws the selected item's pill as a backdrop layer inside the
+    /// glass lens (`_UITabSelectionView`); it is hidden and a capsule in the colour takes
+    /// its place, so it moves, stretches and lifts with the lens. Without the key the
+    /// capsule is black at 10% on a light bar and white at 10% on a dark one. Earlier iOS
+    /// draws no highlight of its own: only an authored colour adds one
+    /// (`selectionIndicatorImage`). Styled bars (`barStyle`) keep their own indicator.
+    private func applySelectionIndicator() {
+        guard styledBar == nil else { return }
+        let authored = resolveColor(tabBarContent.selectionIndicatorColor)
+        if #available(iOS 26.0, *) {
+            guard let selection = Self.findSubview(in: tabBar, named: "TabSelectionView") else { return }
+            for layer in selection.layer.sublayers ?? [] where "\(type(of: layer))".contains("Backdrop") && !layer.isHidden {
+                layer.isHidden = true
+            }
+            let fill: UIView
+            if let existing = selection.subviews.first(where: { $0 is SelectionIndicatorFillView }) {
+                fill = existing
+            } else {
+                fill = SelectionIndicatorFillView(frame: selection.bounds)
+                fill.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                fill.isUserInteractionEnabled = false
+                selection.insertSubview(fill, at: 0)
+            }
+            fill.backgroundColor = authored ?? Self.defaultSelectionIndicatorColor
+        } else if let authored, selectionIndicatorImageColor != authored {
+            selectionIndicatorImageColor = authored
+            let size = CGSize(width: 24, height: 24)
+            let image = UIGraphicsImageRenderer(size: size).image { _ in
+                authored.setFill()
+                UIBezierPath(roundedRect: CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2), cornerRadius: 10).fill()
+            }.resizableImage(withCapInsets: UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12))
+            tabBar.selectionIndicatorImage = image
+        }
+    }
+
+    private var selectionIndicatorImageColor: UIColor?
+
+    /// Black at 10% on a light bar, white at 10% on a dark one (the bar's trait).
+    static let defaultSelectionIndicatorColor = UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.10) : UIColor(white: 0, alpha: 0.10)
+    }
+
+    private static func findSubview(in view: UIView, named fragment: String) -> UIView? {
+        for sub in view.subviews {
+            if "\(type(of: sub))".contains(fragment) { return sub }
+            if let hit = findSubview(in: sub, named: fragment) { return hit }
+        }
+        return nil
     }
 
     private func disableSystemBarGestures(in view: UIView, except bar: UIView) {
@@ -620,5 +682,14 @@ private final class TabPlaceholderViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
+    }
+}
+
+/// The capsule that paints `selectionIndicatorColor` inside the iOS 26 tab bar lens.
+final class SelectionIndicatorFillView: UIView {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerCurve = .continuous
+        layer.cornerRadius = min(bounds.width, bounds.height) / 2
     }
 }
