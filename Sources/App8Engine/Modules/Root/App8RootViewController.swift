@@ -27,6 +27,10 @@ class App8RootViewController: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// The current flow's top screen decides the status bar style (a screen's
+    /// `userInterfaceStyle`); a host that embeds this controller forwards to it.
+    override var childForStatusBarStyle: UIViewController? { currentFlowViewController }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         // Also set on the window so every view resolves the correct trait collection,
@@ -45,6 +49,7 @@ class App8RootViewController: UIViewController {
     func embedFlow(_ flowViewController: UIViewController) {
         currentFlowViewController = flowViewController
         embed(flowViewController)
+        setNeedsStatusBarAppearanceUpdate()
     }
 
     private func subscribeToFlowTransitions() {
@@ -69,6 +74,7 @@ class App8RootViewController: UIViewController {
         // The new flow is current from now on, so a transition that starts before
         // this one's fade ends replaces it instead of orphaning it on screen.
         currentFlowViewController = newFlowVC
+        setNeedsStatusBarAppearanceUpdate()
 
         addChild(newFlowVC)
         newFlowVC.view.frame = view.bounds

@@ -44,7 +44,7 @@ final class ModalViewController: UIViewController {
         self.initialParams = params
         self.context = context
 
-        self.navController = UINavigationController(rootViewController: rootScreenVC)
+        self.navController = App8NavigationController(rootViewController: rootScreenVC)
 
         super.init(nibName: nil, bundle: nil)
     }
@@ -56,6 +56,9 @@ final class ModalViewController: UIViewController {
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
+
+    /// The modal's top screen decides (its `userInterfaceStyle`) when full screen.
+    override var childForStatusBarStyle: UIViewController? { navController }
 
     override func viewDidLoad() {
         super.viewDidLoad()

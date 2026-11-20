@@ -32,6 +32,9 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// The top screen decides the status bar style (its `userInterfaceStyle`).
+    override var childForStatusBarStyle: UIViewController? { navController ?? tabBarScreenController }
+
     override func viewDidLoad() {
         super.viewDidLoad()
     }
@@ -59,7 +62,7 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
             embedTabBar(tabBarVC)
             self.tabBarScreenController = tabBarVC
         } else {
-            let navController = UINavigationController()
+            let navController = App8NavigationController()
             navController.setNavigationBarHidden(true, animated: false)
             navController.delegate = navTransitionCoordinator
             embedNavigationController(navController)
@@ -239,6 +242,14 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
                 // Custom requested but no usable transition — degrade to fullScreen.
                 modalVC.modalPresentationStyle = .fullScreen
             }
+        }
+
+        // A screen with its own `userInterfaceStyle` passes it to what it presents
+        // (UIKit passes the presenter's traits; the engine presents from here,
+        // whose style is the app's). The modal's own screens may set theirs.
+        let presenter = presentedModal?.topScreenViewController ?? visibleScreenViewController
+        if let style = presenter?.screenUserInterfaceStyle ?? presentedModal.flatMap({ $0.overrideUserInterfaceStyle == .unspecified ? nil : $0.overrideUserInterfaceStyle }) {
+            modalVC.overrideUserInterfaceStyle = style
         }
 
         presentedModal = modalVC

@@ -98,7 +98,7 @@ final class PhotoCapture: NSObject {
             pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.maxY, width: 0, height: 0)
             pop.permittedArrowDirections = []
         }
-        top.present(sheet, animated: true)
+        top.app8PresentInScreenStyle(sheet)
     }
 
     private func openCamera() {
@@ -138,7 +138,7 @@ final class PhotoCapture: NSObject {
         if UIImagePickerController.isCameraDeviceAvailable(device) { picker.cameraDevice = device }
         picker.delegate = self
         picker.presentationController?.delegate = self
-        top.present(picker, animated: true)
+        top.app8PresentInScreenStyle(picker)
     }
 
     private func openLibrary() {
@@ -149,7 +149,7 @@ final class PhotoCapture: NSObject {
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = self
         picker.presentationController?.delegate = self
-        top.present(picker, animated: true)
+        top.app8PresentInScreenStyle(picker)
     }
 
     static func topViewController() -> UIViewController? {
