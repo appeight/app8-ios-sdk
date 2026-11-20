@@ -9,6 +9,7 @@
 
 import XCTest
 import UIKit
+import MapKit
 @testable import App8Engine
 
 @MainActor
@@ -122,6 +123,37 @@ final class CrashSafetyTests: XCTestCase {
               "layout": { "top": 0, "leading": 0, "width": 100, "height": 20 } } } ] } }
         """#)
         harness.drain(0.05)
+    }
+
+    // MARK: - Error results
+
+    /// A section header whose template is a bare pointer (its content dropped)
+    /// renders the error view; the header pinned that detached view and UIKit
+    /// threw "no common ancestor" (found by RobustnessFuzzTests).
+    func testErrorResultIsAttachedToItsSuperview() throws {
+        let harness = RenderHarness(size: CGSize(width: 390, height: 400))
+        let host = UIView(frame: harness.superview.bounds)
+        harness.superview.addSubview(host)
+        let pointer = try JSONDecoder().decode(DSL.Model.Component.`Any`.self,
+                                               from: Data(#"{ "type": "view", "id": "section-header" }"#.utf8))
+        let result = harness.service.renderComponent(pointer, superview: host)
+        XCTAssertTrue(result.view.superview === host)
+        result.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([result.view.topAnchor.constraint(equalTo: host.topAnchor)])
+    }
+
+    // MARK: - Map
+
+    /// MKMapView.setRegion throws "Invalid Region" on a huge span or an
+    /// invalid center (found by RobustnessFuzzTests).
+    func testMapRegionIsValidatedBeforeMapKit() {
+        let sf = CLLocationCoordinate2D(latitude: 37.77, longitude: -122.42)
+        let huge = CMapView.validRegion(center: sf, span: MKCoordinateSpan(latitudeDelta: 1e18, longitudeDelta: -5))
+        XCTAssertEqual(huge?.span.latitudeDelta, 180)
+        XCTAssertEqual(huge?.span.longitudeDelta, 0)
+        XCTAssertNil(CMapView.validRegion(center: CLLocationCoordinate2D(latitude: 999, longitude: 0),
+                                          span: MKCoordinateSpan(latitudeDelta: 1, longitudeDelta: 1)))
+        XCTAssertNil(CMapView.validRegion(center: sf, span: MKCoordinateSpan(latitudeDelta: .nan, longitudeDelta: 1)))
     }
 
     // MARK: - Layout constraints

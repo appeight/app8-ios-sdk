@@ -389,6 +389,47 @@ final class RobustnessFuzzTests: XCTestCase {
         }
     }
 
+    /// APP8_FUZZ_REPLAY_SYNC=<file>: start one dumped bundle the way an app
+    /// does (a Task on the main actor, the main run loop spinning), from a
+    /// synchronous test. Separates engine crashes from async-test artifacts.
+    func testReplayOneBundleLikeAnApp() throws {
+        guard let file = ProcessInfo.processInfo.environment["APP8_FUZZ_REPLAY_SYNC"], !file.isEmpty,
+              let d = FuzzCorpus.json(URL(fileURLWithPath: file)) as? [String: Any] else {
+            throw XCTSkip("APP8_FUZZ_REPLAY_SYNC not set")
+        }
+        let bundle = FuzzBundle(app: d["app"] ?? [:], styles: d["styles"] as? [Any] ?? [],
+                                templates: d["templates"] as? [Any] ?? [],
+                                screens: d["screens"] as? [String: Any] ?? [:],
+                                datasources: d["datasources"] as? [String: Any] ?? [:],
+                                startScreen: d["startScreen"] as? String ?? "main-screen")
+        // Print every Objective-C exception (name, reason, stack) as it is thrown.
+        typealias Preprocessor = @convention(c) (AnyObject?) -> AnyObject?
+        typealias Setter = @convention(c) (Preprocessor) -> Preprocessor?
+        if let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "objc_setExceptionPreprocessor") {
+            _ = unsafeBitCast(sym, to: Setter.self)({ e in
+                if let ex = e as? NSException {
+                    FileHandle.standardError.write(Data(("fuzz: NSException \(ex.name.rawValue): \(ex.reason ?? "")\n"
+                        + ex.callStackSymbols.prefix(40).joined(separator: "\n") + "\n").utf8))
+                }
+                return e
+            })
+        }
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+        window.makeKeyAndVisible()
+        var done = false
+        Task { @MainActor in
+            let root = try? await App8.instance(dataSource: FuzzDataSource(bundle)).startApp()
+            window.rootViewController = root
+            window.layoutIfNeeded()
+            done = true
+        }
+        let deadline = Date().addingTimeInterval(10)
+        while !done, Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        window.rootViewController = nil
+        Self.log("fuzz: replay-sync done (started: \(done))")
+    }
+
     func testEveryBundleSurvivesMutations() async throws {
         let env = ProcessInfo.processInfo.environment
         let rounds = Int(env["APP8_FUZZ_ROUNDS"] ?? "") ?? 3
@@ -402,6 +443,17 @@ final class RobustnessFuzzTests: XCTestCase {
         // APP8_FUZZ_SHARD="i/n": run every n-th case starting at i (split long corpora).
         if let shard = env["APP8_FUZZ_SHARD"]?.split(separator: "/").compactMap({ Int($0) }), shard.count == 2, shard[1] > 0 {
             cases = cases.enumerated().filter { $0.offset % shard[1] == shard[0] }.map(\.element)
+        }
+        // APP8_FUZZ_REPLAY_DIR=<dir>: run every dumped bundle there, unmutated, in name order.
+        if let dir = env["APP8_FUZZ_REPLAY_DIR"], !dir.isEmpty {
+            cases = FuzzCorpus.jsonFiles(URL(fileURLWithPath: dir)).compactMap { url in
+                guard let d = FuzzCorpus.json(url) as? [String: Any] else { return nil }
+                return (url.lastPathComponent, FuzzBundle(app: d["app"] ?? [:], styles: d["styles"] as? [Any] ?? [],
+                                                          templates: d["templates"] as? [Any] ?? [],
+                                                          screens: d["screens"] as? [String: Any] ?? [:],
+                                                          datasources: d["datasources"] as? [String: Any] ?? [:],
+                                                          startScreen: d["startScreen"] as? String ?? "main-screen"))
+            }
         }
         // APP8_FUZZ_START=<case id>: resume from that case (after fixing a crash).
         if let start = env["APP8_FUZZ_START"], let i = cases.firstIndex(where: { $0.0 == start }) {
@@ -422,8 +474,21 @@ final class RobustnessFuzzTests: XCTestCase {
                     variant = mutator.mutate(bundle)
                 }
                 Self.log("fuzz: \(id) seed \(round == 0 ? "none" : String(seed))")
+                // APP8_FUZZ_DUMP=<dir>: write each variant's screens, to replay a crash.
+                if let dump = env["APP8_FUZZ_DUMP"], !dump.isEmpty,
+                   let data = try? JSONSerialization.data(withJSONObject: ["app": variant.app, "styles": variant.styles,
+                        "templates": variant.templates, "screens": variant.screens, "datasources": variant.datasources,
+                        "startScreen": variant.startScreen], options: [.prettyPrinted, .sortedKeys]) {
+                    let name = "\(id)-\(round)".replacingOccurrences(of: "/", with: "__")
+                    try? data.write(to: URL(fileURLWithPath: dump).appendingPathComponent(name + ".json"))
+                }
                 renders += 1
-                if await run(variant, window: window) { started += 1 }
+                if await run(variant, window: window) {
+                    started += 1
+                } else if round == 0 {
+                    // The unmutated bundle should always start.
+                    Self.log("fuzz: \(id) unmutated: error screen")
+                }
             }
         }
         Self.log("fuzz: done, \(cases.count) cases, \(renders) renders, \(started) started, \(renders - started) error screens")
