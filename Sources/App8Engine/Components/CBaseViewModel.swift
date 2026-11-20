@@ -454,16 +454,23 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     /// Resolve a string expression to a CGFloat (for layout dimensions)
     func resolvePropertyToFloat(_ value: String) -> CGFloat? {
         let resolved = resolveProperty(value)
+        let number: Double?
         if let num = resolved as? Double {
-            return CGFloat(num)
+            number = num
         } else if let num = resolved as? Int {
-            return CGFloat(num)
+            number = Double(num)
         } else if let num = resolved as? NSNumber {
-            return CGFloat(num.doubleValue)
-        } else if let str = resolved as? String, let num = Double(str), num.isFinite {
-            return CGFloat(num)
+            number = num.doubleValue
+        } else if let str = resolved as? String {
+            number = Double(str)
+        } else {
+            number = nil
         }
-        return nil
+        // NaN / ±infinity (`{{ 1e300 * 1e300 }}`, "NaN") reach frames and
+        // layers as invalid geometry, which UIKit and Core Animation throw on:
+        // treat them as unresolved so the property keeps its default.
+        guard let number, number.isFinite else { return nil }
+        return CGFloat(number)
     }
 
     /// Resolve a string expression to a Bool (for visibility, etc.)

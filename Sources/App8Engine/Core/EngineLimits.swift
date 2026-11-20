@@ -17,6 +17,8 @@ enum EngineLimits {
     static let maxDSLPayloadBytes = 8 * 1024 * 1024
 
     static let maxArrayVariableCount = 10_000
+    /// Page dots a page control draws; a DSL count past this is clamped.
+    static let maxPageControlPages = 1_000
 
     static let maxRegexPatternLength = 200
     static let maxRegexInputLength = 10_000

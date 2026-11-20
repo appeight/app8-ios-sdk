@@ -153,7 +153,7 @@ enum PhotoProcessing {
 
         /// `maxDimension` clamped to 256…4096, `quality` to 0.1…1; strings from expressions accepted.
         init(maxDimension: Any? = nil, quality: Any? = nil, aspectRatio: Any? = nil) {
-            if let n = Self.number(maxDimension) { self.maxDimension = min(4096, max(256, Int(n.rounded()))) }
+            if let n = Self.number(maxDimension) { self.maxDimension = min(4096, max(256, Int(saturating: n.rounded()))) }
             if let q = Self.number(quality) { self.quality = min(1, max(0.1, q)) }
             if let r = Self.number(aspectRatio), r > 0 { self.aspectRatio = r }
         }

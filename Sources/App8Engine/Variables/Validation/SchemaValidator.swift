@@ -47,18 +47,18 @@ public enum SchemaValidator {
 
         if let str = value as? String {
             if let minLength = schemaObj["minLength"], case .number(let min) = minLength {
-                if str.count < Int(min) {
+                if str.count < Int(saturating: min) {
                     throw SchemaValidationError.invalidValue(
                         path: path,
-                        reason: "String length \(str.count) is less than minimum \(Int(min))"
+                        reason: "String length \(str.count) is less than minimum \(Int(saturating: min))"
                     )
                 }
             }
             if let maxLength = schemaObj["maxLength"], case .number(let max) = maxLength {
-                if str.count > Int(max) {
+                if str.count > Int(saturating: max) {
                     throw SchemaValidationError.invalidValue(
                         path: path,
-                        reason: "String length \(str.count) exceeds maximum \(Int(max))"
+                        reason: "String length \(str.count) exceeds maximum \(Int(saturating: max))"
                     )
                 }
             }
@@ -107,19 +107,19 @@ public enum SchemaValidator {
 
         if let arr = value as? [Any] {
             if let minItems = schemaObj["minItems"], case .number(let min) = minItems {
-                if arr.count < Int(min) {
+                if arr.count < Int(saturating: min) {
                     throw SchemaValidationError.invalidValue(
                         path: path,
-                        reason: "Array has \(arr.count) items, minimum is \(Int(min))"
+                        reason: "Array has \(arr.count) items, minimum is \(Int(saturating: min))"
                     )
                 }
             }
 
             if let maxItems = schemaObj["maxItems"], case .number(let max) = maxItems {
-                if arr.count > Int(max) {
+                if arr.count > Int(saturating: max) {
                     throw SchemaValidationError.invalidValue(
                         path: path,
-                        reason: "Array has \(arr.count) items, maximum is \(Int(max))"
+                        reason: "Array has \(arr.count) items, maximum is \(Int(saturating: max))"
                     )
                 }
             }
