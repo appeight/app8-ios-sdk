@@ -202,10 +202,7 @@ public final class ExpressionEvaluator {
         case "-":
             if let num = toNumber(value) {
                 let result = -num
-                if result.truncatingRemainder(dividingBy: 1) == 0 {
-                    return Int(result)
-                }
-                return result
+                return result.wholeIntOrSelf
             }
             throw ExpressionError.parseError("Cannot negate non-numeric value")
         default:
@@ -329,7 +326,7 @@ public final class ExpressionEvaluator {
             if let num = value as? Int {
                 return num
             } else if let num = value as? Double {
-                return Int(num)
+                return Int(saturating: num)
             } else if let string = value as? String {
                 return Int(string) ?? 0
             }
@@ -577,11 +574,11 @@ public final class ExpressionEvaluator {
             }
             let arr = try evaluate(arguments[0], context: context) as? [Any] ?? []
             guard let start = toNumber(try evaluate(arguments[1], context: context)) else { return [] as [Any] }
-            let startIdx = max(0, min(Int(start), arr.count))
+            let startIdx = max(0, min(Int(saturating: start), arr.count))
             let endIdx: Int
             if arguments.count == 3 {
                 guard let e = toNumber(try evaluate(arguments[2], context: context)) else { return [] as [Any] }
-                endIdx = max(startIdx, min(Int(e), arr.count))
+                endIdx = max(startIdx, min(Int(saturating: e), arr.count))
             } else {
                 endIdx = arr.count
             }
@@ -601,7 +598,7 @@ public final class ExpressionEvaluator {
                 return value
             }
             if let num = toNumber(value) {
-                return Int(num.rounded())
+                return Int(saturating: num.rounded())
             }
             return 0
 
@@ -611,7 +608,7 @@ public final class ExpressionEvaluator {
             }
             let value = try evaluate(arguments[0], context: context)
             if let num = toNumber(value) {
-                return Int(floor(num))
+                return Int(saturating: floor(num))
             }
             return 0
 
@@ -621,7 +618,7 @@ public final class ExpressionEvaluator {
             }
             let value = try evaluate(arguments[0], context: context)
             if let num = toNumber(value) {
-                return Int(ceil(num))
+                return Int(saturating: ceil(num))
             }
             return 0
 
@@ -632,10 +629,7 @@ public final class ExpressionEvaluator {
             let value = try evaluate(arguments[0], context: context)
             if let num = toNumber(value) {
                 let result = Swift.abs(num)
-                if result.truncatingRemainder(dividingBy: 1) == 0 {
-                    return Int(result)
-                }
-                return result
+                return result.wholeIntOrSelf
             }
             return 0
 
@@ -655,10 +649,7 @@ public final class ExpressionEvaluator {
                 }
             }
             if let result = minValue {
-                if result.truncatingRemainder(dividingBy: 1) == 0 {
-                    return Int(result)
-                }
-                return result
+                return result.wholeIntOrSelf
             }
             return 0
 
@@ -678,10 +669,7 @@ public final class ExpressionEvaluator {
                 }
             }
             if let result = maxValue {
-                if result.truncatingRemainder(dividingBy: 1) == 0 {
-                    return Int(result)
-                }
-                return result
+                return result.wholeIntOrSelf
             }
             return 0
 
@@ -724,7 +712,7 @@ public final class ExpressionEvaluator {
                 throw ExpressionError.parseError("formatDuration() expects 1 argument")
             }
             let value = try evaluate(arguments[0], context: context)
-            let totalSeconds = Int(toNumber(value) ?? 0)
+            let totalSeconds = Int(saturating: toNumber(value) ?? 0)
             let h = totalSeconds / 3600
             let m = (totalSeconds % 3600) / 60
             let s = totalSeconds % 60
@@ -738,7 +726,7 @@ public final class ExpressionEvaluator {
                 throw ExpressionError.parseError("formatMinutes() expects 1 argument")
             }
             let value = try evaluate(arguments[0], context: context)
-            let total = Int(toNumber(value) ?? 0)
+            let total = Int(saturating: toNumber(value) ?? 0)
             let h = total / 60
             let m = total % 60
             if h == 0 { return "\(total) min" }
@@ -860,7 +848,7 @@ public final class ExpressionEvaluator {
             let countVal    = try evaluate(arguments[0], context: context)
             let singularVal = toString(try evaluate(arguments[1], context: context))
             let pluralVal   = toString(try evaluate(arguments[2], context: context))
-            let count = Int(toNumber(countVal) ?? 0)
+            let count = Int(saturating: toNumber(countVal) ?? 0)
             return count == 1 ? "\(count) \(singularVal)" : "\(count) \(pluralVal)"
 
         case "i18n":
@@ -1008,7 +996,8 @@ public final class ExpressionEvaluator {
             return num.doubleValue
         }
         if let string = value as? String {
-            return Double(string)
+            // "nan" / "inf" parse as Double but are not DSL numbers.
+            return Double(string).flatMap { $0.isFinite ? $0 : nil }
         }
         return nil
     }
@@ -1182,10 +1171,7 @@ public final class ExpressionEvaluator {
 
         if let leftNum = toNumber(left), let rightNum = toNumber(right) {
             let result = leftNum + rightNum
-            if result.truncatingRemainder(dividingBy: 1) == 0 {
-                return Int(result)
-            }
-            return result
+            return result.wholeIntOrSelf
         }
 
         if let leftArray = left as? [Any], let rightArray = right as? [Any] {
@@ -1201,10 +1187,7 @@ public final class ExpressionEvaluator {
         }
 
         let result = leftNum - rightNum
-        if result.truncatingRemainder(dividingBy: 1) == 0 {
-            return Int(result)
-        }
-        return result
+        return result.wholeIntOrSelf
     }
 
     private func multiply(_ left: Any?, _ right: Any?) throws -> Any {
@@ -1213,10 +1196,7 @@ public final class ExpressionEvaluator {
         }
 
         let result = leftNum * rightNum
-        if result.truncatingRemainder(dividingBy: 1) == 0 {
-            return Int(result)
-        }
-        return result
+        return result.wholeIntOrSelf
     }
 
     private func divide(_ left: Any?, _ right: Any?) throws -> Any {
@@ -1241,10 +1221,7 @@ public final class ExpressionEvaluator {
         }
 
         let result = leftNum.truncatingRemainder(dividingBy: rightNum)
-        if result.truncatingRemainder(dividingBy: 1) == 0 {
-            return Int(result)
-        }
-        return result
+        return result.wholeIntOrSelf
     }
 }
 

@@ -11,6 +11,11 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
 
     // MARK: - UI
 
+    /// Cell reuse identifiers registered on `collectionView`.
+    private var registeredCellIds: Set<String> = []
+    /// Section header reuse identifiers registered on `collectionView`.
+    private var registeredHeaderIds: Set<String> = []
+
     private lazy var collectionView: App8CollectionView = {
         let cv = App8CollectionView(frame: .zero, collectionViewLayout: createLayout())
         cv.backgroundColor = .clear
@@ -1675,6 +1680,15 @@ extension CCollectionView: UICollectionViewDataSource {
             return collectionView.dequeueReusableCell(withReuseIdentifier: CCollectionCell.reuseId, for: indexPath)
         }
 
+        // Templates resolved by name (section templates, registry references)
+        // carry their root component's id, which need not match the name
+        // registered up front. Register any unseen id before dequeueing;
+        // UIKit throws on an unregistered reuse identifier.
+        if !registeredCellIds.contains(template.id) {
+            collectionView.register(CCollectionCell.self, forCellWithReuseIdentifier: template.id)
+            registeredCellIds.insert(template.id)
+        }
+
         guard let cell = collectionView.dequeueReusableCell(
             withReuseIdentifier: template.id,
             for: indexPath
@@ -1909,9 +1923,19 @@ extension CCollectionView: UICollectionViewDataSource {
 
         guard let headerTemplate else { return empty() }
 
+        // A screen update can bring header templates the setup never saw;
+        // UIKit throws on an unregistered reuse identifier (see cells).
+        let headerId = headerTemplate.templateId ?? headerTemplate.id
+        if !registeredHeaderIds.contains(headerId) {
+            collectionView.register(CCollectionHeaderView.self,
+                                    forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
+                                    withReuseIdentifier: headerId)
+            registeredHeaderIds.insert(headerId)
+        }
+
         guard let header = collectionView.dequeueReusableSupplementaryView(
             ofKind: kind,
-            withReuseIdentifier: headerTemplate.templateId ?? headerTemplate.id,
+            withReuseIdentifier: headerId,
             for: indexPath
         ) as? CCollectionHeaderView else {
             viewModel.service.context.logger.error("CCollectionView: dequeued header for template '\(headerTemplate.templateId ?? headerTemplate.id)' is not a CCollectionHeaderView — returning empty placeholder")

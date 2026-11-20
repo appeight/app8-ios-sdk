@@ -306,7 +306,9 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
             return .medium()
         case .large:
             return .large()
-        case .fixed(let height):
+        case .fixed(let raw):
+            // A DSL height can be negative or absurd; UIKit clamps to the container.
+            let height = raw.isFinite ? max(0, min(raw, 100_000)) : 0
             let id = UISheetPresentationController.Detent.Identifier("app8.fixed.\(Int(height.rounded()))")
             return .custom(identifier: id) { _ in CGFloat(height) }
         case .fraction(let fraction):

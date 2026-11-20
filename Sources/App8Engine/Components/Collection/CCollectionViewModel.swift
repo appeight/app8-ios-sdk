@@ -410,6 +410,10 @@ final class CCollectionViewModel: CBaseViewModel<CollectionContent> {
     // MARK: - Selection
 
     func handleSelection(at indexPath: IndexPath) {
+        // The data can change between UIKit's tap and this call: an index path
+        // past the current items is a no-op, not a trap.
+        guard indexPath.section < currentSections.count,
+              indexPath.item < currentSections[indexPath.section].items.count else { return }
         let section = currentSections[indexPath.section]
         let item = section.items[indexPath.item]
 

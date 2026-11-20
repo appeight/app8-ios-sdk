@@ -17,6 +17,20 @@ public struct App8 {
         return A8(dataSource: dataSource)
     }
 
+    /// Draw a component that fails to build (an unknown type, a template that
+    /// does not exist, nesting past the depth limit) as a red box, so authors
+    /// see it. Off: it renders nothing and only logs a warning, as apps should.
+    /// Default: on in DEBUG builds, off in release builds. Preview and
+    /// authoring hosts may turn it on (the web renderer's `showErrors`).
+    @MainActor
+    public static var showErrors: Bool = {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }()
+
     /// Removes the `persist: true` variables and the stored photos (photos.md) of every app on this device
     /// (Android `App8.clearPersistedData(context)`). Hosts call it when their
     /// signed-in user changes so the next user's apps start from their initial
@@ -233,7 +247,9 @@ final class A8: App8.DebugInstance {
                     throw Self.Error.invalidUTF8("app.json")
                 }
                 do {
-                    let model = try self.decoder.decode(DSL.Model.App.self, from: appData)
+                    let model = try LenientDocumentDecoding.decode(DSL.Model.App.self, from: appData, using: self.decoder) {
+                        context.logger.warning("app.json: \($0)")
+                    }
                     self.app = model
                     context.appId = model.id
                     let persistenceId = model.persistenceId(hostId: ds.persistenceId)
@@ -338,7 +354,9 @@ final class A8: App8.DebugInstance {
                 let componentsData = try await ds.getComponents()
                 let templateItems: [DSL.Model.Component.Template] = componentsData.compactMap { data in
                     do {
-                        return try self.decoder.decode(DSL.Model.Component.Template.self, from: data)
+                        return try LenientDocumentDecoding.decode(DSL.Model.Component.Template.self, from: data, using: self.decoder) {
+                            context.logger.warning("template: \($0)")
+                        }
                     } catch let excluded as PlatformOverrides.Excluded {
                         context.logger.debug("Skipping component template: \(excluded)")
                         return nil
@@ -417,7 +435,9 @@ final class A8: App8.DebugInstance {
         // Templates expanded, platform overrides applied (platforms.md).
         let processedData = try TemplatePreprocessor.prepareScreen(data, resolver: templateResolver)
 
-        var component = try self.decoder.decode(DSL.Model.Component.`Any`.self, from: processedData)
+        var component = try LenientDocumentDecoding.decode(DSL.Model.Component.`Any`.self, from: processedData, using: self.decoder) {
+            context.logger.warning("screen: \($0)")
+        }
         component.resolveStylePointers(resolver: resolveStylePointer)
         return component
     }

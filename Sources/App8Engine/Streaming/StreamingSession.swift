@@ -91,7 +91,9 @@ final class StreamingSession {
     private func handleScreenUpdate(_ data: Data) async {
         lastRawScreenData = data
         do {
-            var newComponent = try makeDecoder().decode(DSL.Model.Component.`Any`.self, from: PlatformOverrides.resolveDocument(data))
+            var newComponent = try LenientDocumentDecoding.decode(DSL.Model.Component.`Any`.self, from: PlatformOverrides.resolveDocument(data), using: makeDecoder()) { [context] in
+                context.logger.warning("screen update: \($0)")
+            }
             if let resolver = styleResolver {
                 newComponent.resolveStylePointers(resolver: resolver)
             }
@@ -200,7 +202,9 @@ final class StreamingSession {
         // Re-render the current screen with freshly-resolved styles.
         guard let rawData = lastRawScreenData else { return }
         do {
-            var component = try makeDecoder().decode(DSL.Model.Component.`Any`.self, from: PlatformOverrides.resolveDocument(rawData))
+            var component = try LenientDocumentDecoding.decode(DSL.Model.Component.`Any`.self, from: PlatformOverrides.resolveDocument(rawData), using: makeDecoder()) { [context] in
+                context.logger.warning("screen update: \($0)")
+            }
             if let resolver = styleResolver {
                 component.resolveStylePointers(resolver: resolver)
             }

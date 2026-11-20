@@ -522,9 +522,10 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
 
             // Layout guide targets (e.g. safeArea).
             if let target = c.target, let guide = resolveLayoutGuide(target, in: superview) {
-                let made = makeRelationToGuide(from: from, to: to, guide: guide, constant: constant, relation: relation)
-                applyPriority(c.priority, to: made)
-                constraints.append(made)
+                if let made = makeRelationToGuide(from: from, to: to, guide: guide, constant: constant, relation: relation) {
+                    applyPriority(c.priority, to: made)
+                    constraints.append(made)
+                }
                 continue
             }
 
@@ -569,8 +570,9 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
             case .lessThanOrEqual:    return heightAnchor.constraint(lessThanOrEqualToConstant: constant)
             }
         default:
-            // Self-targeted leading/trailing/top/bottom/center are nonsense without a target.
-            assertionFailure("Constraint without target requires width or height attribute, got \(attr)")
+            // Self-targeted leading/trailing/top/bottom/center are nonsense without a target:
+            // skip the constraint (DSL input, so never trap).
+            viewRegistry?.logger?.warning("layout.constraint: '\(attr)' without a target is ignored (only width/height may omit it) in '\(parentComponentPath ?? "?")'")
             return nil
         }
     }
@@ -662,7 +664,7 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
         guide: UILayoutGuide,
         constant: CGFloat,
         relation: DSL.Model.Layout.Constraint.Relation = .equal
-    ) -> NSLayoutConstraint {
+    ) -> NSLayoutConstraint? {
         switch (from, to) {
         case (.top,      .top):      return relate(topAnchor,      guide.topAnchor,      relation, constant)
         case (.top,      .bottom):   return relate(topAnchor,      guide.bottomAnchor,   relation, constant)
@@ -681,8 +683,9 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
         case (.width,    .width):    return relateDim(widthAnchor,  guide.widthAnchor,  relation, constant)
         case (.height,   .height):   return relateDim(heightAnchor, guide.heightAnchor, relation, constant)
         default:
-            assertionFailure("Unsupported guide constraint combination: \(from) → \(to)")
-            return bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: constant)
+            // DSL input (e.g. leading → top): skip the constraint, never trap.
+            viewRegistry?.logger?.warning("layout.constraint: unsupported guide combination \(from) → \(to) is ignored in '\(parentComponentPath ?? "?")'")
+            return nil
         }
     }
 

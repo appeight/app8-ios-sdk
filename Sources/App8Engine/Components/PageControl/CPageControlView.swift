@@ -71,13 +71,13 @@ class CPageControlView: App8BaseView<DSL.Model.Component.PageControl.C>, CViewPr
 
         if let expr = props.numberOfPages {
             if let val = vm.resolvePropertyToFloat(expr), val.isFinite {
-                pageControl.numberOfPages = max(0, Int(val))
+                pageControl.numberOfPages = max(0, min(Int(saturating: val), EngineLimits.maxPageControlPages))
             }
         }
 
         if let expr = props.currentPage {
             if let val = vm.resolvePropertyToFloat(expr), val.isFinite {
-                pageControl.currentPage = Int(val.rounded())
+                pageControl.currentPage = Int(saturating: val.rounded())
             }
         }
 

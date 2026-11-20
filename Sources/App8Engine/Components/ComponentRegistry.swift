@@ -32,7 +32,9 @@ final class ComponentRegistry {
     private var transitionParticipants: [String: [String: TransitionParticipant]] = [:]
 
     /// Optional logger from owning context.
-    weak var logger: A8Log?
+    weak var logger: A8Log? {
+        didSet { viewRegistry.logger = logger }
+    }
 
     /// Register a ViewModel with its component ID
     func register(id: String, viewModel: AnyObject) {
@@ -121,6 +123,9 @@ struct TransitionParticipant {
 final class ViewRegistry {
 
     private var views: [String: WeakRef<UIView>] = [:]
+
+    /// Optional logger from owning context (layout warnings from views).
+    weak var logger: A8Log?
 
     /// Register a view with its component ID
     func register(id: String, view: UIView) {

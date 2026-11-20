@@ -120,8 +120,9 @@ public final class VariableActionHandler {
         if let intValue = currentValue as? Int {
             // Promote to Double when incrementBy is fractional to avoid silent truncation
             // e.g. Int(0) + Int(0.1) = 0, but Double(0) + 0.1 = 0.1
-            if incrementBy.truncatingRemainder(dividingBy: 1) == 0 {
-                newValue = intValue + Int(incrementBy)
+            let (sum, overflow) = intValue.addingReportingOverflow(Int(saturating: incrementBy))
+            if incrementBy.truncatingRemainder(dividingBy: 1) == 0, !overflow {
+                newValue = sum
             } else {
                 newValue = Double(intValue) + incrementBy
             }
@@ -256,12 +257,12 @@ public final class VariableActionHandler {
             if next <= 0 {
                 array.remove(at: index)
             } else {
-                item[field] = next.truncatingRemainder(dividingBy: 1) == 0 ? Int(next) as Any : next as Any
+                item[field] = next.wholeIntOrSelf
                 array[index] = item
             }
         } else if var item = object, by > 0 {
             guard array.count < EngineLimits.maxArrayVariableCount else { return }
-            item[field] = by.truncatingRemainder(dividingBy: 1) == 0 ? Int(by) as Any : by as Any
+            item[field] = by.wholeIntOrSelf
             array.append(item)
         } else {
             return
@@ -286,7 +287,7 @@ public final class VariableActionHandler {
         let resolved = try resolveValue(value.value, context: context)
         var position = 0
         if let raw = action.index?.value, let n = numberValue(try resolveValue(raw, context: context)) {
-            let i = Int(n)
+            let i = Int(saturating: n)
             position = i < 0 ? array.count + 1 + i : i
         }
         position = max(0, min(position, array.count))
@@ -343,7 +344,7 @@ public final class VariableActionHandler {
                 array.removeAll { isEqual($0, resolved) }
             }
         } else if let raw = action.index?.value, let n = numberValue(try resolveValue(raw, context: context)) {
-            var i = Int(n)
+            var i = Int(saturating: n)
             if i < 0 { i += array.count }
             guard array.indices.contains(i) else { return }
             array.remove(at: i)

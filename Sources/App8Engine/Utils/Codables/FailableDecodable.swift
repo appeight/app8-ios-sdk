@@ -60,6 +60,12 @@ class FailableDecodable<Base: Decodable>: Decodable, FailableDecodableProtocol {
         do {
             self.base = try container.decode(Base.self)
         } catch {
+            // Unknown or mistyped values are ignored, never fatal: retry the
+            // element without the offending value(s) before dropping it whole.
+            if let recovered = Self.recover(container: container, decoder: decoder) {
+                self.base = recovered
+                return
+            }
             self.base = nil
             self.decodingError = error
             DecodeErrorCollector.current?.record(
@@ -72,6 +78,22 @@ class FailableDecodable<Base: Decodable>: Decodable, FailableDecodableProtocol {
 
     func resolve() -> Base? {
         return base
+    }
+
+    /// Re-reads the element as raw JSON and decodes it with
+    /// `LenientDocumentDecoding`, which drops the value at each failure's path
+    /// (its default applies). Nil when the element itself is unusable (an
+    /// unknown component type, not an object, …): then it is dropped.
+    private static func recover(container: SingleValueDecodingContainer, decoder: Decoder) -> Base? {
+        guard let raw = try? container.decode(JSONValue.self),
+              let data = try? JSONEncoder().encode(raw) else { return nil }
+        let retry = JSONDecoder()
+        retry.userInfo = decoder.userInfo
+        let logger = decoder.userInfo[.app8Logger] as? A8Log
+        let at = jsonPath(from: decoder.codingPath)
+        return try? LenientDocumentDecoding.decode(Base.self, from: data, using: retry) {
+            logger?.warning("\(at): \($0)")
+        }
     }
 }
 

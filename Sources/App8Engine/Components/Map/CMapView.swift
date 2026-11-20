@@ -169,8 +169,12 @@ final class CMapView: App8BaseView<MapContent>, CViewProtocol, MKMapViewDelegate
 
                 // Allow initial region setup even while isUpdatingRegion is true —
                 // MapKit's default region can fire delegate callbacks before we set ours.
+                // MapKit throws "Invalid Region" on an out-of-range center or span.
+                guard let mapRegion = Self.validRegion(center: region.center, span: region.span) else {
+                    self.viewModel?.service.context.logger.warning("map.region: invalid center/span ignored")
+                    return
+                }
                 if !self.isInitialRegionSet {
-                    let mapRegion = MKCoordinateRegion(center: region.center, span: region.span)
                     self.mapView.setRegion(mapRegion, animated: false)
                     self.isInitialRegionSet = true
                     return
@@ -178,7 +182,6 @@ final class CMapView: App8BaseView<MapContent>, CViewProtocol, MKMapViewDelegate
 
                 guard !self.isUpdatingRegion else { return }
 
-                let mapRegion = MKCoordinateRegion(center: region.center, span: region.span)
                 self.mapView.setRegion(mapRegion, animated: true)
             }
             .store(in: &cancellables)
@@ -193,12 +196,23 @@ final class CMapView: App8BaseView<MapContent>, CViewProtocol, MKMapViewDelegate
 
     // MARK: - Annotations
 
+    /// A region MapKit accepts, or nil: a valid center and a finite span
+    /// clamped to the globe (latitude 0...180, longitude 0...360).
+    static func validRegion(center: CLLocationCoordinate2D, span: MKCoordinateSpan) -> MKCoordinateRegion? {
+        guard CLLocationCoordinate2DIsValid(center),
+              span.latitudeDelta.isFinite, span.longitudeDelta.isFinite else { return nil }
+        let clamped = MKCoordinateSpan(latitudeDelta: min(max(span.latitudeDelta, 0), 180),
+                                       longitudeDelta: min(max(span.longitudeDelta, 0), 360))
+        return MKCoordinateRegion(center: center, span: clamped)
+    }
+
     private func updateAnnotations(_ annotations: [CMapViewModel.ResolvedAnnotation]) {
         let existingAnnotations = mapView.annotations.filter { !($0 is MKUserLocation) }
         mapView.removeAnnotations(existingAnnotations)
         annotationsById.removeAll()
 
-        let mapAnnotations = annotations.map { resolved in
+        // An annotation at an invalid coordinate (latitude 999, NaN) is skipped.
+        let mapAnnotations = annotations.filter { CLLocationCoordinate2DIsValid($0.coordinate) }.map { resolved in
             CMapAnnotation(
                 id: resolved.id,
                 coordinate: resolved.coordinate,

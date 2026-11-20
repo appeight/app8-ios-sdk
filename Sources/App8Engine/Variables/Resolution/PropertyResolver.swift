@@ -158,7 +158,7 @@ public final class PropertyResolver {
         }
 
         if let double = value as? Double {
-            if double.truncatingRemainder(dividingBy: 1) == 0 {
+            if double.isFinite, double.truncatingRemainder(dividingBy: 1) == 0, abs(double) < 9e15 {
                 return String(Int(double))
             }
             return String(double)
