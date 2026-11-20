@@ -674,6 +674,10 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
         case (.trailing, .leading):  return relate(trailingAnchor, guide.leadingAnchor,  relation, constant)
         case (.centerX,  .centerX):  return relate(centerXAnchor,  guide.centerXAnchor,  relation, constant)
         case (.centerY,  .centerY):  return relate(centerYAnchor,  guide.centerYAnchor,  relation, constant)
+        case (.leading,  .centerX):  return relate(leadingAnchor,  guide.centerXAnchor,  relation, constant)
+        case (.trailing, .centerX):  return relate(trailingAnchor, guide.centerXAnchor,  relation, constant)
+        case (.top,      .centerY):  return relate(topAnchor,      guide.centerYAnchor,  relation, constant)
+        case (.bottom,   .centerY):  return relate(bottomAnchor,   guide.centerYAnchor,  relation, constant)
         case (.width,    .width):    return relateDim(widthAnchor,  guide.widthAnchor,  relation, constant)
         case (.height,   .height):   return relateDim(heightAnchor, guide.heightAnchor, relation, constant)
         default:
@@ -760,6 +764,11 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
         case (.leading,  .trailing): return relate(leadingAnchor,  target.trailingAnchor, relation, constant)
         case (.trailing, .trailing): return relate(trailingAnchor, target.trailingAnchor, relation, constant)
         case (.trailing, .leading):  return relate(trailingAnchor, target.leadingAnchor,  relation, constant)
+        // An edge on the target's centre (half-width / half-height panes). Since 0.7.9.
+        case (.leading,  .centerX):  return relate(leadingAnchor,  target.centerXAnchor,  relation, constant)
+        case (.trailing, .centerX):  return relate(trailingAnchor, target.centerXAnchor,  relation, constant)
+        case (.top,      .centerY):  return relate(topAnchor,      target.centerYAnchor,  relation, constant)
+        case (.bottom,   .centerY):  return relate(bottomAnchor,   target.centerYAnchor,  relation, constant)
 
         case (.top,      .top):      return relate(topAnchor,      target.topAnchor,      relation, constant)
         case (.top,      .bottom):   return relate(topAnchor,      target.bottomAnchor,   relation, constant)

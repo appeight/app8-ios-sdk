@@ -102,6 +102,7 @@ extension DSL.Model.Component.Collection {
         var itemWidth: CGFloat? { itemWidthValue?.points }
         var itemHeight: CGFloat? { itemHeightValue?.points }
         var itemWidthFill: Bool { itemWidthValue?.isFill == true }
+        var itemWidthAuto: Bool { if case .auto = itemWidthValue { return true }; return false }
         var itemHeightFill: Bool { itemHeightValue?.isFill == true }
         let aspectRatio: CGFloat?
         let estimatedItemHeight: CGFloat?
@@ -131,6 +132,8 @@ extension DSL.Model.Component.Collection {
         enum FillableLength: Decodable, Sendable {
             case points(CGFloat)
             case fill
+            /// `itemWidth: "auto"`: as wide as the content (self-sizing, hugging). Since 0.7.9.
+            case auto
 
             var points: CGFloat? { if case .points(let p) = self { return p }; return nil }
             var isFill: Bool { if case .fill = self { return true }; return false }
@@ -140,8 +143,9 @@ extension DSL.Model.Component.Collection {
                 if let n = try? c.decode(Double.self) { self = .points(CGFloat(n)); return }
                 let s = try c.decode(String.self).trimmingCharacters(in: .whitespaces)
                 if s == "fill" { self = .fill; return }
+                if s == "auto" { self = .auto; return }
                 if let n = Double(s) { self = .points(CGFloat(n)); return }
-                throw DecodingError.dataCorruptedError(in: c, debugDescription: "Expected a number or \"fill\", got \"\(s)\"")
+                throw DecodingError.dataCorruptedError(in: c, debugDescription: "Expected a number, \"fill\" or \"auto\", got \"\(s)\"")
             }
         }
 

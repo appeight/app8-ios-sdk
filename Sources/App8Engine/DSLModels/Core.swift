@@ -166,6 +166,9 @@ extension DSL.Model {
         /// `barStyle` (tab-bar-screen.md, Bar style): a text bar or a
         /// component template instead of the system items. Nil: system bar.
         var barStyle: BarStyle? = nil
+        /// `selectionIndicatorColor`: the platform bar's selected-item highlight.
+        /// Nil: black 10% on a light bar, white 10% on a dark one. Since 0.7.9.
+        var selectionIndicatorColor: String? = nil
 
         struct TabBarStyle: Decodable, Sendable {
             var glassAppearance: DSL.Model.Style.GlassAppearance?
