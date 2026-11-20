@@ -1143,7 +1143,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                let root = scene.keyWindow?.rootViewController {
                 var top = root
                 while let presented = top.presentedViewController { top = presented }
-                top.present(alert, animated: true)
+                top.app8PresentInScreenStyle(alert)
             }
 
         case .haptic:
@@ -1191,7 +1191,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                            let root = scene.keyWindow?.rootViewController {
                             var top = root
                             while let presented = top.presentedViewController { top = presented }
-                            top.present(safariVC, animated: true)
+                            top.app8PresentInScreenStyle(safariVC)
                         }
                     }
                 }

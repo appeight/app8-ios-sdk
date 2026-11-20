@@ -15,6 +15,9 @@ final class ScreenViewController: BaseViewController {
     /// this screen is on top. Read by `App8NavTransitionCoordinator` in `didShow`.
     /// `false` makes the screen non-dismissable by swipe (DSL `swipeBackEnabled: false`).
     let allowsSwipeBack: Bool
+    /// DSL `userInterfaceStyle`: this screen's own light/dark, over the app's.
+    /// `nil` follows the app (`App8Appearance`, then the app default, then the system).
+    let screenUserInterfaceStyle: UIUserInterfaceStyle?
     private let additionalSafeAreaInsetsConfig: UIEdgeInsets?
     private weak var titleViewService: App8Service?
     private var titleViewVariableStore: VariableStoreProtocol?
@@ -72,6 +75,17 @@ final class ScreenViewController: BaseViewController {
         return config.hidden != true
     }
 
+    /// A screen with its own `userInterfaceStyle` picks the status bar's
+    /// content colour; the engine's containers forward to the top screen
+    /// (`childForStatusBarStyle`).
+    override var preferredStatusBarStyle: UIStatusBarStyle {
+        switch screenUserInterfaceStyle {
+        case .dark: return .lightContent
+        case .light: return .darkContent
+        default: return super.preferredStatusBarStyle
+        }
+    }
+
     override func baseAdditionalBottomInset() -> CGFloat {
         (additionalSafeAreaInsetsConfig?.bottom ?? 0) + (bottomBar?.safeAreaContribution ?? 0)
     }
@@ -83,6 +97,7 @@ final class ScreenViewController: BaseViewController {
         navigationBar: DSL.Model.NavigationBar?,
         hidesTabBar: Bool = false,
         swipeBackEnabled: Bool = true,
+        userInterfaceStyle: UIUserInterfaceStyle? = nil,
         dismissKeyboardOnTap: Bool = true,
         additionalSafeAreaInsets: UIEdgeInsets? = nil,
         titleViewService: App8Service? = nil,
@@ -93,6 +108,7 @@ final class ScreenViewController: BaseViewController {
         self.screenId = screenId
         self.navigationBarConfig = navigationBar
         self.allowsSwipeBack = swipeBackEnabled
+        self.screenUserInterfaceStyle = userInterfaceStyle
         self.dismissKeyboardOnTap = dismissKeyboardOnTap
         self.additionalSafeAreaInsetsConfig = additionalSafeAreaInsets
         self.titleViewService = titleViewService
@@ -100,6 +116,7 @@ final class ScreenViewController: BaseViewController {
         self.actionHandler = actionHandler
         super.init(context: context)
         self.hidesBottomBarWhenPushed = hidesTabBar
+        if let userInterfaceStyle { overrideUserInterfaceStyle = userInterfaceStyle }
     }
 
     required init?(coder: NSCoder) {
@@ -158,6 +175,7 @@ final class ScreenViewController: BaseViewController {
         installSearchFillIfNeeded()
         applySearchFillTopGap()
         navigationController?.navigationBar.tintColor = resolveColor(navigationBarConfig?.tintColor)
+        applyInterfaceStyleToChrome()
         pulseClock()
         NativeVisibility.evaluateNow() // a presented screen covers the one below now
     }

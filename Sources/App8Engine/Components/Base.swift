@@ -60,6 +60,12 @@ extension DSL.Model.Component {
         /// screen non-dismissable by swipe — e.g. a forward-only onboarding step.
         let swipeBackEnabled: Bool?
 
+        /// Light or dark for this screen only (for screens only): UIKit's
+        /// `overrideUserInterfaceStyle` on the screen, its navigation bar,
+        /// status bar and what it presents. Absent (or an unknown value) follows
+        /// the app's appearance.
+        let userInterfaceStyle: M.App.UserInterfaceStyle?
+
         /// Whether tapping outside text inputs dismisses the keyboard (for screens only)
         let dismissKeyboardOnTap: Bool?
 
@@ -105,6 +111,7 @@ extension DSL.Model.Component {
             case transition
             case hidesTabBar
             case swipeBackEnabled
+            case userInterfaceStyle
             case dismissKeyboardOnTap
             case streaming
             case additionalSafeAreaInsets
@@ -184,6 +191,10 @@ extension DSL.Model.Component {
             transition       = try c.decodeIfPresent(M.ComponentTransition.self, forKey: .transition)
             hidesTabBar      = try c.decodeIfPresent(Bool.self, forKey: .hidesTabBar)
             swipeBackEnabled = try c.decodeIfPresent(Bool.self, forKey: .swipeBackEnabled)
+            // Lenient: an unknown value or type is ignored, never fails the screen.
+            userInterfaceStyle = (try? c.decodeIfPresent(String.self, forKey: .userInterfaceStyle))
+                .flatMap { $0 }
+                .flatMap(M.App.UserInterfaceStyle.init(rawValue:))
             dismissKeyboardOnTap = try c.decodeIfPresent(Bool.self, forKey: .dismissKeyboardOnTap)
             streaming        = try c.decodeIfPresent(Bool.self, forKey: .streaming)
             additionalSafeAreaInsets = try c.decodeIfPresent(M.EdgeInsets.self, forKey: .additionalSafeAreaInsets)

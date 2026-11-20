@@ -140,6 +140,9 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         NotificationCenter.default.removeObserver(self)
     }
 
+    /// The selected tab's top screen decides the status bar style.
+    override var childForStatusBarStyle: UIViewController? { selectedViewController }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         if context.layoutMode.isEnabled {
@@ -208,7 +211,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         var viewControllers: [UIViewController] = []
 
         for tab in tabBarContent.tabs {
-            let navController = UINavigationController()
+            let navController = App8NavigationController()
             navController.setNavigationBarHidden(true, animated: false)
             navController.delegate = self
             navController.interactivePopGestureRecognizer?.isEnabled = true
