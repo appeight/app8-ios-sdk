@@ -13,6 +13,24 @@ final class FixtureDataSource: App8DataSource, @unchecked Sendable {
     init(tab: String?) throws {
         let url = Bundle.main.url(forResource: "fixture", withExtension: "json")!
         var b = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+        if ProcessInfo.processInfo.environment["A8_NOTABS"] != nil {
+            var app = b["app"] as! [String: Any]
+            app["navigation"] = ["startFlow": "main", "flows": [["id": "main", "startScreen": "bag"]]]
+            b["app"] = app
+        }
+        if let bar = ProcessInfo.processInfo.environment["A8_BAR"] {
+            // A material bar background: a dark blur, with or without a 50% black tint.
+            var layers: [[String: Any]] = [["id": "tabBarBlur", "type": "visualEffect", "content": ["blur": "systemMaterialDark"]]]
+            if bar == "blurtint" { layers.append(["id": "tabBarTint", "type": "fill", "content": ["solid": "#00000080"]]) }
+            b["styles"] = [[["id": "tabBarBg", "type": "material", "content": layers]]]
+            var screens = b["screens"] as! [String: Any]
+            var tabs = screens["tabs"] as! [String: Any]
+            var content = tabs["content"] as! [String: Any]
+            var style = content["barStyle"] as! [String: Any]
+            style["background"] = "tabBarBg"; style["height"] = 50; style["cornerRadius"] = 0
+            style["sideInset"] = 16; style["bottomOffset"] = 10
+            content["barStyle"] = style; tabs["content"] = content; screens["tabs"] = tabs; b["screens"] = screens
+        }
         if let tab {
             var screens = b["screens"] as! [String: Any]
             var tabs = screens["tabs"] as! [String: Any]
@@ -74,4 +92,5 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         }
         return true
     }
+
 }

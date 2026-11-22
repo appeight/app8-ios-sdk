@@ -1610,7 +1610,183 @@
       }
      ]
     },
-    "children": []
+    "children": [
+     {
+      "id": "openGrid",
+      "type": "button",
+      "content": {
+       "properties": {
+        "text": "OPEN GRID"
+       },
+       "style": {
+        "system": {
+         "variant": "filled"
+        }
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "centerX",
+          "target": "superview"
+         },
+         {
+          "type": "centerY",
+          "target": "superview"
+         }
+        ]
+       },
+       "actions": {
+        "tap": [
+         {
+          "type": "navigation",
+          "nextScreen": "category",
+          "presentation": "push"
+         }
+        ]
+       }
+      }
+     },
+     {
+      "id": "openInfo",
+      "type": "button",
+      "content": {
+       "properties": {
+        "text": "OPEN INFO"
+       },
+       "style": {
+        "system": {
+         "variant": "filled"
+        }
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "centerX",
+          "target": "superview"
+         },
+         {
+          "type": "top",
+          "target": "openGrid",
+          "attribute": "bottom",
+          "constant": 24
+         }
+        ]
+       },
+       "actions": {
+        "tap": [
+         {
+          "type": "navigation",
+          "nextScreen": "info",
+          "presentation": "push"
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  "category": {
+   "type": "screen",
+   "id": "category",
+   "content": {
+    "navigationBar": {
+     "title": "Category",
+     "tintColor": "#000000"
+    },
+    "style": {
+     "material": [
+      {
+       "id": "fFFFFFF",
+       "type": "fill",
+       "content": {
+        "solid": "#FFFFFF"
+       }
+      }
+     ]
+    },
+    "children": [
+     {
+      "id": "catGrid",
+      "type": "collection",
+      "content": {
+       "properties": {
+        "data": "{{products}}",
+        "templateName": "Card",
+        "layout": {
+         "type": "grid",
+         "columns": 2,
+         "itemSpacing": 2,
+         "lineSpacing": 16,
+         "estimatedItemHeight": 300
+        }
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "top",
+          "target": "superview"
+         },
+         {
+          "type": "leading",
+          "target": "superview"
+         },
+         {
+          "type": "trailing",
+          "target": "superview"
+         },
+         {
+          "type": "bottom",
+          "target": "superview"
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  "info": {
+   "type": "screen",
+   "id": "info",
+   "content": {
+    "navigationBar": {
+     "title": "Info"
+    },
+    "style": {
+     "material": [
+      {
+       "id": "fFFFFFF",
+       "type": "fill",
+       "content": {
+        "solid": "#FFFFFF"
+       }
+      }
+     ]
+    },
+    "children": [
+     {
+      "id": "infoText",
+      "type": "label",
+      "content": {
+       "properties": {
+        "text": "Plain screen"
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "centerX",
+          "target": "superview"
+         },
+         {
+          "type": "centerY",
+          "target": "superview"
+         }
+        ]
+       }
+      }
+     }
+    ]
    }
   }
  }

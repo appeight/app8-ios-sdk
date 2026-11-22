@@ -237,19 +237,25 @@ final class MaterialView: UIView {
 
         var expectedCALayers: [(typeKey: DSL.Model.Style.SType.Key, style: DSL.Model.Style.`Any`)] = []
         var expectedUIViews: [(typeKey: DSL.Model.Style.SType.Key, style: DSL.Model.Style.`Any`)] = []
-
-        for entry in expectedLayers {
+        // Stacking order: the array's order (later layers above earlier
+        // ones), whether a layer is a CALayer (fill, outline, shadow) or a
+        // view (visual effect, glass, nested material). A shadow is cast
+        // behind the shape: shadows go under everything else, whatever their
+        // place in the array (a shadow above a fill drew its blurred shape
+        // over the fill; the web draws a box-shadow outside the box only).
+        // Before, every view sat above every CALayer: a tint fill listed
+        // after a blur was drawn under it and the blur washed it out (a 50%
+        // black over a dark blur came out grey).
+        let stacked = expectedLayers.filter { $0.typeKey == .shadow } + expectedLayers.filter { $0.typeKey != .shadow }
+        var layerZ: [CGFloat] = []
+        var viewZ: [CGFloat] = []
+        for entry in stacked {
             switch entry.typeKey {
-            case .shadow:
-                // A shadow is cast behind the shape: stack shadows under every
-                // fill and outline, whatever their order in the array. A shadow
-                // layer above a fill would draw its blurred shape over the fill
-                // (the web draws a box-shadow outside the box only).
-                let firstNonShadow = expectedCALayers.firstIndex { $0.typeKey != .shadow } ?? expectedCALayers.endIndex
-                expectedCALayers.insert(entry, at: firstNonShadow)
-            case .fill, .outline:
+            case .shadow, .fill, .outline:
+                layerZ.append(CGFloat(layerZ.count + viewZ.count))
                 expectedCALayers.append(entry)
             case .visualEffect, .material:
+                viewZ.append(CGFloat(layerZ.count + viewZ.count))
                 expectedUIViews.append(entry)
             default:
                 break
@@ -259,15 +265,19 @@ final class MaterialView: UIView {
         updateCALayers(expected: expectedCALayers, cornerStyle: cornerStyle)
         updateUIViews(expected: expectedUIViews, cornerStyle: cornerStyle)
 
-        var zIndex: CGFloat = 0
-        for tracked in trackedLayers {
-            tracked.layer?.zPosition = zIndex
-            zIndex += 1
+        for (index, tracked) in trackedLayers.enumerated() where index < layerZ.count {
+            tracked.layer?.zPosition = layerZ[index]
         }
-        for tracked in trackedViews {
-            tracked.view?.layer.zPosition = zIndex
-            zIndex += 1
+        for (index, tracked) in trackedViews.enumerated() where index < viewZ.count {
+            tracked.view?.layer.zPosition = viewZ[index]
         }
+    }
+
+    /// The material's stacking order as type keys, bottom to top (tests).
+    var stackedTypeKeys: [DSL.Model.Style.SType.Key] {
+        let layers: [(CGFloat, DSL.Model.Style.SType.Key)] = trackedLayers.compactMap { t in t.layer.map { ($0.zPosition, t.typeKey) } }
+        let views: [(CGFloat, DSL.Model.Style.SType.Key)] = trackedViews.compactMap { t in t.view.map { ($0.layer.zPosition, t.typeKey) } }
+        return (layers + views).sorted { $0.0 < $1.0 }.map(\.1)
     }
 
     // MARK: - Diffing

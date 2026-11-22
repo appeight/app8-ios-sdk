@@ -62,7 +62,19 @@ saved={"type":"screen","id":"saved","content":{"navigationBar":{"title":"Saved",
   "children":[{"id":"savedScroll","type":"scrollView","content":{"properties":{"direction":"vertical"},"layout":{"constraints":E},"children":[
     {"id":"grid","type":"collection","content":{"properties":{"data":"{{products}}","templateName":"Card","layout":{"type":"grid","columns":2,"itemSpacing":2,"lineSpacing":16,"scrollEnabled":False,"estimatedItemHeight":300}},
       "layout":{"constraints":E},"actions":{"onItemTap":[push_zoom("{{'card-' + item.id}}","fit-0")]}}}]}}]}}
-bag={"type":"screen","id":"bag","content":{"navigationBar":{"title":"Bag"},"style":{"material":fill("#FFFFFF")},"children":[]}}
+bag={"type":"screen","id":"bag","content":{"navigationBar":{"title":"Bag"},"style":{"material":fill("#FFFFFF")},"children":[
+  {"id":"openGrid","type":"button","content":{"properties":{"text":"OPEN GRID"},"style":{"system":{"variant":"filled"}},
+    "layout":{"constraints":[{"type":"centerX","target":"superview"},{"type":"centerY","target":"superview"}]},
+    "actions":{"tap":[{"type":"navigation","nextScreen":"category","presentation":"push"}]}}},
+  {"id":"openInfo","type":"button","content":{"properties":{"text":"OPEN INFO"},"style":{"system":{"variant":"filled"}},
+    "layout":{"constraints":[{"type":"centerX","target":"superview"},{"type":"top","target":"openGrid","attribute":"bottom","constant":24}]},
+    "actions":{"tap":[{"type":"navigation","nextScreen":"info","presentation":"push"}]}}}]}}
+info={"type":"screen","id":"info","content":{"navigationBar":{"title":"Info"},"style":{"material":fill("#FFFFFF")},"children":[
+  {"id":"infoText","type":"label","content":{"properties":{"text":"Plain screen"},"layout":{"constraints":[{"type":"centerX","target":"superview"},{"type":"centerY","target":"superview"}]}}}]}}
+# A category grid pushed with a plain push: the system content back swipe must work on it.
+category={"type":"screen","id":"category","content":{"navigationBar":{"title":"Category","tintColor":"#000000"},"style":{"material":fill("#FFFFFF")},
+  "children":[{"id":"catGrid","type":"collection","content":{"properties":{"data":"{{products}}","templateName":"Card","layout":{"type":"grid","columns":2,"itemSpacing":2,"lineSpacing":16,"estimatedItemHeight":300}},
+    "layout":{"constraints":E}}}]}}
 tabs={"type":"tabBarScreen","id":"tabs","content":{"tabs":[{"id":"home","label":"HOME","icon":"house","screen":"home"},
    {"id":"saved","label":"SAVED","icon":"star","screen":"saved","badge":"{{length(saved) > 0 ? length(saved) : ''}}"},
    {"id":"bag","label":"BAG","icon":"bag","screen":"bag","badge":"12"}],"initialTab":"home",
@@ -71,5 +83,5 @@ tabs={"type":"tabBarScreen","id":"tabs","content":{"tabs":[{"id":"home","label":
      "text":{"fontSize":12,"fontWeight":"semibold","color":"#FFFFFF"},"badgePlacement":"inline"}}}
 app={"title":"Harness","navigation":{"startFlow":"main","flows":[{"id":"main","startScreen":"tabs"}]},
   "variables":{"products":{"type":"array","initialValue":products},"saved":{"type":"array","initialValue":["p1","p2"]}}}
-bundle={"app":app,"styles":[],"components":[ShowPage,Card,QuickView],"screens":{"tabs":tabs,"home":home,"product":product,"saved":saved,"bag":bag}}
+bundle={"app":app,"styles":[],"components":[ShowPage,Card,QuickView],"screens":{"tabs":tabs,"home":home,"product":product,"saved":saved,"bag":bag,"category":category,"info":info}}
 json.dump(bundle,open("App/fixture.json","w"),indent=1)

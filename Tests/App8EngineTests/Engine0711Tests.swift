@@ -330,6 +330,29 @@ final class Engine0711Tests: XCTestCase {
         XCTAssertNil(context.preparedPush, "taken once")
     }
 
+    // MARK: - Material stacking order
+
+    private func material(_ json: String) throws -> DSL.Model.Style.Material {
+        try JSONDecoder().decode(DSL.Model.Style.Material.self, from: Data(json.utf8))
+    }
+
+    /// Layers stack in array order (later above earlier), CALayer and view
+    /// layers alike; shadows stay at the bottom.
+    func testMaterialLayersStackInArrayOrder() throws {
+        let blur = #"{ "id": "b", "type": "visualEffect", "content": { "blur": "systemMaterialDark" } }"#
+        let tint = ##"{ "id": "t", "type": "fill", "content": { "solid": "#00000080" } }"##
+        let shadow = ##"{ "id": "s", "type": "shadow", "content": { "layers": [ { "color": "#000000", "radius": 8, "offset": { "x": 0, "y": 2 }, "opacity": 0.3 } ] } }"##
+        let view = MaterialView(frame: CGRect(x: 0, y: 0, width: 200, height: 50))
+        view.update(material: try material("[\(blur), \(tint)]"))
+        XCTAssertEqual(view.stackedTypeKeys, [.visualEffect, .fill], "the tint over the blur")
+        view.update(material: try material("[\(tint), \(blur)]"))
+        XCTAssertEqual(view.stackedTypeKeys, [.fill, .visualEffect])
+        let withShadow = MaterialView(frame: CGRect(x: 0, y: 0, width: 200, height: 50))
+        withShadow.update(material: try material("[\(blur), \(tint), \(shadow)]"))
+        XCTAssertEqual(withShadow.stackedTypeKeys.first, .shadow)
+        XCTAssertEqual(Array(withShadow.stackedTypeKeys.dropFirst()), [.visualEffect, .fill])
+    }
+
     // MARK: - Search-only bar
 
     func testSearchOnlyBarSitsInTheBarOnIOS26() {

@@ -97,6 +97,67 @@ final class HarnessUITests: XCTestCase {
         checkButtons("after dismiss cancel")
     }
 
+    /// iOS 26: a swipe from anywhere on a plainly pushed screen (a grid)
+    /// pops it, also after a hero zoom push came and went.
+    func test9NoTabsContentSwipe() {
+        app.launchEnvironment["A8_NOTABS"] = "1"
+        app.launch()
+        XCTAssertTrue(app.buttons["OPEN INFO"].waitForExistence(timeout: 15))
+        app.buttons["OPEN INFO"].tap()
+        XCTAssertTrue(app.navigationBars["Info"].waitForExistence(timeout: 5))
+        sleep(1)
+        app.swipeRight()
+        sleep(1)
+        XCTAssertFalse(app.navigationBars["Info"].exists, "no tabs: content swipe pops")
+    }
+
+    func test7ContentSwipeBack() {
+        launch(tab: "bag")
+        app.buttons["OPEN INFO"].tap()
+        XCTAssertTrue(app.navigationBars["Info"].waitForExistence(timeout: 5))
+        sleep(1); mark("content swipe info")
+        app.swipeRight()
+        sleep(1)
+        XCTAssertFalse(app.navigationBars["Info"].exists, "content swipe popped the plain screen")
+        if app.navigationBars["Info"].exists { back(app); sleep(1) }
+        contentSwipe("grid, first push")
+        app.buttons["HOME"].tap(); sleep(1)
+        openProduct(); back(app); sleep(1)
+        app.buttons["BAG"].tap(); sleep(1)
+        contentSwipe("grid, after a hero push")
+        app.buttons["SAVED"].tap(); sleep(1)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.25)).tap()
+        XCTAssertTrue(app.staticTexts["ADD TO BAG"].waitForExistence(timeout: 5), "card zoom push")
+        sleep(1); back(app); sleep(1)
+        app.buttons["BAG"].tap(); sleep(1)
+        contentSwipe("grid, after a card zoom push")
+    }
+
+    private func contentSwipe(_ ctx: String, file: StaticString = #filePath, line: UInt = #line) {
+        app.buttons["OPEN GRID"].tap()
+        XCTAssertTrue(app.navigationBars["Category"].waitForExistence(timeout: 5), "grid pushed", file: file, line: line)
+        sleep(1)
+        mark("content swipe \(ctx)")
+        app.swipeRight()
+        sleep(1)
+        XCTAssertTrue(app.buttons["OPEN GRID"].waitForExistence(timeout: 2) && app.buttons["OPEN GRID"].isHittable,
+                      "content swipe popped the grid (\(ctx))", file: file, line: line)
+        if app.navigationBars["Category"].exists { back(app); sleep(1) }
+    }
+
+    /// Screenshots of a material bar background over the photo feed.
+    func testMaterialBarScreenshots() {
+        for mode in ["blur", "blurtint"] {
+            app.launchEnvironment["A8_BAR"] = mode
+            launch()
+            sleep(2)
+            let shot = XCUIScreen.main.screenshot()
+            try? shot.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/a8-bar-\(mode).png"))
+            app.terminate()
+        }
+        app.launchEnvironment["A8_BAR"] = nil
+    }
+
     func testContextMenuPreviewTap() {
         launch(tab: "saved")
         let card = app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.25))

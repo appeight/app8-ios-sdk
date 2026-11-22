@@ -14,6 +14,7 @@ final class EdgeTabBarTests: XCTestCase {
     private var barStyle: [String: Any] = ["variant": "text", "shape": "edge", "height": 32, "background": "#000000",
                                            "selection": "opacity", "unselectedOpacity": 0.3]
     private var bagBadge = "3"
+    private var styles: [Any] = []
 
     private func bundle() -> [String: Any] {
         let screens: [String: Any] = [
@@ -30,7 +31,7 @@ final class EdgeTabBarTests: XCTestCase {
         ]
         return ["bundle": [
             "app": ["title": "T", "navigation": ["startFlow": "f", "flows": [["id": "f", "startScreen": "tabs"]]]],
-            "styles": [], "components": [], "screens": screens
+            "styles": styles, "components": [], "screens": screens
         ] as [String: Any]]
     }
 
@@ -143,5 +144,55 @@ final class EdgeTabBarTests: XCTestCase {
             tabs.view.layer.render(in: ctx.cgContext)
         }
         try? image.pngData()?.write(to: URL(fileURLWithPath: "/tmp/a8-flat-tabbar.png"))
+    }
+
+    // MARK: - Material background (blur + tint)
+
+    private func all(_ v: CALayer) -> [CALayer] { [v] + (v.sublayers ?? []).flatMap(all) }
+
+    /// `background` naming a material style (a blur layer and a tint) draws
+    /// both on the engine-drawn bar.
+    func testMaterialBackgroundDrawsBlurOnly() async throws {
+        styles = [[["id": "tabBarBg", "type": "material", "content": [
+            ["id": "tabBarBlur", "type": "visualEffect", "content": ["blur": "systemMaterialDark"]]]]]]
+        barStyle = ["variant": "text", "shape": "floating", "background": "tabBarBg", "cornerRadius": 0, "height": 50,
+                    "sideInset": 16, "bottomOffset": 10, "selection": "opacity", "unselectedOpacity": 0.3]
+        let (tabs, _) = try await start()
+        let bar = try XCTUnwrap(all(tabs.view).compactMap { $0 as? StyledTabBarView }.first)
+        bar.layoutIfNeeded()
+        let blur = all(bar).compactMap { $0 as? UIVisualEffectView }.first { $0.effect != nil }
+        XCTAssertNotNil(blur, "a blur view")
+        XCTAssertEqual(blur.map { $0.convert($0.bounds, to: bar).width } ?? 0, bar.bounds.width, accuracy: 1)
+    }
+
+    func testMaterialBackgroundDrawsBlurAndTint() async throws {
+        styles = [[["id": "tabBarBg", "type": "material", "content": [
+            ["id": "tabBarBlur", "type": "visualEffect", "content": ["blur": "systemMaterialDark"]],
+            ["id": "tabBarTint", "type": "fill", "content": ["solid": "#00000080"]]]]]]
+        barStyle = ["variant": "text", "shape": "floating", "background": "tabBarBg", "cornerRadius": 0, "height": 50,
+                    "sideInset": 16, "bottomOffset": 10, "selection": "opacity", "unselectedOpacity": 0.3]
+        let (tabs, _) = try await start()
+        let bar = try XCTUnwrap(all(tabs.view).compactMap { $0 as? StyledTabBarView }.first)
+        bar.layoutIfNeeded()
+        let views = all(bar)
+        let blur = views.compactMap { $0 as? UIVisualEffectView }.first { $0.effect != nil }
+        XCTAssertNotNil(blur, "a blur view")
+        if let blur {
+            let frame = blur.convert(blur.bounds, to: bar)
+            XCTAssertEqual(frame.width, bar.bounds.width, accuracy: 1, "the blur fills the bar")
+            XCTAssertEqual(frame.height, bar.bounds.height, accuracy: 1)
+            XCTAssertFalse(blur.isHidden)
+            XCTAssertGreaterThan(blur.alpha, 0.5)
+        }
+        let tint = all(bar.layer).first { layer in
+            guard let color = layer.backgroundColor.map(UIColor.init(cgColor:)) else { return false }
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            color.getRed(&r, green: &g, blue: &b, alpha: &a)
+            return abs(a - 0.5) < 0.02 && r < 0.01 && layer.bounds.width >= bar.bounds.width - 1
+        }
+        XCTAssertNotNil(tint, "a 50% black tint filling the bar")
+        // The tint sits above the blur (array order), not under it.
+        let material = try XCTUnwrap(all(bar).compactMap { $0 as? MaterialView }.first)
+        XCTAssertEqual(material.stackedTypeKeys, [.visualEffect, .fill])
     }
 }

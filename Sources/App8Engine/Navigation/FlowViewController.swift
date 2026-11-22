@@ -64,7 +64,7 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
         } else {
             let navController = App8NavigationController()
             navController.setNavigationBarHidden(true, animated: false)
-            navController.delegate = navTransitionCoordinator
+            navTransitionCoordinator.attach(to: navController)
             embedNavigationController(navController)
             self.navController = navController
 

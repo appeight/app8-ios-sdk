@@ -69,7 +69,7 @@ final class ModalViewController: UIViewController {
     }
 
     private func setupNavigationController() {
-        navController.delegate = navTransitionCoordinator
+        navTransitionCoordinator.attach(to: navController)
         addChild(navController)
         view.addSubview(navController.view)
         // Pin with Auto Layout (not an autoresizing-mask frame) so the embedded

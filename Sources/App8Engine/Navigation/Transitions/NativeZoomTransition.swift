@@ -160,6 +160,8 @@ enum NativeZoomTransition {
         // and morph (the navigation delegate returns `ZoomMorphAnimator`).
         if let zoom = transition.nativeZoom, navController.delegate != nil,
            ZoomMorphTransition.attachIfFullScreenSource(to: screenVC, zoom: zoom, presentingScreen: presenting) {
+            // The delegate answers the transition methods for this push.
+            CustomTransitionDelegateGate.refresh(navController)
             navController.pushViewController(screenVC, animated: true)
             return
         }

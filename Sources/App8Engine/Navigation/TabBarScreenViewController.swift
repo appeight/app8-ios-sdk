@@ -53,6 +53,21 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         return navController.viewControllers.count > 1
     }
 
+    /// The transition methods are answered only while the engine's zoom is in
+    /// play on a tab's stack (`CustomTransitionDelegateGate`): otherwise the
+    /// iOS 26 content back swipe works on every pushed screen.
+    private var wantsCustomTransitions: Bool {
+        if ZoomMorphTransition.hasPendingPush { return true }
+        return tabNavigationControllers.values.contains { nav in
+            nav.topViewController.map { ZoomMorphTransition.of($0) != nil } ?? false
+        }
+    }
+
+    override func responds(to aSelector: Selector!) -> Bool {
+        if CustomTransitionDelegateGate.isTransitionSelector(aSelector) { return wantsCustomTransitions }
+        return super.responds(to: aSelector)
+    }
+
     /// The engine's pose and morph for a zoom out of a full-screen source.
     func navigationController(
         _ navigationController: UINavigationController,
@@ -146,6 +161,9 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         // The system resets the delegate on navigation — re-apply it.
         navigationController.interactivePopGestureRecognizer?.delegate = self
         navigationController.interactivePopGestureRecognizer?.isEnabled = navigationController.viewControllers.count > 1
+        DispatchQueue.main.async { [weak navigationController] in
+            CustomTransitionDelegateGate.refresh(navigationController)
+        }
         if edgeStripe != nil {
             applyEdgeInsets(in: navigationController)
             if navigationController === selectedViewController, navigationController.transitionCoordinator == nil {

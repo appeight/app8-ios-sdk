@@ -45,6 +45,11 @@ final class ZoomMorphTransition: NSObject {
         super.init()
     }
 
+    /// A screen with this transition about to be pushed (navigation delegates
+    /// answer the transition methods for it; see `CustomTransitionDelegateGate`).
+    private static weak var pendingPush: UIViewController?
+    static var hasPendingPush: Bool { pendingPush != nil && pendingPush?.navigationController == nil }
+
     /// The pose-and-morph transition that pushed `viewController`, if any.
     static func of(_ viewController: UIViewController) -> ZoomMorphTransition? {
         objc_getAssociatedObject(viewController, &key) as? ZoomMorphTransition
@@ -65,6 +70,7 @@ final class ZoomMorphTransition: NSObject {
               SourceProxy.covers(source, presentingScreen.view) else { return false }
         let transition = ZoomMorphTransition(zoom: zoom, presentingScreen: presentingScreen, initialSourceKey: key)
         objc_setAssociatedObject(viewController, &Self.key, transition, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        pendingPush = viewController
         return true
     }
 

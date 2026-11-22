@@ -26,6 +26,42 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
     func register(_ transition: DSL.Model.ScreenTransition.Resolved?, for viewController: UIViewController) {
         guard let transition, transition.isAnimated else { return }
         transitions[ObjectIdentifier(viewController)] = transition
+        pendingCustomPush = true
+        refreshDelegateIfNeeded()
+    }
+
+    /// The navigation controller this coordinator is the delegate of.
+    func attach(to navigationController: UINavigationController) {
+        self.navigationController = navigationController
+        navigationController.delegate = self
+        answeredTransitionMethods = wantsCustomTransitions
+    }
+
+    // MARK: - Content back swipe (CustomTransitionDelegateGate)
+
+    /// A custom push is about to start (its transition is registered).
+    private var pendingCustomPush = false
+    /// What `responds(to:)` answered when UIKit last read the delegate.
+    private var answeredTransitionMethods = false
+
+    /// Whether the transition methods are needed: a custom push about to
+    /// start, or a top screen whose pop is custom (or the engine's zoom).
+    var wantsCustomTransitions: Bool {
+        if pendingCustomPush || ZoomMorphTransition.hasPendingPush { return true }
+        guard let top = navigationController?.topViewController else { return false }
+        return transitions[ObjectIdentifier(top)] != nil || ZoomMorphTransition.of(top) != nil
+    }
+
+    override func responds(to aSelector: Selector!) -> Bool {
+        if CustomTransitionDelegateGate.isTransitionSelector(aSelector) { return wantsCustomTransitions }
+        return super.responds(to: aSelector)
+    }
+
+    func refreshDelegateIfNeeded() {
+        let wants = wantsCustomTransitions
+        guard wants != answeredTransitionMethods, let nav = navigationController, nav.delegate === self else { return }
+        answeredTransitionMethods = wants
+        CustomTransitionDelegateGate.refresh(nav)
     }
 
     // MARK: - UINavigationControllerDelegate
@@ -73,7 +109,9 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
     ) {
         self.navigationController = navigationController
         pruneTransitions(keeping: navigationController.viewControllers)
+        pendingCustomPush = false
         configureInteractivePop(for: navigationController)
+        DispatchQueue.main.async { [weak self] in self?.refreshDelegateIfNeeded() }
         NotificationCenter.default.post(name: .app8ScreenContextChanged, object: nil)
     }
 

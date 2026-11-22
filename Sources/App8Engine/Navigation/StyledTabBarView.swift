@@ -132,12 +132,31 @@ final class StyledTabBarView: UIView {
     private func render() {
         let component: DSL.Model.Component.`Any`?
         if let id = backgroundStyleId,
+           let entity = service.styleResolver?(id) as? DSL.Model.Style.Material.Entity {
+            // A material entity (blur + tint layers…): drawn directly, its
+            // layers in order, filling the bar's background.
+            let view = MaterialView()
+            view.update(material: entity.content)
+            view.isUserInteractionEnabled = false
+            view.frame = backgroundView.bounds
+            view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            backgroundView.addSubview(view)
+        } else if let id = backgroundStyleId,
            let data = try? JSONSerialization.data(withJSONObject: ["type": "view", "id": "tabBarBackground", "content": ["style": ["material": [["id": id]]]]]),
            var fill = try? JSONDecoder().decode(DSL.Model.Component.`Any`.self, from: data) {
             if let resolver = service.styleResolver { fill.resolveStylePointers(resolver: resolver) }
             let view = service.renderComponent(fill, superview: backgroundView, parentPath: "tabBar").view
-            view.frame = backgroundView.bounds
-            view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            // The rendered view has no layout of its own: pin it to the
+            // background (a bare frame is dropped when it uses Auto Layout,
+            // which left the bar with no background at all).
+            if view.superview !== backgroundView { backgroundView.addSubview(view) }
+            view.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: backgroundView.topAnchor),
+                view.bottomAnchor.constraint(equalTo: backgroundView.bottomAnchor),
+                view.leadingAnchor.constraint(equalTo: backgroundView.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor),
+            ])
         }
         if let name = style.component {
             component = service.resolveTemplate(named: name)
