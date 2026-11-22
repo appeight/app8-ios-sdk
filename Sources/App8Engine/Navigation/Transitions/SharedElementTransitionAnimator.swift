@@ -97,7 +97,16 @@ final class SharedElementTransitionAnimator: NSObject, UIViewControllerAnimatedT
 
         var morphers: [ElementMorpher] = []
         var fallbacks: [ElementFallback] = []
-        if !reduceMotion {
+        if !reduceMotion, let zoom = resolved.nativeZoom, let fromView, let toView {
+            // A zoom from a full-screen source: one matched pair, the source
+            // element and the alignment element, found on screen now (they
+            // may be collection cells, absent from the screens' participants).
+            if let pair = zoomPair(zoom, from: fromView, to: toView),
+               let morpher = ElementMorpher(container: container, fromReal: pair.from, toReal: pair.to,
+                                            config: Self.zoomElementConfig, direction: direction) {
+                morphers = [morpher]
+            }
+        } else if !reduceMotion {
             (morphers, fallbacks) = buildElementAnimations(
                 from: fromParticipants, to: toParticipants, container: container
             )
@@ -145,6 +154,26 @@ final class SharedElementTransitionAnimator: NSObject, UIViewControllerAnimatedT
         cachedAnimator = animator
         return animator
     }
+
+    // MARK: - Zoom pair
+
+    /// Source photo on the presenting screen, alignment element on the
+    /// zoomed one; `from`/`to` follow the direction.
+    private func zoomPair(_ zoom: DSL.Model.ScreenTransition.NativeZoom, from: UIView, to: UIView) -> (from: UIView, to: UIView)? {
+        let sourceKey = zoom.resolvedSourceKey ?? zoom.sourceKeyExpression
+        guard let alignmentKey = zoom.resolvedAlignmentKey ?? zoom.alignmentKeyExpression else { return nil }
+        let presenting = direction == .forward ? from : to
+        let zoomed = direction == .forward ? to : from
+        guard let source = TransitionKeyLocator.view(forKey: sourceKey, in: presenting),
+              let alignment = TransitionKeyLocator.view(forKey: alignmentKey, in: zoomed) else { return nil }
+        return direction == .forward ? (source, alignment) : (alignment, source)
+    }
+
+    /// Frame morph with a cross-dissolve.
+    private static let zoomElementConfig: DSL.Model.ScreenTransition.ElementTransition = {
+        // swiftlint:disable:next force_try
+        try! JSONDecoder().decode(DSL.Model.ScreenTransition.ElementTransition.self, from: Data(#"{"key":"zoom"}"#.utf8))
+    }()
 
     // MARK: - Element animation construction
 

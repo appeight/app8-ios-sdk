@@ -39,6 +39,23 @@ extension DSL.Model.ScreenTransition {
         var nativeZoom: NativeZoom? = nil
     }
 
+    /// The zoom from a full-screen source as a shared-element push: the
+    /// source and alignment elements are the matched pair
+    /// (`SharedElementTransitionAnimator`), the new screen fades in at scale 1
+    /// over the still presenting one; drag to dismiss (`interactive`).
+    static func sharedZoom(_ zoom: NativeZoom) -> Resolved {
+        Resolved(
+            kind: .shared, mode: .push, edge: .trailing, raise: .incoming,
+            animation: DSL.Model.Animation.Inline(id: nil, duration: 0.36, delay: 0, timing: .curve(.easeOut), options: []),
+            from: .identityPair,
+            to: .init(begin: .init(opacity: 0, translate: .zero, scale: .identity, rotate: 0, anchor: .center),
+                      end: .init(opacity: 1, translate: .zero, scale: .identity, rotate: 0, anchor: .center)),
+            reverseFrom: nil, reverseTo: nil, dimming: nil,
+            interactive: InteractiveConfig(enabled: true, edge: nil, threshold: 0.25, velocity: 800),
+            presentation: nil, nativeZoom: zoom
+        )
+    }
+
     /// A push with no animation (a context menu preview's commit is the transition).
     static var instantPush: Resolved {
         Resolved(

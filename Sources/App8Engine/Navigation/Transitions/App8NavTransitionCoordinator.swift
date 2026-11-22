@@ -20,7 +20,7 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
     /// Active interactive-pop driver for the visible custom-interactive screen.
     private var interactiveDriver: App8InteractiveTransitionDriver?
 
-    private weak var navigationController: UINavigationController?
+    weak var navigationController: UINavigationController?
 
     /// Register the transition that pushed `viewController` (so its pop matches).
     func register(_ transition: DSL.Model.ScreenTransition.Resolved?, for viewController: UIViewController) {
@@ -47,9 +47,9 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
     /// Whether the transition methods are needed: a custom push about to
     /// start, or a top screen whose pop is custom (or the engine's zoom).
     var wantsCustomTransitions: Bool {
-        if pendingCustomPush || ZoomMorphTransition.hasPendingPush { return true }
+        if pendingCustomPush { return true }
         guard let top = navigationController?.topViewController else { return false }
-        return transitions[ObjectIdentifier(top)] != nil || ZoomMorphTransition.of(top) != nil
+        return transitions[ObjectIdentifier(top)] != nil
     }
 
     override func responds(to aSelector: Selector!) -> Bool {
@@ -59,7 +59,7 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
 
     func refreshDelegateIfNeeded() {
         let wants = wantsCustomTransitions
-        guard wants != answeredTransitionMethods, let nav = navigationController, nav.delegate === self else { return }
+        guard wants != answeredTransitionMethods, let nav = navigationController else { return }
         answeredTransitionMethods = wants
         CustomTransitionDelegateGate.refresh(nav)
     }
@@ -73,7 +73,6 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
         to toVC: UIViewController
     ) -> UIViewControllerAnimatedTransitioning? {
         self.navigationController = navigationController
-        if let morph = ZoomMorphTransition.animator(for: operation, from: fromVC, to: toVC) { return morph }
 
         let resolved: DSL.Model.ScreenTransition.Resolved?
         let direction: TransitionDirection
@@ -97,7 +96,6 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
         _ navigationController: UINavigationController,
         interactionControllerFor animationController: UIViewControllerAnimatedTransitioning
     ) -> UIViewControllerInteractiveTransitioning? {
-        if let morph = ZoomMorphTransition.interactionController(for: animationController) { return morph }
         guard let interactiveDriver, interactiveDriver.isInteracting else { return nil }
         return interactiveDriver
     }
@@ -139,10 +137,7 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
         interactiveDriver?.detach()
         interactiveDriver = nil
 
-        if ZoomMorphTransition.blocksSystemPopGesture(in: navigationController) {
-            // The pose-and-morph screen runs its own back swipe.
-            navigationController.interactivePopGestureRecognizer?.isEnabled = false
-        } else if wantsCustomInteractive, let resolved {
+        if wantsCustomInteractive, let resolved {
             // Custom interactive pop: disable the system gesture, drive our own.
             navigationController.interactivePopGestureRecognizer?.isEnabled = false
             let config = resolved.interactive ?? .init(enabled: true, edge: nil, threshold: 0.3, velocity: 800)
@@ -157,12 +152,47 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
                 to: navigationController.view,
                 edges: screenEdge(for: resolved.edge.opposite)
             )
+            // A full-screen-source zoom: the screen also dismisses with a drag
+            // from anywhere its content does not use (`dismissGesture`), and
+            // shrinks under the finger into a card.
+            driver.onCancelled = { [weak navigationController] in
+                if let navigationController { Self.repairNavigationBar(navigationController) }
+            }
+            if let zoom = resolved.nativeZoom, let top {
+                driver.cardView = top.view
+                driver.cardBar = navigationController.navigationBar
+                if zoom.dismissGesture != .none {
+                    driver.attachDismissPan(to: top.view) { [weak top] pan in
+                        guard let view = top?.view else { return false }
+                        return NativeZoomTransition.shouldBeginDismiss(
+                            gesture: zoom.dismissGesture, location: pan.location(in: view),
+                            velocity: pan.velocity(in: view), willBegin: true, zoomedView: view)
+                    }
+                }
+            }
             interactiveDriver = driver
         } else {
             // Default behavior: system interactive pop gesture (as before),
             // unless the visible screen opts out via `swipeBackEnabled: false`.
             navigationController.interactivePopGestureRecognizer?.delegate = self
             navigationController.interactivePopGestureRecognizer?.isEnabled = canPop && allowsSwipeBack
+        }
+    }
+
+    /// A cancelled interactive pop toward a screen without a navigation bar
+    /// can leave UIKit's fade of the bar at opacity 0 with its pacing
+    /// animations attached: the bar invisible, its buttons dead. Restore it
+    /// for the screen that stayed.
+    static func repairNavigationBar(_ nav: UINavigationController) {
+        guard nav.transitionCoordinator == nil else { return }
+        func clear(_ layer: CALayer) {
+            layer.removeAllAnimations()
+            layer.sublayers?.forEach(clear)
+        }
+        clear(nav.navigationBar.layer)
+        if !nav.isNavigationBarHidden {
+            nav.navigationBar.alpha = 1
+            nav.navigationBar.layer.opacity = 1
         }
     }
 

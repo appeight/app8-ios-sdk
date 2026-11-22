@@ -170,6 +170,7 @@ final class ScreenViewController: BaseViewController {
     override func didMove(toParent parent: UIViewController?) {
         super.didMove(toParent: parent)
         enableLargeTitlesIfNeeded()
+        updateCustomBackItem()
     }
 
     /// Large titles are a navigation-bar switch (`prefersLargeTitles`); each
@@ -385,6 +386,7 @@ final class ScreenViewController: BaseViewController {
             let btn = UIButton(configuration: cfg)
             btn.addTarget(self, action: #selector(customBackTapped), for: .touchUpInside)
             customBackItem = UIBarButtonItem(customView: btn)
+            customBackLabel = backLabel
             updateCustomBackItem()
         }
 
@@ -840,8 +842,29 @@ final class ScreenViewController: BaseViewController {
     /// start screen, a modal's first screen).
     private var customBackItem: UIBarButtonItem?
 
+    /// `navigationBar.backLabel`.
+    private var customBackLabel: String?
+
+    /// A screen directly in a navigation stack keeps the system back button,
+    /// with the label as its title (`""`: the chevron alone). A custom
+    /// `leftBarButtonItem` in its place turned iOS 26's content back swipe
+    /// (`interactiveContentPopGestureRecognizer`, a swipe from anywhere on the
+    /// screen) off: only the edge swipe popped. The custom button stays for a
+    /// screen nested in a container (a tab bar screen), whose bar item the
+    /// system does not give a back button.
     private func updateCustomBackItem() {
         guard let item = customBackItem else { return }
+        if let nav = navigationController, parent === nav {
+            navigationItem.hidesBackButton = false
+            if navigationItem.leftBarButtonItem === item { navigationItem.leftBarButtonItem = nil }
+            let label = customBackLabel ?? ""
+            navigationItem.backButtonDisplayMode = label.isEmpty ? .minimal : .default
+            if !label.isEmpty, let index = nav.viewControllers.firstIndex(of: self), index > 0 {
+                nav.viewControllers[index - 1].navigationItem.backButtonTitle = label
+            }
+            return
+        }
+        navigationItem.hidesBackButton = true
         let show = canGoBack
         if show, navigationItem.leftBarButtonItem == nil {
             navigationItem.leftBarButtonItem = item

@@ -48,19 +48,27 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
               let navController = tabNavigationControllers[tabIds[selectedIndex]] else {
             return false
         }
-        // A pose-and-morph screen runs its own back swipe.
-        if ZoomMorphTransition.blocksSystemPopGesture(in: navController) { return false }
         return navController.viewControllers.count > 1
     }
 
-    /// The transition methods are answered only while the engine's zoom is in
-    /// play on a tab's stack (`CustomTransitionDelegateGate`): otherwise the
+    /// Each tab's stack has the engine's transition coordinator (custom
+    /// transitions, the shared-element zoom and their interactive pops); this
+    /// controller stays the navigation delegate and forwards to it.
+    private var tabCoordinators: [ObjectIdentifier: App8NavTransitionCoordinator] = [:]
+
+    func transitionCoordinator(for nav: UINavigationController) -> App8NavTransitionCoordinator {
+        if let existing = tabCoordinators[ObjectIdentifier(nav)] { return existing }
+        let coordinator = App8NavTransitionCoordinator()
+        coordinator.navigationController = nav
+        tabCoordinators[ObjectIdentifier(nav)] = coordinator
+        return coordinator
+    }
+
+    /// The transition methods are answered only while a custom transition is
+    /// in play on a tab's stack (`CustomTransitionDelegateGate`): otherwise the
     /// iOS 26 content back swipe works on every pushed screen.
     private var wantsCustomTransitions: Bool {
-        if ZoomMorphTransition.hasPendingPush { return true }
-        return tabNavigationControllers.values.contains { nav in
-            nav.topViewController.map { ZoomMorphTransition.of($0) != nil } ?? false
-        }
+        tabCoordinators.values.contains { $0.wantsCustomTransitions }
     }
 
     override func responds(to aSelector: Selector!) -> Bool {
@@ -68,21 +76,22 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         return super.responds(to: aSelector)
     }
 
-    /// The engine's pose and morph for a zoom out of a full-screen source.
     func navigationController(
         _ navigationController: UINavigationController,
         animationControllerFor operation: UINavigationController.Operation,
         from fromVC: UIViewController,
         to toVC: UIViewController
     ) -> UIViewControllerAnimatedTransitioning? {
-        ZoomMorphTransition.animator(for: operation, from: fromVC, to: toVC)
+        transitionCoordinator(for: navigationController)
+            .navigationController(navigationController, animationControllerFor: operation, from: fromVC, to: toVC)
     }
 
     func navigationController(
         _ navigationController: UINavigationController,
         interactionControllerFor animationController: UIViewControllerAnimatedTransitioning
     ) -> UIViewControllerInteractiveTransitioning? {
-        ZoomMorphTransition.interactionController(for: animationController)
+        transitionCoordinator(for: navigationController)
+            .navigationController(navigationController, interactionControllerFor: animationController)
     }
 
     func gestureRecognizer(
@@ -161,9 +170,9 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         // The system resets the delegate on navigation — re-apply it.
         navigationController.interactivePopGestureRecognizer?.delegate = self
         navigationController.interactivePopGestureRecognizer?.isEnabled = navigationController.viewControllers.count > 1
-        DispatchQueue.main.async { [weak navigationController] in
-            CustomTransitionDelegateGate.refresh(navigationController)
-        }
+        // The coordinator decides the interactive pop (a custom transition's
+        // own gestures, else the system one) and refreshes the delegate gate.
+        transitionCoordinator(for: navigationController).navigationController(navigationController, didShow: viewController, animated: animated)
         if edgeStripe != nil {
             applyEdgeInsets(in: navigationController)
             if navigationController === selectedViewController, navigationController.transitionCoordinator == nil {
@@ -901,7 +910,8 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
                 screenVC = await appService.renderScreen(screenComponent, screenId: screenId, params: params.isEmpty ? nil : params)
             }
             if let transition = request.transition, transition.kind == .nativeZoom {
-                NativeZoomTransition.push(screenVC, on: currentNavController, transition: transition, coordinator: nil, logger: context.logger)
+                NativeZoomTransition.push(screenVC, on: currentNavController, transition: transition,
+                                          coordinator: transitionCoordinator(for: currentNavController), logger: context.logger)
             } else if request.transition?.kind == DSL.Model.ScreenTransition.Resolved.Kind.none {
                 currentNavController.pushViewController(screenVC, animated: false)
             } else {

@@ -72,7 +72,7 @@ bag={"type":"screen","id":"bag","content":{"navigationBar":{"title":"Bag"},"styl
 info={"type":"screen","id":"info","content":{"navigationBar":{"title":"Info"},"style":{"material":fill("#FFFFFF")},"children":[
   {"id":"infoText","type":"label","content":{"properties":{"text":"Plain screen"},"layout":{"constraints":[{"type":"centerX","target":"superview"},{"type":"centerY","target":"superview"}]}}}]}}
 # A category grid pushed with a plain push: the system content back swipe must work on it.
-category={"type":"screen","id":"category","content":{"navigationBar":{"title":"Category","tintColor":"#000000"},"style":{"material":fill("#FFFFFF")},
+category={"type":"screen","id":"category","content":{"navigationBar":{"title":"Category","tintColor":"#000000","backLabel":""},"style":{"material":fill("#FFFFFF")},
   "children":[{"id":"catGrid","type":"collection","content":{"properties":{"data":"{{products}}","templateName":"Card","layout":{"type":"grid","columns":2,"itemSpacing":2,"lineSpacing":16,"estimatedItemHeight":300}},
     "layout":{"constraints":E}}}]}}
 tabs={"type":"tabBarScreen","id":"tabs","content":{"tabs":[{"id":"home","label":"HOME","icon":"house","screen":"home"},

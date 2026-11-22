@@ -270,53 +270,9 @@ final class Engine0711Tests: XCTestCase {
 
     // MARK: - Zoom from a full-screen source
 
-    func testPoseCoversTheSourceWithTheAlignmentElement() {
-        let screen = CGSize(width: 402, height: 874)
-        let center = CGPoint(x: 201, y: 437)
-        let source = CGRect(origin: .zero, size: screen)                  // a full-screen pager page
-        let alignment = CGRect(x: 0, y: 0, width: 402, height: 603)       // gallery at the top (w × 1.5)
-        let pose = ZoomMorphTransition.pose(source: source, alignment: alignment, bounds: screen, center: center)
-        XCTAssertEqual(pose.a, pose.d)                                    // uniform
-        XCTAssertEqual(pose.a, 874.0 / 603.0, accuracy: 0.001)            // cover
-        // The alignment element maps onto the source's height, centred on it.
-        let parent = UIView(frame: CGRect(origin: .zero, size: screen))
-        let view = UIView(frame: CGRect(origin: .zero, size: screen))
-        parent.addSubview(view)
-        view.transform = pose
-        let mapped = view.convert(alignment, to: parent)
-        XCTAssertEqual(mapped.minY, 0, accuracy: 0.5)
-        XCTAssertEqual(mapped.maxY, 874, accuracy: 0.5)
-        XCTAssertEqual(mapped.midX, 201, accuracy: 0.5)
-        // The clip in the screen's own coordinates maps back onto the source.
-        let local = ZoomMorphTransition.localRect(source, pose: pose, bounds: screen, center: center)
-        XCTAssertEqual(view.convert(local, to: parent).minX, 0, accuracy: 0.5)
-        XCTAssertEqual(view.convert(local, to: parent).maxY, 874, accuracy: 0.5)
-        XCTAssertTrue(alignment.insetBy(dx: -0.5, dy: -0.5).contains(local))
-    }
 
-    func testPoseIsIdentityWhenAlignmentIsTheSource() {
-        let rect = CGRect(x: 0, y: 0, width: 400, height: 800)
-        let pose = ZoomMorphTransition.pose(source: rect, alignment: rect, bounds: rect.size, center: CGPoint(x: 200, y: 400))
-        XCTAssertEqual(pose.a, 1, accuracy: 0.0001)
-        XCTAssertEqual(pose.tx, 0, accuracy: 0.0001)
-        XCTAssertEqual(pose.ty, 0, accuracy: 0.0001)
-    }
 
-    func testInteractiveProgress() {
-        let size = CGSize(width: 400, height: 800)
-        typealias I = ZoomMorphInteraction
-        XCTAssertEqual(I.progress(translation: CGPoint(x: 100, y: 0), size: size, edgeSwipe: true, downOnly: false, rtl: false), 0.25)
-        XCTAssertEqual(I.progress(translation: CGPoint(x: -100, y: 0), size: size, edgeSwipe: true, downOnly: false, rtl: false), 0)
-        XCTAssertEqual(I.progress(translation: CGPoint(x: 0, y: 240), size: size, edgeSwipe: false, downOnly: true, rtl: false), 0.5)
-        XCTAssertEqual(I.progress(translation: CGPoint(x: 0, y: -240), size: size, edgeSwipe: false, downOnly: true, rtl: false), 0)
-        XCTAssertEqual(I.progress(translation: CGPoint(x: -200, y: 0), size: size, edgeSwipe: false, downOnly: false, rtl: false), 0.5)
-    }
 
-    func testInteractiveDismissFinishesPastAQuarterOrOnAFling() {
-        XCTAssertTrue(ZoomMorphInteraction.finishes(progress: 0.3, fling: 0))
-        XCTAssertTrue(ZoomMorphInteraction.finishes(progress: 0.05, fling: 1200))
-        XCTAssertFalse(ZoomMorphInteraction.finishes(progress: 0.1, fling: 100))
-    }
 
     // MARK: - Context menu destination built ahead
 
@@ -353,14 +309,20 @@ final class Engine0711Tests: XCTestCase {
         XCTAssertEqual(Array(withShadow.stackedTypeKeys.dropFirst()), [.visualEffect, .fill])
     }
 
-    /// A full-screen page's zoom grows from its picture: a portrait product
-    /// photo (2:3) on a 402 × 874 page is a full-width band in the middle.
-    func testFullScreenSourceZoomsFromThePicture() {
-        let band = SourceProxy.aspectFit(CGSize(width: 600, height: 900), in: CGRect(x: 0, y: 0, width: 402, height: 874))
-        XCTAssertEqual(band.width, 402, accuracy: 0.01)
-        XCTAssertEqual(band.height, 603, accuracy: 0.01)
-        XCTAssertEqual(band.midY, 437, accuracy: 0.01)
-        XCTAssertEqual(SourceProxy.aspectFit(.zero, in: CGRect(x: 0, y: 0, width: 10, height: 10)), CGRect(x: 0, y: 0, width: 10, height: 10))
+
+    /// A full-screen-source zoom is a shared-element push: still presenting
+    /// screen, the new one fading in at scale 1, interactive pop on.
+    func testFullScreenZoomIsASharedElementPush() {
+        let zoom = DSL.Model.ScreenTransition.NativeZoom(sourceKeyExpression: "show-a", alignmentKeyExpression: "gallery-0", dismissGesture: .any)
+        let resolved = DSL.Model.ScreenTransition.sharedZoom(zoom)
+        XCTAssertEqual(resolved.kind, .shared)
+        XCTAssertEqual(resolved.mode, .push)
+        XCTAssertEqual(resolved.interactive?.enabled, true)
+        XCTAssertNotNil(resolved.nativeZoom)
+        XCTAssertTrue(resolved.makeAnimator(direction: .forward) is SharedElementTransitionAnimator)
+        XCTAssertEqual(App8InteractiveTransitionDriver.cardScale(progress: 0), 1)
+        XCTAssertEqual(App8InteractiveTransitionDriver.cardScale(progress: 0.4), 0.8, accuracy: 0.001)
+        XCTAssertEqual(App8InteractiveTransitionDriver.cardScale(progress: 1), 0.6)
     }
 
     // MARK: - Search-only bar
