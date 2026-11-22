@@ -35,13 +35,51 @@ final class Engine0711Tests: XCTestCase {
         let edge = try barStyle(#"{ "variant": "text", "shape": "edge", "height": 32 }"#)
         XCTAssertEqual(edge.shape, .edge)
         XCTAssertTrue(edge.isEdge)
-        XCTAssertEqual(edge.edgeHeight, 32)
-        XCTAssertEqual(try barStyle(#"{ "variant": "text", "shape": "edge", "height": 12 }"#).edgeHeight, 28)
-        XCTAssertEqual(try barStyle(#"{ "variant": "text", "shape": "edge" }"#).edgeHeight, 49)
+        XCTAssertEqual(edge.drawnHeight, 32)
+        XCTAssertEqual(try barStyle(#"{ "variant": "text", "shape": "edge", "height": 12 }"#).drawnHeight, 28)
+        XCTAssertEqual(try barStyle(#"{ "variant": "text", "shape": "edge" }"#).drawnHeight, 49)
         XCTAssertEqual(try barStyle(#"{ "variant": "text", "shape": "blob" }"#).shape, .floating)
         XCTAssertEqual(try barStyle(#"{ "variant": "text" }"#).shape, .floating)
         // The system items have no stripe of their own.
         XCTAssertFalse(try barStyle(#"{ "shape": "edge" }"#).isEdge)
+    }
+
+    func testFlatBarStyleDecodes() throws {
+        let flat = try barStyle(##"{ "variant": "text", "background": "#000000", "cornerRadius": 0, "height": 32, "badgePlacement": "inline" }"##)
+        XCTAssertTrue(flat.isEngineDrawn)
+        XCTAssertFalse(flat.isEdge)
+        XCTAssertEqual(flat.drawnHeight, 32)
+        XCTAssertEqual(flat.drawnCornerRadius, 0)
+        XCTAssertEqual(flat.badgePlacement, .inline)
+        XCTAssertEqual(try barStyle(#"{ "variant": "text", "background": "solid", "height": 40 }"#).drawnCornerRadius, 20)
+        XCTAssertEqual(try barStyle(#"{ "variant": "text", "background": "solid" }"#).drawnHeight, 62)
+        XCTAssertEqual(try barStyle(#"{ "variant": "text", "badgePlacement": "above" }"#).badgePlacement, .corner)
+        // Glass stays the system bar.
+        XCTAssertFalse(try barStyle(#"{ "variant": "text" }"#).isEngineDrawn)
+        XCTAssertEqual(try barStyle(#"{ "variant": "text", "shape": "edge", "cornerRadius": 9 }"#).drawnCornerRadius, 0)
+    }
+
+    /// Measured iOS 26.4 platter (iPhone 17, 402 × 874, home indicator 34):
+    /// 21 pt sides, bottom 21 pt above the screen edge.
+    func testEngineBarFrames() {
+        let size = CGSize(width: 402, height: 874)
+        typealias T = TabBarScreenViewController
+        XCTAssertEqual(T.engineBarFrame(edge: false, height: 62, in: size, safeAreaBottom: 34), CGRect(x: 21, y: 791, width: 360, height: 62))
+        XCTAssertEqual(T.engineBarFrame(edge: false, height: 32, in: size, safeAreaBottom: 34), CGRect(x: 21, y: 821, width: 360, height: 32))
+        XCTAssertEqual(T.engineBarFrame(edge: false, height: 32, in: size, safeAreaBottom: 0), CGRect(x: 21, y: 834, width: 360, height: 32))
+        XCTAssertEqual(T.engineBarFrame(edge: true, height: 32, in: size, safeAreaBottom: 34), CGRect(x: 0, y: 808, width: 402, height: 32))
+        // Safe area to the bar's top: 874 − 821 = 53 = 34 + 19.
+        XCTAssertEqual(T.engineBarInset(barFrame: CGRect(x: 21, y: 821, width: 360, height: 32), viewHeight: 874, safeAreaBottom: 34), 19)
+        XCTAssertEqual(T.engineBarInset(barFrame: CGRect(x: 0, y: 808, width: 402, height: 32), viewHeight: 874, safeAreaBottom: 34), 32)
+    }
+
+    func testInlineBadgeLayout() {
+        let layout = StyledTabBarView.inlineBadgeLayout(slotCenterX: 100, midY: 16, labelWidth: 40, badgeSize: CGSize(width: 20, height: 16), shown: true)
+        // label 40 + 4 + badge 20 = 64 centred on 100: 68...132.
+        XCTAssertEqual(layout.labelShift, -12)            // label centre 100 → 88
+        XCTAssertEqual(layout.badge, CGRect(x: 112, y: 8, width: 20, height: 16))
+        let hidden = StyledTabBarView.inlineBadgeLayout(slotCenterX: 100, midY: 16, labelWidth: 40, badgeSize: CGSize(width: 20, height: 16), shown: false)
+        XCTAssertEqual(hidden.labelShift, 0)
     }
 
     func testEdgeStripeInset() {

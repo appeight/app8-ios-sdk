@@ -460,7 +460,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     /// system bar stays (hidden on push, safe area, slide back on pop).
     private func installStyledBarIfNeeded(selectedIndex: Int) {
         guard let style = tabBarContent.barStyle, style.isCustom, styledBar == nil else { return }
-        if style.isEdge {
+        if style.isEngineDrawn {
             installEdgeStripe(style: style, selectedIndex: selectedIndex)
             return
         }
@@ -516,9 +516,10 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         return bar
     }
 
-    // MARK: - Edge stripe (barStyle.shape: edge)
+    // MARK: - Engine-drawn bar (edge stripe, flat floating bar)
 
-    /// The engine-drawn edge stripe (tab-bar-screen.md, "Edge stripe"). The
+    /// The engine-drawn bar (tab-bar-screen.md, "Flat bars"): an `edge`
+    /// stripe, or a `floating` bar with a non-glass background. The
     /// system `UITabBar` is hidden for good and the stripe lives in this
     /// controller's view: on iOS 26 the system bar is a floating glass
     /// platter whose frame, height and glass UIKit owns (a styled bar inside
@@ -534,13 +535,14 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     ///   joins a stack (`App8NavigationController.willAddViewController`) and
     ///   the stripe slides out and back alongside the push and the pop
     ///   (scrubbed by an interactive pop, run back when it is cancelled).
-    private var edgeStripe: StyledTabBarView? { tabBarContent.barStyle?.isEdge == true ? styledBar : nil }
+    private var edgeStripe: StyledTabBarView? { tabBarContent.barStyle?.isEngineDrawn == true ? styledBar : nil }
     private var edgeStripeHidden = false
 
     private func installEdgeStripe(style: DSL.Model.TabBarContent.BarStyle, selectedIndex: Int) {
         tabBar.isHidden = true
         let bar = makeStyledBar(style: style, selectedIndex: selectedIndex)
-        bar.isEdge = true
+        bar.isEdge = style.isEdge
+        bar.drawnCornerRadius = style.drawnCornerRadius
         bar.clipsToBounds = false
         view.addSubview(bar)
         styledBar = bar
@@ -565,31 +567,66 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         guard let bar = edgeStripe, let style = tabBarContent.barStyle else { return }
         // UIKit shows its bar again on some changes (a new `viewControllers`).
         if !tabBar.isHidden { tabBar.isHidden = true }
-        let height = style.edgeHeight
         let inset = view.safeAreaInsets.bottom
-        let bounds = CGRect(x: 0, y: 0, width: view.bounds.width, height: height)
+        let frame = Self.engineBarFrame(edge: style.isEdge, height: style.drawnHeight, in: view.bounds.size, safeAreaBottom: inset)
+        let bounds = CGRect(origin: .zero, size: frame.size)
         if bar.bounds != bounds { bar.bounds = bounds }
-        let center = CGPoint(x: view.bounds.midX, y: view.bounds.maxY - inset - height / 2)
+        let center = CGPoint(x: frame.midX, y: frame.midY)
         if bar.center != center { bar.center = center }
-        bar.bottomExtension = inset
+        bar.bottomExtension = style.isEdge ? inset : 0
+        engineBarInset = Self.engineBarInset(barFrame: frame, viewHeight: view.bounds.height, safeAreaBottom: inset)
         if view.subviews.last !== bar { view.bringSubviewToFront(bar) }
         if edgeStripeHidden, bar.transform == .identity { bar.transform = edgeStripeOffscreen }
         tabNavigationControllers.values.forEach(applyEdgeInsets(in:))
     }
 
-    /// Below the bottom edge: the stripe and the background under the home indicator.
+    /// Below the bottom edge: the bar (and a stripe's background under the home indicator).
     private var edgeStripeOffscreen: CGAffineTransform {
-        let height = tabBarContent.barStyle?.edgeHeight ?? 49
-        return CGAffineTransform(translationX: 0, y: height + view.safeAreaInsets.bottom + 1)
+        guard let bar = edgeStripe else { return .identity }
+        let top = bar.center.y - bar.bounds.height / 2
+        return CGAffineTransform(translationX: 0, y: view.bounds.maxY - top + 1)
+    }
+
+    /// The bottom safe area the bar adds to a tab screen (bar top to the
+    /// device inset), updated on layout.
+    private var engineBarInset: CGFloat = 0
+
+    /// iOS 26 system platter, measured (iPhone 17, iOS 26.4): 21 pt from each
+    /// side, its bottom edge 21 pt above the screen's bottom edge, i.e. 13 pt
+    /// into the 34 pt home-indicator inset. Without a home indicator: 8 pt.
+    nonisolated static let floatingSideInset: CGFloat = 21
+    nonisolated static let floatingIntoSafeArea: CGFloat = 13
+    nonisolated static let floatingMinBottomGap: CGFloat = 8
+
+    /// The engine-drawn bar's frame in a view of `size`: an edge stripe full
+    /// width on the bottom safe area; a floating bar inset like the iOS 26
+    /// platter. `height` is exact either way.
+    nonisolated static func engineBarFrame(edge: Bool, height: CGFloat, in size: CGSize, safeAreaBottom: CGFloat) -> CGRect {
+        if edge {
+            return CGRect(x: 0, y: size.height - safeAreaBottom - height, width: size.width, height: height)
+        }
+        let gap = max(floatingMinBottomGap, safeAreaBottom - floatingIntoSafeArea)
+        return CGRect(x: floatingSideInset, y: size.height - gap - height,
+                      width: max(0, size.width - 2 * floatingSideInset), height: height)
+    }
+
+    /// Tab screens' bottom safe area reaches the bar's top edge: what the
+    /// bar adds on top of the device inset.
+    nonisolated static func engineBarInset(barFrame: CGRect, viewHeight: CGFloat, safeAreaBottom: CGFloat) -> CGFloat {
+        max(0, viewHeight - barFrame.minY - safeAreaBottom)
     }
 
     /// Each screen of the stack gets the stripe's height in its bottom safe
     /// area unless it hides the bar.
     private func applyEdgeInsets(in nav: UINavigationController) {
-        guard let style = tabBarContent.barStyle, style.isEdge else { return }
+        guard let style = tabBarContent.barStyle, style.isEngineDrawn else { return }
+        if engineBarInset == 0 {
+            let frame = Self.engineBarFrame(edge: style.isEdge, height: style.drawnHeight, in: view.bounds.size, safeAreaBottom: view.safeAreaInsets.bottom)
+            engineBarInset = Self.engineBarInset(barFrame: frame, viewHeight: view.bounds.height, safeAreaBottom: view.safeAreaInsets.bottom)
+        }
         for vc in nav.viewControllers {
             guard let screen = vc as? ScreenViewController else { continue }
-            screen.tabStripeInset = Self.edgeStripeInset(height: style.edgeHeight, hidesTabBar: Self.hidesTabBar(at: vc, in: nav))
+            screen.tabStripeInset = Self.edgeStripeInset(height: engineBarInset, hidesTabBar: Self.hidesTabBar(at: vc, in: nav))
         }
     }
 

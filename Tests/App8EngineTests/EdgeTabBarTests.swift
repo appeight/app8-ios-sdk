@@ -10,14 +10,19 @@ import UIKit
 final class EdgeTabBarTests: XCTestCase {
     typealias DS = SearchFillsBarTests.BundleDataSource
 
+    /// The bar style under test (default: the edge stripe).
+    private var barStyle: [String: Any] = ["variant": "text", "shape": "edge", "height": 32, "background": "#000000",
+                                           "selection": "opacity", "unselectedOpacity": 0.3]
+    private var bagBadge = "3"
+
     private func bundle() -> [String: Any] {
         let screens: [String: Any] = [
             "tabs": ["type": "tabBarScreen", "id": "tabs", "content": [
                 "tabs": [["id": "home", "label": "HOME", "icon": "house", "screen": "home"],
-                         ["id": "bag", "label": "BAG", "icon": "bag", "screen": "bag", "badge": "3"]],
+                         ["id": "saved", "label": "SAVED", "icon": "star", "screen": "home", "badge": "2"],
+                         ["id": "bag", "label": "BAG", "icon": "bag", "screen": "bag", "badge": bagBadge]],
                 "initialTab": "home", "badgeColor": "#FFFFFF", "badgeTextColor": "#000000",
-                "barStyle": ["variant": "text", "shape": "edge", "height": 32, "background": "#000000",
-                             "selection": "opacity", "unselectedOpacity": 0.3]] as [String: Any]],
+                "barStyle": barStyle] as [String: Any]],
             "home": ["type": "screen", "id": "home", "content": [
                 "navigationBar": ["hidden": true], "children": [] as [Any]] as [String: Any]],
             "bag": ["type": "screen", "id": "bag", "content": [
@@ -98,5 +103,45 @@ final class EdgeTabBarTests: XCTestCase {
         try await settle(nav)
         XCTAssertEqual(stripe.transform, .identity)
         XCTAssertEqual(home.view.safeAreaInsets.bottom, 32 + device, accuracy: 0.5)
+    }
+
+    // MARK: - Flat floating bar
+
+    private func useFloating() {
+        barStyle = ["variant": "text", "shape": "floating", "background": "#000000", "cornerRadius": 0, "height": 32,
+                    "selection": "opacity", "unselectedOpacity": 0.3, "badgePlacement": "inline",
+                    "text": ["fontSize": 12, "fontWeight": "semibold", "color": "#FFFFFF"]]
+        bagBadge = "12"
+    }
+
+    func testFlatFloatingBarHasThePlatterFrame() async throws {
+        useFloating()
+        let (tabs, home) = try await start()
+        XCTAssertTrue(tabs.tabBar.isHidden, "a non-glass bar is engine-drawn")
+        let bar = try XCTUnwrap(all(tabs.view).compactMap { $0 as? StyledTabBarView }.first)
+        let frame = bar.convert(bar.bounds, to: tabs.view)
+        let device = tabs.view.safeAreaInsets.bottom
+        let expected = TabBarScreenViewController.engineBarFrame(edge: false, height: 32, in: tabs.view.bounds.size, safeAreaBottom: device)
+        XCTAssertEqual(frame.minX, 21)
+        XCTAssertEqual(tabs.view.bounds.width - frame.maxX, 21)
+        XCTAssertEqual(frame.height, 32)
+        XCTAssertEqual(frame, expected)
+        XCTAssertEqual(bar.bottomExtension, 0)
+        XCTAssertEqual(home.view.safeAreaInsets.bottom, tabs.view.bounds.height - frame.minY, accuracy: 0.5,
+                       "the tab screen's safe area reaches the bar's top edge")
+        // Inline badges sit on the label's line, 4 pt after it.
+        let badges = all(bar).compactMap { $0 as? UILabel }.filter { $0.text == "2" || $0.text == "12" }
+        XCTAssertEqual(badges.count, 2)
+        for badge in badges where !badge.isHidden {
+            XCTAssertEqual(badge.frame.midY, bar.bounds.midY, accuracy: 0.5)
+        }
+        // A picture of the bar for review.
+        tabs.view.backgroundColor = .white
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: tabs.view.bounds.width, height: 120))
+        let image = renderer.image { ctx in
+            ctx.cgContext.translateBy(x: 0, y: 120 - tabs.view.bounds.height)
+            tabs.view.layer.render(in: ctx.cgContext)
+        }
+        try? image.pngData()?.write(to: URL(fileURLWithPath: "/tmp/a8-flat-tabbar.png"))
     }
 }
