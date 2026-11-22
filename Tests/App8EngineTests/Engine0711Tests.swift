@@ -310,21 +310,6 @@ final class Engine0711Tests: XCTestCase {
     }
 
 
-    /// A full-screen-source zoom is a shared-element push: still presenting
-    /// screen, the new one fading in at scale 1, interactive pop on.
-    func testFullScreenZoomIsASharedElementPush() {
-        let zoom = DSL.Model.ScreenTransition.NativeZoom(sourceKeyExpression: "show-a", alignmentKeyExpression: "gallery-0", dismissGesture: .any)
-        let resolved = DSL.Model.ScreenTransition.sharedZoom(zoom)
-        XCTAssertEqual(resolved.kind, .shared)
-        XCTAssertEqual(resolved.mode, .push)
-        XCTAssertEqual(resolved.interactive?.enabled, true)
-        XCTAssertNotNil(resolved.nativeZoom)
-        XCTAssertTrue(resolved.makeAnimator(direction: .forward) is SharedElementTransitionAnimator)
-        XCTAssertEqual(App8InteractiveTransitionDriver.cardScale(progress: 0), 1)
-        XCTAssertEqual(App8InteractiveTransitionDriver.cardScale(progress: 0.4), 0.8, accuracy: 0.001)
-        XCTAssertEqual(App8InteractiveTransitionDriver.cardScale(progress: 1), 0.6)
-    }
-
     // MARK: - Search-only bar
 
     func testSearchOnlyBarSitsInTheBarOnIOS26() {

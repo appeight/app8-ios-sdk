@@ -319,6 +319,9 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         guard !builtTabs.contains(tab.id) else { return }
         builtTabs.insert(tab.id)
         navController.setViewControllers([screenVC], animated: false)
+        // Behind the tab's screens (a zoom shrinks the top one): the root
+        // screen's background, not the system white.
+        if !context.layoutMode.isEnabled, let color = screenVC.view.backgroundColor { navController.view.backgroundColor = color }
         if edgeStripe != nil { applyEdgeInsets(in: navController) }
     }
 
