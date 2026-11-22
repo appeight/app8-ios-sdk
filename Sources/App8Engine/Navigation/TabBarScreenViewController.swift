@@ -568,7 +568,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         // UIKit shows its bar again on some changes (a new `viewControllers`).
         if !tabBar.isHidden { tabBar.isHidden = true }
         let inset = view.safeAreaInsets.bottom
-        let frame = Self.engineBarFrame(edge: style.isEdge, height: style.drawnHeight, in: view.bounds.size, safeAreaBottom: inset)
+        let frame = Self.engineBarFrame(edge: style.isEdge, height: style.drawnHeight, in: view.bounds.size, safeAreaBottom: inset, bottomOffset: style.bottomOffset.map { CGFloat($0) })
         let bounds = CGRect(origin: .zero, size: frame.size)
         if bar.bounds != bounds { bar.bounds = bounds }
         let center = CGPoint(x: frame.midX, y: frame.midY)
@@ -601,11 +601,11 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     /// The engine-drawn bar's frame in a view of `size`: an edge stripe full
     /// width on the bottom safe area; a floating bar inset like the iOS 26
     /// platter. `height` is exact either way.
-    nonisolated static func engineBarFrame(edge: Bool, height: CGFloat, in size: CGSize, safeAreaBottom: CGFloat) -> CGRect {
+    nonisolated static func engineBarFrame(edge: Bool, height: CGFloat, in size: CGSize, safeAreaBottom: CGFloat, bottomOffset: CGFloat? = nil) -> CGRect {
         if edge {
             return CGRect(x: 0, y: size.height - safeAreaBottom - height, width: size.width, height: height)
         }
-        let gap = max(floatingMinBottomGap, safeAreaBottom - floatingIntoSafeArea)
+        let gap = bottomOffset.map { max(0, safeAreaBottom + $0) } ?? max(floatingMinBottomGap, safeAreaBottom - floatingIntoSafeArea)
         return CGRect(x: floatingSideInset, y: size.height - gap - height,
                       width: max(0, size.width - 2 * floatingSideInset), height: height)
     }
@@ -621,7 +621,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     private func applyEdgeInsets(in nav: UINavigationController) {
         guard let style = tabBarContent.barStyle, style.isEngineDrawn else { return }
         if engineBarInset == 0 {
-            let frame = Self.engineBarFrame(edge: style.isEdge, height: style.drawnHeight, in: view.bounds.size, safeAreaBottom: view.safeAreaInsets.bottom)
+            let frame = Self.engineBarFrame(edge: style.isEdge, height: style.drawnHeight, in: view.bounds.size, safeAreaBottom: view.safeAreaInsets.bottom, bottomOffset: style.bottomOffset.map { CGFloat($0) })
             engineBarInset = Self.engineBarInset(barFrame: frame, viewHeight: view.bounds.height, safeAreaBottom: view.safeAreaInsets.bottom)
         }
         for vc in nav.viewControllers {

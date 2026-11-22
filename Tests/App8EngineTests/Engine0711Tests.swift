@@ -68,6 +68,9 @@ final class Engine0711Tests: XCTestCase {
         XCTAssertEqual(T.engineBarFrame(edge: false, height: 32, in: size, safeAreaBottom: 34), CGRect(x: 21, y: 821, width: 360, height: 32))
         XCTAssertEqual(T.engineBarFrame(edge: false, height: 32, in: size, safeAreaBottom: 0), CGRect(x: 21, y: 834, width: 360, height: 32))
         XCTAssertEqual(T.engineBarFrame(edge: true, height: 32, in: size, safeAreaBottom: 34), CGRect(x: 0, y: 808, width: 402, height: 32))
+        // bottomOffset: 10 pt above the bottom safe area; -10 pt into it.
+        XCTAssertEqual(T.engineBarFrame(edge: false, height: 40, in: size, safeAreaBottom: 34, bottomOffset: 10), CGRect(x: 21, y: 790, width: 360, height: 40))
+        XCTAssertEqual(T.engineBarFrame(edge: false, height: 40, in: size, safeAreaBottom: 34, bottomOffset: -10), CGRect(x: 21, y: 810, width: 360, height: 40))
         // Safe area to the bar's top: 874 − 821 = 53 = 34 + 19.
         XCTAssertEqual(T.engineBarInset(barFrame: CGRect(x: 21, y: 821, width: 360, height: 32), viewHeight: 874, safeAreaBottom: 34), 19)
         XCTAssertEqual(T.engineBarInset(barFrame: CGRect(x: 0, y: 808, width: 402, height: 32), viewHeight: 874, safeAreaBottom: 34), 32)
