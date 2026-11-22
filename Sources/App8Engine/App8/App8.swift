@@ -162,6 +162,7 @@ final class A8: App8.DebugInstance {
 
         let root = App8RootViewController(app: app, context: context)
 
+        context.screenLoader = self
         let coordinator = FlowCoordinator(app: app, screenLoader: self, appService: appService, context: context)
         self.flowCoordinator = coordinator
 

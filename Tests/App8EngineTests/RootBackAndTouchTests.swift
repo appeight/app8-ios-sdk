@@ -127,7 +127,11 @@ final class RootBackAndTouchTests: XCTestCase {
         for _ in 0..<10 { try await Task.sleep(nanoseconds: 100_000_000) }
         let detail = try Harness.screen("detail", in: window)
         XCTAssertTrue(detail.canGoBack)
-        XCTAssertNotNil(detail.navigationItem.leftBarButtonItem, "a pushed screen keeps its backLabel button")
+        // The system back button (the chevron alone for ""), not a custom
+        // bar item, so iOS 26's swipe-from-anywhere back gesture stays on.
+        XCTAssertNil(detail.navigationItem.leftBarButtonItem)
+        XCTAssertFalse(detail.navigationItem.hidesBackButton, "a pushed screen keeps a back button")
+        XCTAssertEqual(detail.navigationItem.backButtonDisplayMode, .minimal)
     }
 
     // MARK: - Overflowing children take taps

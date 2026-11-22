@@ -64,7 +64,7 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
         } else {
             let navController = App8NavigationController()
             navController.setNavigationBarHidden(true, animated: false)
-            navController.delegate = navTransitionCoordinator
+            navTransitionCoordinator.attach(to: navController)
             embedNavigationController(navController)
             self.navController = navController
 
@@ -147,6 +147,21 @@ final class FlowViewController: UIViewController, UIAdaptivePresentationControll
             return DSL.Model.ScreenTransition.resolve(appDefault, animationResolver: animationResolver)
         }
         return nil
+    }
+
+    /// Pushes an already built screen (a context menu's) with `transition`.
+    func pushBuiltScreen(_ screenVC: UIViewController, transition: DSL.Model.ScreenTransition.Resolved?) {
+        guard let navController else { return }
+        pushScreen(screenVC, on: navController, transition: transition, animated: true)
+    }
+
+    /// Pushes a screen built ahead (context menu preview tap) at once, with
+    /// no transition. False when this flow has no stack of its own (a tab
+    /// bar handles it) or is busy.
+    func pushPrepared(_ screenVC: UIViewController) -> Bool {
+        guard let navController, presentedModal == nil, navController.transitionCoordinator == nil else { return false }
+        UIView.performWithoutAnimation { navController.pushViewController(screenVC, animated: false) }
+        return true
     }
 
     func popScreen(animated: Bool = true) {

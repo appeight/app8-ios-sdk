@@ -180,6 +180,12 @@ extension DSL.Model {
         struct BarStyle: Decodable, Sendable {
             enum Variant: String, Decodable, Sendable { case system, text }
             enum Selection: String, Decodable, Sendable { case capsule, underline, box, opacity }
+            /// `floating`: the platform's bar shape. `edge` (since 0.7.11): a
+            /// full-width square stripe flush with the screen's bottom edge.
+            enum Shape: String, Decodable, Sendable { case floating, edge }
+            /// Where a badge sits: above the end of the label (`corner`) or
+            /// after it on the same line (`inline`, since 0.7.11).
+            enum BadgePlacement: String, Decodable, Sendable { case corner, inline }
 
             var variant: Variant = .system
             /// `glass` (default), `solid`, or the id of a fill / material style.
@@ -190,6 +196,15 @@ extension DSL.Model {
             var unselectedOpacity: Double = 0.5
             var indicatorColor: String?
             var height: Double?
+            var shape: Shape = .floating
+            /// Corners of an engine-drawn floating bar (default: half the height).
+            var cornerRadius: Double?
+            var badgePlacement: BadgePlacement = .corner
+            /// Floating engine-drawn bar: points between its bottom edge and the
+            /// bottom safe area (positive above, negative into the inset). nil: platform placement.
+            var bottomOffset: Double?
+            /// Floating engine-drawn bar: points from each screen edge. nil: platform (21).
+            var sideInset: Double?
             /// A component template that draws the whole bar.
             var component: String?
 
@@ -197,7 +212,23 @@ extension DSL.Model {
             var isCustom: Bool { component != nil || variant == .text }
 
             enum CodingKeys: String, CodingKey {
-                case variant, background, selection, text, selectedText, unselectedOpacity, indicatorColor, height, component
+                case variant, background, selection, text, selectedText, unselectedOpacity, indicatorColor, height, component, shape, cornerRadius, badgePlacement, bottomOffset, sideInset
+            }
+
+            /// The engine draws the whole bar outside the system `UITabBar`: an
+            /// `edge` stripe, or a `floating` bar with a non-glass background
+            /// (tab-bar-screen.md, "Flat bars"). Glass stays the system bar.
+            var isEngineDrawn: Bool { isCustom && (shape == .edge || background != "glass") }
+            var isEdge: Bool { isCustom && shape == .edge }
+
+            /// An engine-drawn bar's exact height: `height`, at least 28
+            /// (unset: 49 for a stripe, 62, the iOS 26 platter, when floating).
+            var drawnHeight: CGFloat { max(28, CGFloat(height ?? (shape == .edge ? 49 : 62))) }
+
+            /// Corner radius of the engine-drawn bar: square for `edge`,
+            /// `cornerRadius` (default half the height) when floating.
+            var drawnCornerRadius: CGFloat {
+                shape == .edge ? 0 : max(0, CGFloat(cornerRadius ?? Double(drawnHeight / 2)))
             }
 
             init(from decoder: Decoder) throws {
@@ -211,6 +242,11 @@ extension DSL.Model {
                 indicatorColor = try c.decodeIfPresent(String.self, forKey: .indicatorColor)
                 height = try? c.decodeIfPresent(Double.self, forKey: .height)
                 component = try c.decodeIfPresent(String.self, forKey: .component)
+                shape = (try? c.decodeIfPresent(Shape.self, forKey: .shape)) ?? .floating
+                cornerRadius = (try? c.decodeIfPresent(Double.self, forKey: .cornerRadius)) ?? nil
+                badgePlacement = (try? c.decodeIfPresent(BadgePlacement.self, forKey: .badgePlacement)) ?? .corner
+                bottomOffset = ((try? c.decodeIfPresent(Double.self, forKey: .bottomOffset)) ?? nil).flatMap { $0.isFinite && abs($0) <= 200 ? $0 : nil }
+                sideInset = ((try? c.decodeIfPresent(Double.self, forKey: .sideInset)) ?? nil).flatMap { $0.isFinite && $0 >= 0 && $0 <= 200 ? $0 : nil }
             }
         }
     }

@@ -106,6 +106,15 @@ enum NativeZoomTransition {
             options.alignmentRectProvider = { [weak presentingScreen] context in
                 MainActor.assumeIsolated {
                     let zoomedView = context.zoomedViewController.view
+                    // UIKit asks before the incoming screen's first layout pass:
+                    // its gallery cells (the alignment element) do not exist yet,
+                    // the provider found nothing, and UIKit zoomed the whole
+                    // screen out of the source instead of the matched element
+                    // (the new screen just faded in). Lay it out first.
+                    if let zoomedView, zoomedView.bounds.width > 0 {
+                        zoomedView.setNeedsLayout()
+                        zoomedView.layoutIfNeeded()
+                    }
                     let key = presentingScreen.flatMap { reevaluate(alignmentExpression, in: $0) }
                     let candidates = [key, initialAlignment, alignmentExpression].compactMap { $0 }
                     for candidate in candidates {
@@ -113,6 +122,7 @@ enum NativeZoomTransition {
                             return view.convert(view.bounds, to: zoomedView)
                         }
                     }
+                    logger?.warning("transition.zoom.alignmentMissing: no element with key '\(candidates.first ?? alignmentExpression)' on the incoming screen — UIKit zooms the whole screen")
                     return nil
                 }
             }

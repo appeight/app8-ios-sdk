@@ -35,8 +35,6 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
     private var zoomLayoutSize: CGSize = .zero
     /// The first rendered child (stretchy top).
     private weak var topChildView: UIView?
-    /// Base constants of the top child's top / height constraints, by constraint.
-    private var stretchBaseConstants: [ObjectIdentifier: CGFloat] = [:]
     private var lastStretch: CGFloat = 0
 
     private var focusCancellable: AnyCancellable?
@@ -196,8 +194,11 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         if insetAdjustment == .automatic {
             scrollView.contentInsetAdjustmentBehavior = direction == .vertical ? .always : .automatic
         } else {
+            // `never` and `bottom`: UIKit adjusts nothing; the bottom inset is
+            // managed by the scroll view itself (`updateManagedBottomInset`).
             scrollView.contentInsetAdjustmentBehavior = .never
         }
+        scrollView.insetAdjustmentMode = direction == .vertical ? insetAdjustment : .automatic
 
         let props = viewModel.component.properties
         let bounces = props.bounces ?? true
@@ -230,6 +231,7 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
                 right: inset.right ?? 0
             )
         }
+        scrollView.authoredBottomInset = viewModel.component.properties.contentInset?.bottom ?? 0
 
         configureZoom(props: props)
 
@@ -305,7 +307,8 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
             }
         } else {
             scrollView.isScrollEnabled = true
-            stretchBaseConstants.removeAll()
+            stretchHero?.transform = .identity
+            stretchHero = nil
             lastStretch = 0
             for (index, child) in viewModel.component.children.enumerated() {
                 let result = viewModel.service.renderComponent(child, superview: scrollContentView, parentPath: viewModel.componentPath, parentVariableStore: viewModel.variableStore)
@@ -326,9 +329,12 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         scrollView.bouncesZoom = true
         scrollView.passesEdgePansToPager = zoomMode
         scrollView.claimsPullDown = props.stretchesTopChild == true && (props.direction ?? .vertical) == .vertical
+        scrollView.managesBottomInset = !zoomMode
         if zoomMode {
             scrollView.contentInset = .zero
             scrollView.contentInsetAdjustmentBehavior = .never
+        } else {
+            scrollView.updateManagedBottomInset()
         }
 
         let wantsDoubleTap = zoomMode && (props.doubleTapZoom ?? true)
@@ -396,44 +402,104 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
 
     // MARK: - Stretchy top
 
-    /// Pull-down at the top: keep the first child pinned to the top edge and
-    /// grow its height by the pull distance (its top / height constraints).
+    /// Pull-down at the top (scroll-view.md, "Stretchy top"): the hero scales
+    /// uniformly about its bottom edge's centre so its top stays on the scroll
+    /// view's top edge. A transform, not constraints: the content below keeps
+    /// its layout (it moves with the pull as usual), a pager inside the hero
+    /// keeps its bounds and paging, and nothing re-lays out per frame.
     private func applyStretchyTop() {
         guard let props = viewModel?.component.properties,
               props.stretchesTopChild == true,
               (props.direction ?? .vertical) == .vertical,
               !zoomMode,
-              let child = topChildView,
-              let owner = child as? App8ConstraintOwning else { return }
-        let stretch = max(0, -(scrollView.contentOffset.y + scrollView.adjustedContentInset.top))
-        guard stretch != lastStretch else { return }
-        lastStretch = stretch
+              let child = topChildView else { return }
+        let pull = max(0, -(scrollView.contentOffset.y + scrollView.adjustedContentInset.top))
+        guard abs(pull - lastStretch) > 0.01 || (pull == 0) != (lastStretch == 0) else { return }
+        lastStretch = pull
+        if pull == 0 {
+            stretchHero?.transform = .identity
+            stretchHero = nil
+            return
+        }
+        if stretchHero == nil || stretchHero?.isDescendant(of: child) != true {
+            stretchHero = Self.stretchHero(from: child)
+        }
+        guard let hero = stretchHero else { return }
+        hero.transform = Self.stretchTransform(height: hero.bounds.height, pull: pull)
+    }
 
-        var adjusted = false
-        for constraint in owner.app8InstalledConstraints where constraint.isActive {
-            let id = ObjectIdentifier(constraint)
-            let isFirst = constraint.firstItem === child
-            let attribute = isFirst ? constraint.firstAttribute : constraint.secondAttribute
-            let isSecond = constraint.secondItem === child
-            guard isFirst || isSecond else { continue }
-            switch attribute {
-            case .top:
-                let base = stretchBaseConstants[id] ?? constraint.constant
-                stretchBaseConstants[id] = base
-                constraint.constant = isFirst ? base - stretch : base + stretch
-                adjusted = true
-            case .height where isFirst && constraint.secondItem == nil:
-                let base = stretchBaseConstants[id] ?? constraint.constant
-                stretchBaseConstants[id] = base
-                constraint.constant = base + stretch
-                adjusted = true
-            default:
-                continue
-            }
+    /// The view being scaled by the current pull (identity again at rest).
+    private weak var stretchHero: UIView?
+
+    /// The hero of a stretchy top: `first`, or, while it is a container whose
+    /// height comes from its content (a vertical stack, or a view without a
+    /// height of its own whose first child is pinned to its top), its first
+    /// visible child, repeated. A view with a height of its own (`height: 400`,
+    /// `height = width × 1.5`) is the hero.
+    static func stretchHero(from first: UIView) -> UIView {
+        var current = first
+        for _ in 0..<12 {
+            guard let next = heroChild(of: current) else { break }
+            current = next
         }
-        if adjusted {
-            scrollContentView.layoutIfNeeded()
+        return current
+    }
+
+    private static func heroChild(of view: UIView) -> UIView? {
+        if let stackComponent = view as? CStackViewView {
+            guard !hasOwnHeight(stackComponent),
+                  let stack = firstDescendant(UIStackView.self, in: stackComponent, depth: 2),
+                  stack.axis == .vertical else { return nil }
+            return stack.arrangedSubviews.first { !$0.isHidden }
         }
+        guard view is CView, !hasOwnHeight(view) else { return nil }
+        // A `view` component lays its children out in a content view filling it.
+        let content = view.subviews.first { sub in sub.subviews.contains { $0.accessibilityIdentifier != nil } } ?? view
+        guard let firstChild = content.subviews.first(where: { !$0.isHidden && $0.accessibilityIdentifier != nil }),
+              isPinnedToTop(firstChild, in: content) else { return nil }
+        return firstChild
+    }
+
+    private static func firstDescendant<T: UIView>(_ type: T.Type, in view: UIView, depth: Int) -> T? {
+        guard depth > 0 else { return nil }
+        for sub in view.subviews {
+            if let match = sub as? T { return match }
+            if let match = firstDescendant(type, in: sub, depth: depth - 1) { return match }
+        }
+        return nil
+    }
+
+    /// Whether `view` has a required height of its own (a constant, or
+    /// relative to its width or another view), not one that comes from its content.
+    static func hasOwnHeight(_ view: UIView) -> Bool {
+        var candidates = view.constraints
+        if let superview = view.superview { candidates += superview.constraints }
+        if let owner = view as? App8ConstraintOwning { candidates += owner.app8InstalledConstraints }
+        return candidates.contains { c in
+            guard c.isActive, c.relation == .equal, c.priority.rawValue >= 750,
+                  c.firstItem === view, c.firstAttribute == .height else { return false }
+            guard let other = c.secondItem as? UIView else { return true }   // a constant
+            return !other.isDescendant(of: view)
+        }
+    }
+
+    private static func isPinnedToTop(_ child: UIView, in parent: UIView) -> Bool {
+        var candidates = parent.constraints + child.constraints
+        if let owner = child as? App8ConstraintOwning { candidates += owner.app8InstalledConstraints }
+        return candidates.contains { c in
+            guard c.isActive, c.relation == .equal else { return false }
+            if c.firstItem === child, c.firstAttribute == .top, c.secondItem === parent, c.secondAttribute == .top { return true }
+            if c.secondItem === child, c.secondAttribute == .top, c.firstItem === parent, c.firstAttribute == .top { return true }
+            return false
+        }
+    }
+
+    /// Uniform scale `(h + d) / h` about the bottom edge's centre, for a view
+    /// whose anchor is its centre.
+    nonisolated static func stretchTransform(height h: CGFloat, pull d: CGFloat) -> CGAffineTransform {
+        guard h > 0.5, d > 0 else { return .identity }
+        let scale = (h + d) / h
+        return CGAffineTransform(translationX: 0, y: -(h * (scale - 1)) / 2).scaledBy(x: scale, y: scale)
     }
 
     // MARK: - Auto-scroll lifecycle
@@ -786,6 +852,52 @@ final class App8ZoomingScrollView: UIScrollView {
     /// `stretchesTopChild`: the pull-down at the top belongs to this scroll view
     /// (a zoom transition's interactive dismiss must not take it).
     var claimsPullDown = false
+
+    // MARK: Bottom inset (scroll-view.md, "ContentInsetAdjustment Values")
+
+    typealias InsetAdjustment = DSL.Model.Component.ScrollView.Properties.ContentInsetAdjustment
+
+    /// `contentInsetAdjustment` of a vertical scroll view (`automatic` otherwise).
+    var insetAdjustmentMode: InsetAdjustment = .automatic {
+        didSet { if oldValue != insetAdjustmentMode { updateManagedBottomInset() } }
+    }
+    /// The authored `contentInset.bottom`.
+    var authoredBottomInset: CGFloat = 0 {
+        didSet { if oldValue != authoredBottomInset { updateManagedBottomInset() } }
+    }
+    /// Set by the screen's `bottomBar` on the main vertical scroll view it
+    /// covers: with `never` it still gets the bar's height as bottom inset.
+    var isUnderBottomBar = false {
+        didSet { if oldValue != isUnderBottomBar { updateManagedBottomInset() } }
+    }
+    /// False while zoom owns the insets.
+    var managesBottomInset = true
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        updateManagedBottomInset()
+    }
+
+    /// `contentInset.bottom` for the inset mode: `automatic` leaves the safe
+    /// area to UIKit (the authored inset only), `bottom` adds the bottom safe
+    /// area, and `never` adds it only under a screen `bottomBar` (whose height
+    /// is part of the safe area) so the last content scrolls above the bar.
+    nonisolated static func bottomContentInset(mode: InsetAdjustment, authored: CGFloat, safeAreaBottom: CGFloat, underBottomBar: Bool) -> CGFloat {
+        switch mode {
+        case .automatic: return authored
+        case .bottom: return authored + max(0, safeAreaBottom)
+        case .never: return underBottomBar ? authored + max(0, safeAreaBottom) : authored
+        }
+    }
+
+    func updateManagedBottomInset() {
+        guard managesBottomInset, insetAdjustmentMode != .automatic else { return }
+        let bottom = Self.bottomContentInset(mode: insetAdjustmentMode, authored: authoredBottomInset,
+                                             safeAreaBottom: safeAreaInsets.bottom, underBottomBar: isUnderBottomBar)
+        if abs(contentInset.bottom - bottom) > 0.5 { contentInset.bottom = bottom }
+        let indicator = max(0, bottom - authoredBottomInset)
+        if abs(verticalScrollIndicatorInsets.bottom - indicator) > 0.5 { verticalScrollIndicatorInsets.bottom = indicator }
+    }
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard passesEdgePansToPager, gestureRecognizer === panGestureRecognizer else {

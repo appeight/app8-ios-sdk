@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Modal presentation styles
 public enum ModalPresentationStyle: Sendable {
@@ -45,6 +46,10 @@ public struct NavigationRequest {
     /// transition" (the navigation container falls back to the screen/app default
     /// for pushes, or the native modal animation).
     let transition: DSL.Model.ScreenTransition.Resolved?
+
+    /// A screen already built for this push (a context menu preview tap):
+    /// pushed synchronously, without a transition.
+    var preparedScreen: UIViewController?
 
     public init(type: NavigationRequestType) {
         self.type = type

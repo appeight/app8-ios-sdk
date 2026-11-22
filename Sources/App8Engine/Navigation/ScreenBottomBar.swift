@@ -265,7 +265,8 @@ final class ScreenBottomBar {
     /// indicator / gesture bar, plus a shown tab bar.
     var baseBottomInset: CGFloat {
         guard let host, let view = host.viewIfLoaded else { return 0 }
-        let own = max(0, view.safeAreaInsets.bottom - host.additionalSafeAreaInsets.bottom)
+        // An engine-drawn edge tab bar counts as the system bar would.
+        let own = max(0, view.safeAreaInsets.bottom - host.additionalSafeAreaInsets.bottom + host.tabStripeInset)
         // In a sheet moving to an edge-attached detent, UIKit moves the sheet
         // frame by frame; the screen's last layout pass comes before the sheet
         // rests and UIKit hands the screen its safe area only on its next
@@ -282,6 +283,8 @@ final class ScreenBottomBar {
     /// Height of a shown tab bar over the screen's bottom (the bar's
     /// background stops at its top edge).
     private func tabBarHeight(in view: UIView, base: CGFloat) -> CGFloat {
+        // An edge tab bar covers the whole base inset (stripe + home indicator).
+        if let host, host.tabStripeInset > 0 { return base }
         guard let tabBar = host?.tabBarController?.tabBar, !tabBar.isHidden, tabBar.window != nil,
               host?.hidesBottomBarWhenPushed != true else { return 0 }
         let frame = tabBar.convert(tabBar.bounds, to: view)
@@ -320,6 +323,10 @@ final class ScreenBottomBar {
             queue.append(contentsOf: candidate.subviews)
         }
         guard let found, found !== edgeScrollView else { return }
+        (edgeScrollView as? App8ZoomingScrollView)?.isUnderBottomBar = false
+        // The main vertical scroll view gets the bar's height as bottom inset
+        // even with `contentInsetAdjustment: never` (navigation.md, "Layout").
+        (found as? App8ZoomingScrollView)?.isUnderBottomBar = true
         edgeScrollView = found
         scrollObservations = [
             found.observe(\.contentOffset, options: []) { [weak self] _, _ in

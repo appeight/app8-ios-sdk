@@ -41,6 +41,14 @@ final class StyledTabBarView: UIView {
     private var rendered = false
     /// `background` naming a fill / material style: a DSL view draws it.
     var backgroundStyleId: String?
+    /// `shape: edge`: square corners, the background continued below the
+    /// bar by `bottomExtension` (under the home indicator).
+    var isEdge = false
+    /// Corners of an engine-drawn bar (nil: the system bar's capsule on iOS 26).
+    var drawnCornerRadius: CGFloat?
+    var bottomExtension: CGFloat = 0 {
+        didSet { if oldValue != bottomExtension { setNeedsLayout() } }
+    }
 
     private(set) var selectedIndex: Int
     /// Fractional index the selection is drawn at (animated).
@@ -94,10 +102,16 @@ final class StyledTabBarView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        backgroundView.frame = bounds
+        backgroundView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height + (isEdge ? bottomExtension : 0))
         // On iOS 26 the bar is a floating capsule: a solid or styled
-        // background takes its shape.
-        if #available(iOS 26.0, *) {
+        // background takes its shape. An edge stripe stays square.
+        if let drawnCornerRadius {
+            backgroundView.layer.cornerRadius = min(drawnCornerRadius, bounds.height / 2)
+            backgroundView.layer.cornerCurve = .continuous
+            backgroundView.clipsToBounds = true
+        } else if isEdge {
+            backgroundView.layer.cornerRadius = 0
+        } else if #available(iOS 26.0, *) {
             backgroundView.layer.cornerRadius = bounds.height / 2
             backgroundView.layer.cornerCurve = .continuous
             backgroundView.clipsToBounds = true
@@ -118,12 +132,31 @@ final class StyledTabBarView: UIView {
     private func render() {
         let component: DSL.Model.Component.`Any`?
         if let id = backgroundStyleId,
+           let entity = service.styleResolver?(id) as? DSL.Model.Style.Material.Entity {
+            // A material entity (blur + tint layers…): drawn directly, its
+            // layers in order, filling the bar's background.
+            let view = MaterialView()
+            view.update(material: entity.content)
+            view.isUserInteractionEnabled = false
+            view.frame = backgroundView.bounds
+            view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            backgroundView.addSubview(view)
+        } else if let id = backgroundStyleId,
            let data = try? JSONSerialization.data(withJSONObject: ["type": "view", "id": "tabBarBackground", "content": ["style": ["material": [["id": id]]]]]),
            var fill = try? JSONDecoder().decode(DSL.Model.Component.`Any`.self, from: data) {
             if let resolver = service.styleResolver { fill.resolveStylePointers(resolver: resolver) }
             let view = service.renderComponent(fill, superview: backgroundView, parentPath: "tabBar").view
-            view.frame = backgroundView.bounds
-            view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            // The rendered view has no layout of its own: pin it to the
+            // background (a bare frame is dropped when it uses Auto Layout,
+            // which left the bar with no background at all).
+            if view.superview !== backgroundView { backgroundView.addSubview(view) }
+            view.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                view.topAnchor.constraint(equalTo: backgroundView.topAnchor),
+                view.bottomAnchor.constraint(equalTo: backgroundView.bottomAnchor),
+                view.leadingAnchor.constraint(equalTo: backgroundView.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor),
+            ])
         }
         if let name = style.component {
             component = service.resolveTemplate(named: name)
@@ -356,17 +389,48 @@ final class StyledTabBarView: UIView {
     }
 
     private func layoutBadges() {
+        let inline = style.badgePlacement == .inline
         for (index, badge) in badgeLabels.enumerated() {
             let value = items[index].badge ?? ""
-            badge.isHidden = value.isEmpty || value == "0"
+            let shown = !(value.isEmpty || value == "0")
+            badge.isHidden = !shown
             badge.text = value
             let size = badge.intrinsicContentSize
             let h: CGFloat = 16, w = max(h, size.width + 8)
-            let centerX = slotWidth * (CGFloat(index) + 0.5) + labelWidth(index) / 2 + 2
-            badge.frame = CGRect(x: centerX, y: bounds.height / 2 - labelHeight() / 2 - h + 4, width: w, height: h)
+            let slotCenter = slotWidth * (CGFloat(index) + 0.5)
+            if inline {
+                let layout = Self.inlineBadgeLayout(slotCenterX: slotCenter, midY: bounds.height / 2,
+                                                    labelWidth: labelWidth(index), badgeSize: CGSize(width: w, height: h), shown: shown)
+                badge.frame = layout.badge
+                // The label and its badge are centred together in the slot.
+                for id in ["tabText\(index)", "tabTextOn\(index)"] {
+                    labelView(id)?.transform = CGAffineTransform(translationX: layout.labelShift, y: 0)
+                }
+            } else {
+                let centerX = slotCenter + labelWidth(index) / 2 + 2
+                badge.frame = CGRect(x: centerX, y: bounds.height / 2 - labelHeight() / 2 - h + 4, width: w, height: h)
+            }
             badge.layer.cornerRadius = h / 2
         }
     }
+
+    /// `badgePlacement: inline`: the badge 4 pt after the label on its line,
+    /// vertically centred; label and badge centred together in the slot
+    /// (`labelShift` moves the slot-centred label left by half the badge).
+    nonisolated static func inlineBadgeLayout(slotCenterX: CGFloat, midY: CGFloat, labelWidth: CGFloat,
+                                              badgeSize: CGSize, shown: Bool) -> (labelShift: CGFloat, badge: CGRect) {
+        guard shown else {
+            return (0, CGRect(x: slotCenterX + labelWidth / 2 + inlineBadgeGap, y: midY - badgeSize.height / 2,
+                              width: badgeSize.width, height: badgeSize.height))
+        }
+        let total = labelWidth + inlineBadgeGap + badgeSize.width
+        let start = slotCenterX - total / 2
+        let badge = CGRect(x: start + labelWidth + inlineBadgeGap, y: midY - badgeSize.height / 2,
+                           width: badgeSize.width, height: badgeSize.height)
+        return (start + labelWidth / 2 - slotCenterX, badge)
+    }
+
+    nonisolated static let inlineBadgeGap: CGFloat = 4
 
     // MARK: - Accessibility (each item is a tab)
 

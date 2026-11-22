@@ -69,7 +69,7 @@ final class ModalViewController: UIViewController {
     }
 
     private func setupNavigationController() {
-        navController.delegate = navTransitionCoordinator
+        navTransitionCoordinator.attach(to: navController)
         addChild(navController)
         view.addSubview(navController.view)
         // Pin with Auto Layout (not an autoresizing-mask frame) so the embedded
@@ -129,6 +129,12 @@ final class ModalViewController: UIViewController {
         }
         guard !isDismissing, !isBeingDismissed else { return }
 
+        if case .push = request.type, let prepared = request.preparedScreen,
+           request.transition?.kind == DSL.Model.ScreenTransition.Resolved.Kind.none,
+           navController.transitionCoordinator == nil {
+            UIView.performWithoutAnimation { navController.pushViewController(prepared, animated: false) }
+            return
+        }
         Task { @MainActor in
             do {
                 try await handleRequest(request)

@@ -231,7 +231,13 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     /// refused to grow.
     private func grantedWidth() -> CGFloat {
         var minWidth = CGFloat.greatestFiniteMagnitude
-        var node: UIView? = label
+        // From the label's container, not the UILabel: this runs in our own
+        // `layoutSubviews`, where our frame and the content view's are already
+        // the new ones but the UILabel's is still the previous one (it is set
+        // when the content view lays out its subviews, after us). A label whose
+        // text grew read its old, narrower width as the boundary and wrapped
+        // the longer value at the width of the shorter one.
+        var node: UIView? = label.superview ?? label
         while let view = node {
             if view is UIScrollView { break }
             let w = view.bounds.width
@@ -256,6 +262,17 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             node = view.superview
         }
         return outermost.bounds.width
+    }
+
+    /// A one-line label never wraps and hugs its whole text: no wrap width
+    /// (one committed while it was still multi-line, before `numberOfLines: 1`
+    /// arrived, would cap its width and cut a longer value).
+    private func clearWrapWidthIfSingleLine() {
+        guard label.numberOfLines == 1, label.preferredMaxLayoutWidth != 0 else { return }
+        label.preferredMaxLayoutWidth = 0
+        wrapPhase = .idle
+        label.invalidateIntrinsicContentSize()
+        invalidateIntrinsicContentSize()
     }
 
     private func setPreferredMaxWidth(_ width: CGFloat) {
@@ -397,6 +414,10 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     /// Apply text to the label, using attributed string when letter-spacing,
     /// line-height, or per-range span overrides are set.
     private func setLabelText(_ text: String) {
+        // Whether the label hugs its current text (its wrap width is the
+        // text's full width), read before the text changes.
+        let preferred = label.preferredMaxLayoutWidth
+        let huggedOldText = label.numberOfLines != 1 && preferred > 0.5 && preferred + 0.5 >= naturalUnwrappedWidth()
         let hasSpans = (currentSpans?.isEmpty == false)
         let needsAttributed = !textAttributes.isEmpty || hasSpans || autoshrinkConfig != nil
         if !needsAttributed {
@@ -425,17 +446,48 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
                 autoshrinkSource = nil
             }
         }
-        // The text (hence its unwrapped width) changed — force `syncWrapWidth` to
-        // re-measure on the next layout pass rather than trust its cache.
-        lastWrapNatural = -1
+        // The text (hence its unwrapped width) changed. A wrap width committed
+        // for the previous text while the label hugged it (granted ≥ natural)
+        // would wrap a longer value that still fits: a total that grows from
+        // "9 €" to "129 €" broke onto two lines. Widen it to the new text now;
+        // `syncWrapWidth` re-measures on the next pass (forced below).
+        let natural = naturalUnwrappedWidth()
+        if huggedOldText, natural > label.preferredMaxLayoutWidth + 0.5 {
+            // Keep hugging: the new width is committed as is, and measured
+            // again once this layout cycle has given the label its new frame
+            // (measuring in the same cycle reads the old, narrower frame back
+            // as the boundary).
+            setPreferredMaxWidth(natural)
+            wrapPhase = .idle
+            lastWrapNatural = natural
+            lastWrapContainerWidth = stableReferenceWidth()
+            setNeedsLayout()
+            DispatchQueue.main.async { [weak self] in
+                guard let self, abs(self.lastWrapNatural - natural) < 0.5 else { return }
+                // Frames first (the new width is laid out), then the measurement.
+                self.superview?.layoutIfNeeded()
+                self.lastWrapNatural = -1
+                self.setNeedsLayout()
+                self.superview?.setNeedsLayout()
+            }
+        } else {
+            // Force `syncWrapWidth` to re-measure on the next layout pass
+            // rather than trust its cache (a measurement in flight was for the
+            // old text: start it over), and make sure that pass reaches this
+            // view even when its frame does not change.
+            wrapPhase = .idle
+            lastWrapNatural = -1
+            setNeedsLayout()
+        }
         // Seed preferredMaxLayoutWidth so a multi-line label reports a sensible
         // height before the first layout pass establishes bounds; `syncWrapWidth`
         // measures the real granted width once we're laid out. A generous seed (the
         // display width) can only over-report height for a frame or two — never
         // collapse — which the measurement then corrects.
-        if label.bounds.width <= 0, label.preferredMaxLayoutWidth <= 0 {
+        if label.numberOfLines != 1, label.bounds.width <= 0, label.preferredMaxLayoutWidth <= 0 {
             label.preferredMaxLayoutWidth = UIScreen.main.bounds.width
         }
+        clearWrapWidthIfSingleLine()
         invalidateIntrinsicContentSize()
         // If we already know our width (e.g. mid-streaming update), apply the
         // shrink right away so we don't show a one-frame oversize flash.
@@ -502,6 +554,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             label.numberOfLines = 1  // UILabel default without a text style
         }
         lastWrapNatural = -1
+        clearWrapWidthIfSingleLine()
         invalidateIntrinsicContentSize()
         setNeedsLayout()
     }
@@ -520,6 +573,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         label.font = textModel.resolveUIFont()
         let maxLines = Self.effectiveNumberOfLines(property: propertyNumberOfLines, style: textModel.numberOfLines) ?? 0
         label.numberOfLines = maxLines
+        clearWrapWidthIfSingleLine()
         if let lineBreakMode = textModel.lineBreakMode {
             label.lineBreakMode = lineBreakMode.ui
         }

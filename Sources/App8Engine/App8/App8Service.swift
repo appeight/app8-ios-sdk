@@ -361,6 +361,9 @@ extension App8Service: ComponentRenderer, ComponentService {
                   let color = UIColor(withHexString: viewModel.resolvePropertyToString(bgString)) {
             // Set container background to match screen, avoiding a black gap during streaming swaps.
             root.rootContainerView.backgroundColor = color
+            // The screen's own view too: it shows behind the content during
+            // system transitions (a zoom shrinks it) and on overscroll.
+            root.view.backgroundColor = color
         }
 
         let view = CView()

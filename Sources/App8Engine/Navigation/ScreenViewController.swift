@@ -87,8 +87,21 @@ final class ScreenViewController: BaseViewController {
     }
 
     override func baseAdditionalBottomInset() -> CGFloat {
-        (additionalSafeAreaInsetsConfig?.bottom ?? 0) + (bottomBar?.safeAreaContribution ?? 0)
+        (additionalSafeAreaInsetsConfig?.bottom ?? 0) + (bottomBar?.safeAreaContribution ?? 0) + tabStripeInset
     }
+
+    /// Height of an engine-drawn edge tab bar over this screen (0 when the
+    /// screen hides the tab bar), part of its bottom safe area as a system
+    /// tab bar's height is. Applied as a delta so a keyboard or bottom bar
+    /// inset already in `additionalSafeAreaInsets` stays.
+    var tabStripeInset: CGFloat = 0 {
+        didSet {
+            guard abs(oldValue - tabStripeInset) > 0.01 else { return }
+            additionalSafeAreaInsets.bottom = max(0, additionalSafeAreaInsets.bottom + tabStripeInset - oldValue)
+        }
+    }
+
+    override func systemBarBottomInset() -> CGFloat { tabStripeInset }
 
     // MARK: - Init
 
@@ -157,6 +170,7 @@ final class ScreenViewController: BaseViewController {
     override func didMove(toParent parent: UIViewController?) {
         super.didMove(toParent: parent)
         enableLargeTitlesIfNeeded()
+        updateCustomBackItem()
     }
 
     /// Large titles are a navigation-bar switch (`prefersLargeTitles`); each
@@ -372,6 +386,7 @@ final class ScreenViewController: BaseViewController {
             let btn = UIButton(configuration: cfg)
             btn.addTarget(self, action: #selector(customBackTapped), for: .touchUpInside)
             customBackItem = UIBarButtonItem(customView: btn)
+            customBackLabel = backLabel
             updateCustomBackItem()
         }
 
@@ -432,10 +447,35 @@ final class ScreenViewController: BaseViewController {
 
         navigationItem.searchController = controller
         navigationItem.hidesSearchBarWhenScrolling = config.hidesWhenScrolling ?? false
-        navigationItem.preferredSearchBarPlacement = searchBarPlacement(config.placement ?? .automatic)
+        navigationItem.preferredSearchBarPlacement = searchBarPlacement(searchLayout?.placement ?? .automatic)
         definesPresentationContext = true
         searchController = controller
 
+    }
+
+    /// The search field's placement and `fillsBar` as drawn. On iOS 26 a bar
+    /// with only search (no `title`, no `titleView`) and placement `stacked`
+    /// or `automatic` is drawn as `integrated` + `fillsBar`: the field sits in
+    /// the bar itself. `stacked` would hang it in a row under an empty
+    /// large-title row (navigation.md, "A screen with only search shows just
+    /// the field").
+    private var searchLayout: (placement: DSL.Model.SearchBar.Placement, fillsBar: Bool)? {
+        guard let config = navigationBarConfig?.search else { return nil }
+        let title = navigationBarConfig?.title.map { resolveString($0) } ?? ""
+        let hasTitle = !title.trimmingCharacters(in: .whitespaces).isEmpty || navigationBarConfig?.titleView != nil
+        let iOS26: Bool
+        if #available(iOS 26.0, *) { iOS26 = true } else { iOS26 = false }
+        return Self.searchLayout(placement: config.placement, fillsBar: config.fillsBar, hasTitle: hasTitle, iOS26: iOS26)
+    }
+
+    nonisolated static func searchLayout(
+        placement: DSL.Model.SearchBar.Placement?, fillsBar: Bool?, hasTitle: Bool, iOS26: Bool
+    ) -> (placement: DSL.Model.SearchBar.Placement, fillsBar: Bool) {
+        let authored = placement ?? .automatic
+        if iOS26, !hasTitle, authored == .stacked || authored == .automatic {
+            return (.integrated, true)
+        }
+        return (authored, fillsBar == true)
     }
 
     /// `navigationBar.search.autoFocus`: a search screen opens with its field
@@ -472,8 +512,8 @@ final class ScreenViewController: BaseViewController {
     /// the run loop while that task is current.
     private func installSearchFillIfNeeded() {
         guard #available(iOS 26.0, *), searchWidthConstraint == nil,
-              let config = navigationBarConfig?.search, config.fillsBar == true,
-              config.placement == .integrated, let controller = searchController,
+              let layout = searchLayout, layout.fillsBar,
+              layout.placement == .integrated, let controller = searchController,
               navigationItem.leftBarButtonItem == nil else { return }
         controller.delegate = self
         // Never move `searchBarPlacementBarButtonItem` into the navigation bar's
@@ -493,8 +533,8 @@ final class ScreenViewController: BaseViewController {
     private static let searchFillTopGap: CGFloat = 10
 
     private var usesSearchFill: Bool {
-        guard #available(iOS 26.0, *), let config = navigationBarConfig?.search else { return false }
-        return config.fillsBar == true && config.placement == .integrated && navigationBarConfig?.hidden != true
+        guard #available(iOS 26.0, *), let layout = searchLayout else { return false }
+        return layout.fillsBar && layout.placement == .integrated && navigationBarConfig?.hidden != true
     }
 
     /// The gap moves the navigation bar, which every screen in the stack
@@ -802,8 +842,29 @@ final class ScreenViewController: BaseViewController {
     /// start screen, a modal's first screen).
     private var customBackItem: UIBarButtonItem?
 
+    /// `navigationBar.backLabel`.
+    private var customBackLabel: String?
+
+    /// A screen directly in a navigation stack keeps the system back button,
+    /// with the label as its title (`""`: the chevron alone). A custom
+    /// `leftBarButtonItem` in its place turned iOS 26's content back swipe
+    /// (`interactiveContentPopGestureRecognizer`, a swipe from anywhere on the
+    /// screen) off: only the edge swipe popped. The custom button stays for a
+    /// screen nested in a container (a tab bar screen), whose bar item the
+    /// system does not give a back button.
     private func updateCustomBackItem() {
         guard let item = customBackItem else { return }
+        if let nav = navigationController, parent === nav {
+            navigationItem.hidesBackButton = false
+            if navigationItem.leftBarButtonItem === item { navigationItem.leftBarButtonItem = nil }
+            let label = customBackLabel ?? ""
+            navigationItem.backButtonDisplayMode = label.isEmpty ? .minimal : .default
+            if !label.isEmpty, let index = nav.viewControllers.firstIndex(of: self), index > 0 {
+                nav.viewControllers[index - 1].navigationItem.backButtonTitle = label
+            }
+            return
+        }
+        navigationItem.hidesBackButton = true
         let show = canGoBack
         if show, navigationItem.leftBarButtonItem == nil {
             navigationItem.leftBarButtonItem = item

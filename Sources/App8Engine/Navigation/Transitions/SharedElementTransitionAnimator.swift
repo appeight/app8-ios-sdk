@@ -146,6 +146,7 @@ final class SharedElementTransitionAnimator: NSObject, UIViewControllerAnimatedT
         return animator
     }
 
+
     // MARK: - Element animation construction
 
     private func buildElementAnimations(

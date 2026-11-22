@@ -26,6 +26,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     override var selectedIndex: Int {
         didSet {
             styledBar?.select(selectedIndex, animated: true)
+            syncEdgeStripeToSelectedTab()
             // The lens may rebuild its selection view on a change: paint it again.
             DispatchQueue.main.async { [weak self] in self?.applySelectionIndicator() }
         }
@@ -33,6 +34,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
 
     override var selectedViewController: UIViewController? {
         didSet {
+            syncEdgeStripeToSelectedTab()
             guard let styledBar, let vc = selectedViewController,
                   let index = viewControllers?.firstIndex(where: { $0 === vc }) else { return }
             styledBar.select(index, animated: true)
@@ -49,6 +51,49 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         return navController.viewControllers.count > 1
     }
 
+    /// Each tab's stack has the engine's transition coordinator (custom
+    /// transitions, the shared-element zoom and their interactive pops); this
+    /// controller stays the navigation delegate and forwards to it.
+    private var tabCoordinators: [ObjectIdentifier: App8NavTransitionCoordinator] = [:]
+
+    func transitionCoordinator(for nav: UINavigationController) -> App8NavTransitionCoordinator {
+        if let existing = tabCoordinators[ObjectIdentifier(nav)] { return existing }
+        let coordinator = App8NavTransitionCoordinator()
+        coordinator.navigationController = nav
+        tabCoordinators[ObjectIdentifier(nav)] = coordinator
+        return coordinator
+    }
+
+    /// The transition methods are answered only while a custom transition is
+    /// in play on a tab's stack (`CustomTransitionDelegateGate`): otherwise the
+    /// iOS 26 content back swipe works on every pushed screen.
+    private var wantsCustomTransitions: Bool {
+        tabCoordinators.values.contains { $0.wantsCustomTransitions }
+    }
+
+    override func responds(to aSelector: Selector!) -> Bool {
+        if CustomTransitionDelegateGate.isTransitionSelector(aSelector) { return wantsCustomTransitions }
+        return super.responds(to: aSelector)
+    }
+
+    func navigationController(
+        _ navigationController: UINavigationController,
+        animationControllerFor operation: UINavigationController.Operation,
+        from fromVC: UIViewController,
+        to toVC: UIViewController
+    ) -> UIViewControllerAnimatedTransitioning? {
+        transitionCoordinator(for: navigationController)
+            .navigationController(navigationController, animationControllerFor: operation, from: fromVC, to: toVC)
+    }
+
+    func navigationController(
+        _ navigationController: UINavigationController,
+        interactionControllerFor animationController: UIViewControllerAnimatedTransitioning
+    ) -> UIViewControllerInteractiveTransitioning? {
+        transitionCoordinator(for: navigationController)
+            .navigationController(navigationController, interactionControllerFor: animationController)
+    }
+
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
@@ -63,6 +108,11 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         willShow viewController: UIViewController,
         animated: Bool
     ) {
+        if edgeStripe != nil {
+            applyEdgeInsets(in: navigationController)
+            slideEdgeStripeAlongTransition(of: navigationController, to: viewController)
+            return
+        }
         slideTabBarInAlongTransition(of: navigationController, to: viewController)
     }
 
@@ -109,7 +159,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     static func hidesTabBar(at viewController: UIViewController, in navigationController: UINavigationController) -> Bool {
         let stack = navigationController.viewControllers
         guard let index = stack.firstIndex(where: { $0 === viewController }) else { return false }
-        return stack[..<(index + 1)].dropFirst().contains { $0.hidesBottomBarWhenPushed }
+        return stack[..<(index + 1)].dropFirst().contains { $0.hidesBottomBarWhenPushed || $0.app8HidesTabBar }
     }
 
     func navigationController(
@@ -120,6 +170,15 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         // The system resets the delegate on navigation — re-apply it.
         navigationController.interactivePopGestureRecognizer?.delegate = self
         navigationController.interactivePopGestureRecognizer?.isEnabled = navigationController.viewControllers.count > 1
+        // The coordinator decides the interactive pop (a custom transition's
+        // own gestures, else the system one) and refreshes the delegate gate.
+        transitionCoordinator(for: navigationController).navigationController(navigationController, didShow: viewController, animated: animated)
+        if edgeStripe != nil {
+            applyEdgeInsets(in: navigationController)
+            if navigationController === selectedViewController, navigationController.transitionCoordinator == nil {
+                setEdgeStripe(hidden: Self.hidesTabBar(at: viewController, in: navigationController))
+            }
+        }
 
         NotificationCenter.default.post(name: .app8ScreenContextChanged, object: nil)
     }
@@ -260,6 +319,10 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         guard !builtTabs.contains(tab.id) else { return }
         builtTabs.insert(tab.id)
         navController.setViewControllers([screenVC], animated: false)
+        // Behind the tab's screens (a zoom shrinks the top one): the root
+        // screen's background, not the system white.
+        if !context.layoutMode.isEnabled, let color = screenVC.view.backgroundColor { navController.view.backgroundColor = color }
+        if edgeStripe != nil { applyEdgeInsets(in: navController) }
     }
 
     /// Builds the tab with `id` unless it already is (or is being) built.
@@ -427,6 +490,10 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     /// system bar stays (hidden on push, safe area, slide back on pop).
     private func installStyledBarIfNeeded(selectedIndex: Int) {
         guard let style = tabBarContent.barStyle, style.isCustom, styledBar == nil else { return }
+        if style.isEngineDrawn {
+            installEdgeStripe(style: style, selectedIndex: selectedIndex)
+            return
+        }
         for item in tabBar.items ?? [] {
             item.title = nil
             item.image = UIImage()
@@ -440,6 +507,22 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
             tabBar.standardAppearance = appearance
             tabBar.scrollEdgeAppearance = appearance
         }
+        let bar = makeStyledBar(style: style, selectedIndex: selectedIndex)
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        tabBar.addSubview(bar)
+        let guide = tabBar.safeAreaLayoutGuide
+        styledBarConstraints = [
+            bar.topAnchor.constraint(equalTo: tabBar.topAnchor),
+            bar.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
+            bar.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: Self.styledBarInset),
+            bar.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -Self.styledBarInset),
+        ]
+        NSLayoutConstraint.activate(styledBarConstraints)
+        tabBar.accessibilityElements = [bar]
+        styledBar = bar
+    }
+
+    private func makeStyledBar(style: DSL.Model.TabBarContent.BarStyle, selectedIndex: Int) -> StyledTabBarView {
         let items = tabBarContent.tabs.map { StyledTabBarView.Item(id: $0.id, label: $0.label, icon: $0.icon, badge: nil) }
         let background: UIColor? = style.background == "solid" ? .systemBackground : style.background.hasPrefix("#") ? UIColor(withHexString: style.background) : nil
         let bar = StyledTabBarView(
@@ -460,22 +543,189 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
             guard self.tabBarController(self, shouldSelect: target) else { return }
             self.selectedIndex = index
         }
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        tabBar.addSubview(bar)
-        let guide = tabBar.safeAreaLayoutGuide
-        styledBarConstraints = [
-            bar.topAnchor.constraint(equalTo: tabBar.topAnchor),
-            bar.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
-            bar.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: Self.styledBarInset),
-            bar.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -Self.styledBarInset),
-        ]
-        NSLayoutConstraint.activate(styledBarConstraints)
-        tabBar.accessibilityElements = [bar]
+        return bar
+    }
+
+    // MARK: - Engine-drawn bar (edge stripe, flat floating bar)
+
+    /// The engine-drawn bar (tab-bar-screen.md, "Flat bars"): an `edge`
+    /// stripe, or a `floating` bar with a non-glass background. The
+    /// system `UITabBar` is hidden for good and the stripe lives in this
+    /// controller's view: on iOS 26 the system bar is a floating glass
+    /// platter whose frame, height and glass UIKit owns (a styled bar inside
+    /// it can only take the platter's shape), and a hidden-then-shown system
+    /// bar brings its platter and safe area back. The engine owns the three
+    /// things UIKit did for the bar instead:
+    /// - its place: full width, flush with the bottom edge, `height` above
+    ///   the bottom safe area, its background under the home indicator;
+    /// - the safe area: each tab screen gets the stripe's height as
+    ///   `tabStripeInset` (bottom safe area = height + device inset), 0 on a
+    ///   screen that hides the bar, so its insets never change mid-transition;
+    /// - `hidesTabBar`: `hidesBottomBarWhenPushed` is taken over when a screen
+    ///   joins a stack (`App8NavigationController.willAddViewController`) and
+    ///   the stripe slides out and back alongside the push and the pop
+    ///   (scrubbed by an interactive pop, run back when it is cancelled).
+    private var edgeStripe: StyledTabBarView? { tabBarContent.barStyle?.isEngineDrawn == true ? styledBar : nil }
+    private var edgeStripeHidden = false
+
+    private func installEdgeStripe(style: DSL.Model.TabBarContent.BarStyle, selectedIndex: Int) {
+        tabBar.isHidden = true
+        let bar = makeStyledBar(style: style, selectedIndex: selectedIndex)
+        bar.isEdge = style.isEdge
+        bar.drawnCornerRadius = style.drawnCornerRadius
+        bar.clipsToBounds = false
+        view.addSubview(bar)
         styledBar = bar
+        for nav in tabNavigationControllers.values {
+            if let nav = nav as? App8NavigationController {
+                nav.willAddViewController = { vc in
+                    guard vc.hidesBottomBarWhenPushed else { return }
+                    vc.app8HidesTabBar = true
+                    vc.hidesBottomBarWhenPushed = false
+                }
+            }
+            for vc in nav.viewControllers where vc.hidesBottomBarWhenPushed {
+                vc.app8HidesTabBar = true
+                vc.hidesBottomBarWhenPushed = false
+            }
+            applyEdgeInsets(in: nav)
+        }
+        view.setNeedsLayout()
+    }
+
+    private func layoutEdgeStripe() {
+        guard let bar = edgeStripe, let style = tabBarContent.barStyle else { return }
+        // UIKit shows its bar again on some changes (a new `viewControllers`).
+        if !tabBar.isHidden { tabBar.isHidden = true }
+        let inset = view.safeAreaInsets.bottom
+        let frame = Self.engineBarFrame(edge: style.isEdge, height: style.drawnHeight, in: view.bounds.size, safeAreaBottom: inset, bottomOffset: style.bottomOffset.map { CGFloat($0) }, sideInset: style.sideInset.map { CGFloat($0) })
+        let bounds = CGRect(origin: .zero, size: frame.size)
+        if bar.bounds != bounds { bar.bounds = bounds }
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        if bar.center != center { bar.center = center }
+        bar.bottomExtension = style.isEdge ? inset : 0
+        engineBarInset = Self.engineBarInset(barFrame: frame, viewHeight: view.bounds.height, safeAreaBottom: inset)
+        if view.subviews.last !== bar { view.bringSubviewToFront(bar) }
+        if edgeStripeHidden, bar.transform == .identity { bar.transform = edgeStripeOffscreen }
+        tabNavigationControllers.values.forEach(applyEdgeInsets(in:))
+    }
+
+    /// Below the bottom edge: the bar (and a stripe's background under the home indicator).
+    private var edgeStripeOffscreen: CGAffineTransform {
+        guard let bar = edgeStripe else { return .identity }
+        let top = bar.center.y - bar.bounds.height / 2
+        return CGAffineTransform(translationX: 0, y: view.bounds.maxY - top + 1)
+    }
+
+    /// The bottom safe area the bar adds to a tab screen (bar top to the
+    /// device inset), updated on layout.
+    private var engineBarInset: CGFloat = 0
+
+    /// iOS 26 system platter, measured (iPhone 17, iOS 26.4): 21 pt from each
+    /// side, its bottom edge 21 pt above the screen's bottom edge, i.e. 13 pt
+    /// into the 34 pt home-indicator inset. Without a home indicator: 8 pt.
+    nonisolated static let floatingSideInset: CGFloat = 21
+    nonisolated static let floatingIntoSafeArea: CGFloat = 13
+    nonisolated static let floatingMinBottomGap: CGFloat = 8
+
+    /// The engine-drawn bar's frame in a view of `size`: an edge stripe full
+    /// width on the bottom safe area; a floating bar inset like the iOS 26
+    /// platter. `height` is exact either way.
+    nonisolated static func engineBarFrame(edge: Bool, height: CGFloat, in size: CGSize, safeAreaBottom: CGFloat, bottomOffset: CGFloat? = nil, sideInset: CGFloat? = nil) -> CGRect {
+        if edge {
+            return CGRect(x: 0, y: size.height - safeAreaBottom - height, width: size.width, height: height)
+        }
+        let gap = bottomOffset.map { max(0, safeAreaBottom + $0) } ?? max(floatingMinBottomGap, safeAreaBottom - floatingIntoSafeArea)
+        let side = min(sideInset ?? floatingSideInset, size.width / 2)
+        return CGRect(x: side, y: size.height - gap - height,
+                      width: max(0, size.width - 2 * side), height: height)
+    }
+
+    /// Tab screens' bottom safe area reaches the bar's top edge: what the
+    /// bar adds on top of the device inset.
+    nonisolated static func engineBarInset(barFrame: CGRect, viewHeight: CGFloat, safeAreaBottom: CGFloat) -> CGFloat {
+        max(0, viewHeight - barFrame.minY - safeAreaBottom)
+    }
+
+    /// Each screen of the stack gets the stripe's height in its bottom safe
+    /// area unless it hides the bar.
+    private func applyEdgeInsets(in nav: UINavigationController) {
+        guard let style = tabBarContent.barStyle, style.isEngineDrawn else { return }
+        if engineBarInset == 0 {
+            let frame = Self.engineBarFrame(edge: style.isEdge, height: style.drawnHeight, in: view.bounds.size, safeAreaBottom: view.safeAreaInsets.bottom, bottomOffset: style.bottomOffset.map { CGFloat($0) }, sideInset: style.sideInset.map { CGFloat($0) })
+            engineBarInset = Self.engineBarInset(barFrame: frame, viewHeight: view.bounds.height, safeAreaBottom: view.safeAreaInsets.bottom)
+        }
+        for vc in nav.viewControllers {
+            guard let screen = vc as? ScreenViewController else { continue }
+            screen.tabStripeInset = Self.edgeStripeInset(height: engineBarInset, hidesTabBar: Self.hidesTabBar(at: vc, in: nav))
+        }
+    }
+
+    /// The bottom safe area an edge stripe adds to a tab screen.
+    nonisolated static func edgeStripeInset(height: CGFloat, hidesTabBar: Bool) -> CGFloat {
+        hidesTabBar ? 0 : height
+    }
+
+    private func setEdgeStripe(hidden: Bool) {
+        edgeStripeHidden = hidden
+        edgeStripe?.transform = hidden ? edgeStripeOffscreen : .identity
+    }
+
+    /// The bar's resting state at the end of a transition, with no
+    /// animation left on it.
+    private func settleEdgeStripe(hidden: Bool) {
+        edgeStripe?.layer.removeAllAnimations()
+        setEdgeStripe(hidden: hidden)
+    }
+
+    private func syncEdgeStripeToSelectedTab() {
+        guard edgeStripe != nil, let nav = selectedViewController as? UINavigationController,
+              let top = nav.topViewController, nav.transitionCoordinator == nil else { return }
+        setEdgeStripe(hidden: Self.hidesTabBar(at: top, in: nav))
+    }
+
+    /// The stripe leaves with a push of a `hidesTabBar` screen and comes back
+    /// with the pop, alongside the transition (an interactive pop scrubs it).
+    private func slideEdgeStripeAlongTransition(of nav: UINavigationController, to viewController: UIViewController) {
+        guard nav === selectedViewController else { return }
+        let toHidden = Self.hidesTabBar(at: viewController, in: nav)
+        guard let coordinator = nav.transitionCoordinator, coordinator.isAnimated,
+              let from = coordinator.viewController(forKey: .from), from !== viewController else {
+            setEdgeStripe(hidden: toHidden)
+            return
+        }
+        let fromHidden = edgeStripeHidden
+        guard fromHidden != toHidden else { return }
+        if coordinator.isInteractive {
+            // An interactive pop: an alongside animation of a view outside the
+            // transition container was left on the bar, paused, after the
+            // pop ended (the bar stayed hidden, the app never went idle).
+            // The bar slides in once the finger lifts on a completing pop.
+            coordinator.notifyWhenInteractionChanges { [weak self] context in
+                guard !context.isCancelled else { return }
+                UIView.animate(withDuration: context.transitionDuration * (1 - context.percentComplete) + 0.1,
+                               delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) {
+                    self?.setEdgeStripe(hidden: toHidden)
+                }
+            }
+            coordinator.animate(alongsideTransition: nil) { [weak self] context in
+                self?.settleEdgeStripe(hidden: context.isCancelled ? fromHidden : toHidden)
+            }
+            return
+        }
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            self?.setEdgeStripe(hidden: toHidden)
+        }, completion: { [weak self] context in
+            self?.settleEdgeStripe(hidden: context.isCancelled ? fromHidden : toHidden)
+        })
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        if edgeStripe != nil {
+            layoutEdgeStripe()
+            return
+        }
         adoptGlassPlatter()
         applySelectionIndicator()
     }
@@ -585,6 +835,16 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     @objc private func handleNavigationRequest(_ notification: Notification) {
         guard let request = notification.object as? NavigationRequest else { return }
 
+        // A screen built ahead (context menu preview tap): pushed now, in the
+        // preview's commit, so the expansion dissolves straight into it.
+        if case .push = request.type, let prepared = request.preparedScreen,
+           request.transition?.kind == DSL.Model.ScreenTransition.Resolved.Kind.none,
+           context.pendingDismissal == nil, presentedViewController == nil, parent?.presentedViewController == nil,
+           selectedIndex < tabIds.count, let nav = tabNavigationControllers[tabIds[selectedIndex]],
+           nav.transitionCoordinator == nil {
+            UIView.performWithoutAnimation { nav.pushViewController(prepared, animated: false) }
+            return
+        }
         // Wait for a dismissal the same action list started (see FlowCoordinator).
         let gate = context.pendingDismissal
         // Requests run one after another, each once the previous one's
@@ -645,10 +905,18 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         case .push(let screenId, let params):
             // A presented modal handles its own pushes.
             guard presentedViewController == nil, parent?.presentedViewController == nil else { return }
-            let screenComponent = try await screenLoader.loadScreen(id: screenId)
-            let screenVC = await appService.renderScreen(screenComponent, screenId: screenId, params: params.isEmpty ? nil : params)
+            let screenVC: UIViewController
+            if let prepared = request.preparedScreen {
+                screenVC = prepared
+            } else {
+                let screenComponent = try await screenLoader.loadScreen(id: screenId)
+                screenVC = await appService.renderScreen(screenComponent, screenId: screenId, params: params.isEmpty ? nil : params)
+            }
             if let transition = request.transition, transition.kind == .nativeZoom {
-                NativeZoomTransition.push(screenVC, on: currentNavController, transition: transition, coordinator: nil, logger: context.logger)
+                NativeZoomTransition.push(screenVC, on: currentNavController, transition: transition,
+                                          coordinator: transitionCoordinator(for: currentNavController), logger: context.logger)
+            } else if request.transition?.kind == DSL.Model.ScreenTransition.Resolved.Kind.none {
+                currentNavController.pushViewController(screenVC, animated: false)
             } else {
                 currentNavController.pushViewController(screenVC, animated: true)
             }
