@@ -203,6 +203,8 @@ extension DSL.Model {
             /// Floating engine-drawn bar: points between its bottom edge and the
             /// bottom safe area (positive above, negative into the inset). nil: platform placement.
             var bottomOffset: Double?
+            /// Floating engine-drawn bar: points from each screen edge. nil: platform (21).
+            var sideInset: Double?
             /// A component template that draws the whole bar.
             var component: String?
 
@@ -210,7 +212,7 @@ extension DSL.Model {
             var isCustom: Bool { component != nil || variant == .text }
 
             enum CodingKeys: String, CodingKey {
-                case variant, background, selection, text, selectedText, unselectedOpacity, indicatorColor, height, component, shape, cornerRadius, badgePlacement, bottomOffset
+                case variant, background, selection, text, selectedText, unselectedOpacity, indicatorColor, height, component, shape, cornerRadius, badgePlacement, bottomOffset, sideInset
             }
 
             /// The engine draws the whole bar outside the system `UITabBar`: an
@@ -244,6 +246,7 @@ extension DSL.Model {
                 cornerRadius = (try? c.decodeIfPresent(Double.self, forKey: .cornerRadius)) ?? nil
                 badgePlacement = (try? c.decodeIfPresent(BadgePlacement.self, forKey: .badgePlacement)) ?? .corner
                 bottomOffset = ((try? c.decodeIfPresent(Double.self, forKey: .bottomOffset)) ?? nil).flatMap { $0.isFinite && abs($0) <= 200 ? $0 : nil }
+                sideInset = ((try? c.decodeIfPresent(Double.self, forKey: .sideInset)) ?? nil).flatMap { $0.isFinite && $0 >= 0 && $0 <= 200 ? $0 : nil }
             }
         }
     }

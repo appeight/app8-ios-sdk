@@ -71,6 +71,7 @@ final class Engine0711Tests: XCTestCase {
         // bottomOffset: 10 pt above the bottom safe area; -10 pt into it.
         XCTAssertEqual(T.engineBarFrame(edge: false, height: 40, in: size, safeAreaBottom: 34, bottomOffset: 10), CGRect(x: 21, y: 790, width: 360, height: 40))
         XCTAssertEqual(T.engineBarFrame(edge: false, height: 40, in: size, safeAreaBottom: 34, bottomOffset: -10), CGRect(x: 21, y: 810, width: 360, height: 40))
+        XCTAssertEqual(T.engineBarFrame(edge: false, height: 50, in: size, safeAreaBottom: 34, bottomOffset: 10, sideInset: 16), CGRect(x: 16, y: 780, width: 370, height: 50))
         // Safe area to the bar's top: 874 − 821 = 53 = 34 + 19.
         XCTAssertEqual(T.engineBarInset(barFrame: CGRect(x: 21, y: 821, width: 360, height: 32), viewHeight: 874, safeAreaBottom: 34), 19)
         XCTAssertEqual(T.engineBarInset(barFrame: CGRect(x: 0, y: 808, width: 402, height: 32), viewHeight: 874, safeAreaBottom: 34), 32)
