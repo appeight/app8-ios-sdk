@@ -156,6 +156,13 @@ enum NativeZoomTransition {
         logger: A8Log?
     ) {
         let presenting = navController.topViewController as? ScreenViewController
+        // A source filling (most of) the presenting screen: the engine's pose
+        // and morph (the navigation delegate returns `ZoomMorphAnimator`).
+        if let zoom = transition.nativeZoom, navController.delegate != nil,
+           ZoomMorphTransition.attachIfFullScreenSource(to: screenVC, zoom: zoom, presentingScreen: presenting) {
+            navController.pushViewController(screenVC, animated: true)
+            return
+        }
         if let zoom = transition.nativeZoom,
            apply(to: screenVC, zoom: zoom, presentingScreen: presenting, logger: logger) {
             navController.pushViewController(screenVC, animated: true)

@@ -53,9 +53,18 @@ extension DSL.Model.Component {
             /// Controls UIScrollView.contentInsetAdjustmentBehavior.
             /// Default is `automatic` — matches UIKit default, iOS adjusts insets for safe areas.
             /// Use `never` when the DSL controls all layout (e.g., full-screen scroll with hidden nav bar).
+            /// `bottom` (since 0.7.11): content starts at the very top (under a
+            /// transparent or hidden bar); only the bottom inset follows the
+            /// safe area. Unknown values read as `automatic`.
             enum ContentInsetAdjustment: String, Decodable {
                 case never
                 case automatic
+                case bottom
+
+                init(from decoder: Decoder) throws {
+                    let raw = try? decoder.singleValueContainer().decode(String.self)
+                    self = raw.flatMap(Self.init(rawValue:)) ?? .automatic
+                }
             }
 
             /// Maps to `UIScrollView.keyboardDismissMode`.

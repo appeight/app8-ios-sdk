@@ -41,6 +41,12 @@ final class StyledTabBarView: UIView {
     private var rendered = false
     /// `background` naming a fill / material style: a DSL view draws it.
     var backgroundStyleId: String?
+    /// `shape: edge`: square corners, the background continued below the
+    /// bar by `bottomExtension` (under the home indicator).
+    var isEdge = false
+    var bottomExtension: CGFloat = 0 {
+        didSet { if oldValue != bottomExtension { setNeedsLayout() } }
+    }
 
     private(set) var selectedIndex: Int
     /// Fractional index the selection is drawn at (animated).
@@ -94,10 +100,12 @@ final class StyledTabBarView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        backgroundView.frame = bounds
+        backgroundView.frame = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height + (isEdge ? bottomExtension : 0))
         // On iOS 26 the bar is a floating capsule: a solid or styled
-        // background takes its shape.
-        if #available(iOS 26.0, *) {
+        // background takes its shape. An edge stripe stays square.
+        if isEdge {
+            backgroundView.layer.cornerRadius = 0
+        } else if #available(iOS 26.0, *) {
             backgroundView.layer.cornerRadius = bounds.height / 2
             backgroundView.layer.cornerCurve = .continuous
             backgroundView.clipsToBounds = true

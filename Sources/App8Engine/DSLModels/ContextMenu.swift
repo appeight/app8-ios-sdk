@@ -35,13 +35,16 @@ extension DSL.Model {
             let component: Component.`Any`
             let width: Double?
             let height: Double?
+            /// The preview platter's corner radius (`0`: square). Since 0.7.11.
+            let cornerRadius: Double?
 
-            private enum CodingKeys: String, CodingKey { case component, width, height }
+            private enum CodingKeys: String, CodingKey { case component, width, height, cornerRadius }
 
             init(from decoder: any Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
                 width = try c.decodeIfPresent(Double.self, forKey: .width)
                 height = try c.decodeIfPresent(Double.self, forKey: .height)
+                cornerRadius = (try? c.decodeIfPresent(Double.self, forKey: .cornerRadius)).flatMap { $0 }.map { max(0, $0) }
                 if let decoded = try? c.decode(Component.`Any`.self, forKey: .component) {
                     component = decoded
                     return

@@ -255,7 +255,7 @@ final class CCollectionCell: UICollectionViewCell {
         setNeedsLayout()
     }
 
-    private static func refreshForReuse(_ view: UIView) {
+    static func refreshForReuse(_ view: UIView) {
         (view as? ReuseRefreshable)?.refreshForReusedItem()
         CommonComponentProps.refreshHiddenForReuse(view)
         for subview in view.subviews { refreshForReuse(subview) }

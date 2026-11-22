@@ -39,6 +39,17 @@ extension DSL.Model.ScreenTransition {
         var nativeZoom: NativeZoom? = nil
     }
 
+    /// A push with no animation (a context menu preview's commit is the transition).
+    static var instantPush: Resolved {
+        Resolved(
+            kind: .none, mode: .push, edge: .trailing, raise: .incoming,
+            animation: .instant,
+            from: .identityPair, to: .identityPair,
+            reverseFrom: nil, reverseTo: nil, dimming: nil, interactive: nil,
+            presentation: nil
+        )
+    }
+
     /// `preset: zoom` + `sourceKey`: the platform zoom transition.
     struct NativeZoom {
         /// `sourceKey` as written (string or expression).

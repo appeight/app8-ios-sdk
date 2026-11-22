@@ -37,6 +37,7 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
         to toVC: UIViewController
     ) -> UIViewControllerAnimatedTransitioning? {
         self.navigationController = navigationController
+        if let morph = ZoomMorphTransition.animator(for: operation, from: fromVC, to: toVC) { return morph }
 
         let resolved: DSL.Model.ScreenTransition.Resolved?
         let direction: TransitionDirection
@@ -60,6 +61,7 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
         _ navigationController: UINavigationController,
         interactionControllerFor animationController: UIViewControllerAnimatedTransitioning
     ) -> UIViewControllerInteractiveTransitioning? {
+        if let morph = ZoomMorphTransition.interactionController(for: animationController) { return morph }
         guard let interactiveDriver, interactiveDriver.isInteracting else { return nil }
         return interactiveDriver
     }
@@ -99,7 +101,10 @@ final class App8NavTransitionCoordinator: NSObject, UINavigationControllerDelega
         interactiveDriver?.detach()
         interactiveDriver = nil
 
-        if wantsCustomInteractive, let resolved {
+        if ZoomMorphTransition.blocksSystemPopGesture(in: navigationController) {
+            // The pose-and-morph screen runs its own back swipe.
+            navigationController.interactivePopGestureRecognizer?.isEnabled = false
+        } else if wantsCustomInteractive, let resolved {
             // Custom interactive pop: disable the system gesture, drive our own.
             navigationController.interactivePopGestureRecognizer?.isEnabled = false
             let config = resolved.interactive ?? .init(enabled: true, edge: nil, threshold: 0.3, velocity: 800)

@@ -56,18 +56,61 @@ final class ContextMenuBinder: NSObject, UIContextMenuInteractionDelegate {
 
         let previewProvider: UIContextMenuContentPreviewProvider?
         if let preview = menu.preview {
-            previewProvider = { [weak self] in
-                guard let self, let viewModel = self.viewModel else { return nil }
-                return ContextMenuPreviewController(preview: preview, viewModel: viewModel, hostView: self.host)
+            // Built and measured now, at the start of the press: its bound
+            // text and `isHidden` are applied at once and again on the next
+            // main-queue turns, all before UIKit asks for the preview at the
+            // end of the lift. The platter then appears at its final size in
+            // one piece; a size that changed after it was shown made UIKit
+            // draw it twice (the first frame, then the resize).
+            let controller = ContextMenuPreviewController(preview: preview, viewModel: viewModel, hostView: host)
+            previewProvider = {
+                controller.prepareForPresentation()
+                return controller
             }
         } else {
             previewProvider = nil
         }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: previewProvider) { [weak self] _ in
+        // An identifier, so UIKit asks for the item's highlight and dismissal
+        // previews (`preview.cornerRadius`) through the per-item delegate calls.
+        return UIContextMenuConfiguration(identifier: "app8.contextMenu" as NSString, previewProvider: previewProvider) { [weak self] _ in
             self?.makeMenu()
         }
     }
 
+    /// `preview.cornerRadius`: the lift and the shrink back onto the
+    /// component use the same corners as the platter.
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configuration: UIContextMenuConfiguration,
+        highlightPreviewForItemWithIdentifier identifier: any NSCopying
+    ) -> UITargetedPreview? {
+        targetedPreview()
+    }
+
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configuration: UIContextMenuConfiguration,
+        dismissalPreviewForItemWithIdentifier identifier: any NSCopying
+    ) -> UITargetedPreview? {
+        targetedPreview()
+    }
+
+    private func targetedPreview() -> UITargetedPreview? {
+        guard let host, host.window != nil, let radius = menu?.preview?.cornerRadius else { return nil }
+        let parameters = UIPreviewParameters()
+        parameters.visiblePath = Self.previewPath(in: host.bounds, cornerRadius: CGFloat(radius))
+        return UITargetedPreview(view: host, parameters: parameters)
+    }
+
+    static func previewPath(in rect: CGRect, cornerRadius: CGFloat) -> UIBezierPath {
+        cornerRadius <= 0 ? UIBezierPath(rect: rect) : UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
+    }
+
+    /// `onPreviewTap` runs as the preview starts to expand (the system's
+    /// `.pop` commit), and a push it starts has no transition of its own: the
+    /// expanding preview is the transition and dissolves straight into the
+    /// new screen. Before, it ran once the expansion had ended and the old
+    /// screen was showing again, then pushed with its own zoom.
     func contextMenuInteraction(
         _ interaction: UIContextMenuInteraction,
         willPerformPreviewActionForMenuWith configuration: UIContextMenuConfiguration,
@@ -75,9 +118,19 @@ final class ContextMenuBinder: NSObject, UIContextMenuInteractionDelegate {
     ) {
         guard let menu, !menu.onPreviewTap.isEmpty else { return }
         animator.preferredCommitStyle = .pop
-        animator.addCompletion { [weak self] in
-            self?.viewModel?.executeContextMenuActions(menu.onPreviewTap)
+        let actions = menu.onPreviewTap
+        animator.addAnimations { [weak self] in
+            self?.runPreviewTap(actions)
         }
+    }
+
+    private func runPreviewTap(_ actions: [DSL.Model.Action]) {
+        guard let viewModel else { return }
+        let context = viewModel.componentService?.context
+        let previous = context?.suppressesNavigationTransitions ?? false
+        context?.suppressesNavigationTransitions = true
+        defer { context?.suppressesNavigationTransitions = previous }
+        viewModel.executeContextMenuActions(actions)
     }
 
     // MARK: - Menu
@@ -129,13 +182,17 @@ final class ContextMenuBinder: NSObject, UIContextMenuInteractionDelegate {
 // MARK: - Preview
 
 /// Renders `preview.component` as its own root, non-interactive, sized to
-/// `width` × `height` (defaults: screen width − 32; fitting height, ≤ 70%).
+/// `width` × `height` (defaults: screen width − 32; the content's own fitting
+/// height at that width, ≤ 70% of the screen).
 @MainActor
 final class ContextMenuPreviewController: UIViewController {
 
     private let preview: DSL.Model.ContextMenu.Preview
     private weak var viewModel: ComponentViewModelAbstract?
     private weak var hostView: UIView?
+    /// Pinned to the top and sides only: its height is the content's own, so
+    /// nothing inside is stretched to a measuring frame (a stack pinned to
+    /// the root's bottom spread its labels apart to fill 70% of the screen).
     private let container = UIView()
     /// Keeps the rendered preview's view models alive.
     private var renderResult: ComponentRenderResult?
@@ -150,26 +207,8 @@ final class ContextMenuPreviewController: UIViewController {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Union of the visible leaf views' frames in `container`, ignoring views
-    /// stretched to the tall measuring frame.
-    static func contentExtent(in container: UIView, tall: CGFloat) -> CGRect? {
-        var result: CGRect?
-        var stack: [UIView] = container.subviews
-        while let v = stack.popLast() {
-            if v.isHidden || v.alpha < 0.01 { continue }
-            let frame = v.convert(v.bounds, to: container)
-            if frame.height >= tall - 1 {
-                stack.append(contentsOf: v.subviews)
-                continue
-            }
-            if v.subviews.isEmpty || v is UILabel || v is UIImageView {
-                if frame.width > 0, frame.height > 0 { result = result.map { $0.union(frame) } ?? frame }
-            } else {
-                stack.append(contentsOf: v.subviews)
-            }
-        }
-        return result
-    }
+    private var previewWidth: CGFloat = 0
+    private var maxHeight: CGFloat = 600
 
     private func render() {
         guard let viewModel, let service = viewModel.componentService else { return }
@@ -179,6 +218,7 @@ final class ContextMenuPreviewController: UIViewController {
         let width = CGFloat(preview.width ?? Double(screen.width - 32))
 
         view.backgroundColor = .systemBackground
+        view.clipsToBounds = true
         container.isUserInteractionEnabled = false
         container.translatesAutoresizingMaskIntoConstraints = false
 
@@ -192,7 +232,6 @@ final class ContextMenuPreviewController: UIViewController {
             container.topAnchor.constraint(equalTo: view.topAnchor),
             container.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             container.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            container.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         renderResult = service.renderComponent(
             component,
@@ -201,54 +240,89 @@ final class ContextMenuPreviewController: UIViewController {
             parentVariableStore: viewModel.variableStore,
             reuseViewModel: nil
         )
-        // A root with only a width sits at the top; let its content grow past
-        // the container while measuring (low priority, below compression).
+        // A root laid out with only a width (no bottom) still gives the
+        // container its height.
         if let root = renderResult?.view {
-            let bottom = root.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor)
-            bottom.priority = UILayoutPriority(249)
-            NSLayoutConstraint.activate([
-                root.topAnchor.constraint(greaterThanOrEqualTo: container.topAnchor),
-                bottom,
-            ])
+            let bottom = root.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            bottom.priority = .defaultLow
+            NSLayoutConstraint.activate([bottom, root.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor)])
         }
 
         previewWidth = width
         maxHeight = screen.height * 0.7
+        applyCornerRadius()
         if let fixed = preview.height {
             preferredContentSize = CGSize(width: width, height: CGFloat(fixed))
         } else {
             remeasure()
-            // Bound text and `isHidden` arrive on the next main-queue turns;
-            // measure again so the preview grows to its full fitting height.
-            DispatchQueue.main.async { [weak self] in self?.remeasure() }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.remeasure() }
+            // Bindings that still arrive on the next main-queue turns land
+            // before the preview is shown (see `prepareForPresentation`).
+            DispatchQueue.main.async { [weak self] in self?.remeasureBeforePresentation() }
         }
     }
 
-    private var previewWidth: CGFloat = 0
-    private var maxHeight: CGFloat = 600
+    /// Called by the preview provider right before UIKit shows the preview:
+    /// the last measurement, with every binding applied.
+    func prepareForPresentation() {
+        guard preview.height == nil else { return }
+        remeasure()
+    }
 
-    /// The height of the laid-out content at the preview width (its visible
-    /// extent plus the same margin below as above), capped at 70% of the screen.
+    private func remeasureBeforePresentation() {
+        guard view.window == nil else { return }
+        remeasure()
+    }
+
+    /// The content's height at the preview width: bound text and `isHidden`
+    /// applied now (not on a later main-queue hop), multi-line labels settled,
+    /// then the container's own height, capped at 70% of the screen.
     private func remeasure() {
         let width = previewWidth
+        CCollectionCell.refreshForReuse(container)
         if view.window == nil {
-            // Before presentation: lay out in a tall frame at the preview width.
             view.frame = CGRect(x: 0, y: 0, width: width, height: max(maxHeight * 3, 2000))
         }
         view.setNeedsLayout()
         view.layoutIfNeeded()
+        container.settleWrappingLabels()
         view.layoutIfNeeded()
-        var measured: CGFloat = 0
-        // Content may overflow the shown container (low-priority bottom), so
-        // its extent is the full content height either way.
-        if let extent = Self.contentExtent(in: container, tall: container.bounds.height) {
-            measured = extent.maxY + max(0, extent.minY)
-        }
-        if measured <= 1 { measured = width }
-        let height = min(ceil(measured), maxHeight)
+        let height = Self.previewHeight(content: container.bounds.height, width: width, maxHeight: maxHeight)
         if abs(preferredContentSize.height - height) > 0.5 || preferredContentSize.width != width {
             preferredContentSize = CGSize(width: width, height: height)
+        }
+    }
+
+    /// The fitting height, capped; an empty measurement falls back to a square.
+    nonisolated static func previewHeight(content: CGFloat, width: CGFloat, maxHeight: CGFloat) -> CGFloat {
+        let measured = content > 1 ? content : width
+        return min(ceil(measured), maxHeight)
+    }
+
+    // MARK: - Corner radius
+
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        applyCornerRadius()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        applyCornerRadius()
+    }
+
+    /// `preview.cornerRadius`: this view's corners, and those of the system
+    /// platter around it (its clipping ancestors with rounded corners).
+    private func applyCornerRadius() {
+        guard let radius = preview.cornerRadius.map({ CGFloat($0) }) else { return }
+        view.layer.cornerRadius = radius
+        view.layer.cornerCurve = .continuous
+        var ancestor = view.superview
+        for _ in 0..<4 {
+            guard let current = ancestor, !(current is UIWindow) else { break }
+            if current.layer.cornerRadius > 0.5, abs(current.layer.cornerRadius - radius) > 0.01 {
+                current.layer.cornerRadius = radius
+            }
+            ancestor = current.superview
         }
     }
 }

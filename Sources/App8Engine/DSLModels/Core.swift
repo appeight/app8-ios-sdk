@@ -180,6 +180,9 @@ extension DSL.Model {
         struct BarStyle: Decodable, Sendable {
             enum Variant: String, Decodable, Sendable { case system, text }
             enum Selection: String, Decodable, Sendable { case capsule, underline, box, opacity }
+            /// `floating`: the platform's bar shape. `edge` (since 0.7.11): a
+            /// full-width square stripe flush with the screen's bottom edge.
+            enum Shape: String, Decodable, Sendable { case floating, edge }
 
             var variant: Variant = .system
             /// `glass` (default), `solid`, or the id of a fill / material style.
@@ -190,6 +193,7 @@ extension DSL.Model {
             var unselectedOpacity: Double = 0.5
             var indicatorColor: String?
             var height: Double?
+            var shape: Shape = .floating
             /// A component template that draws the whole bar.
             var component: String?
 
@@ -197,8 +201,15 @@ extension DSL.Model {
             var isCustom: Bool { component != nil || variant == .text }
 
             enum CodingKeys: String, CodingKey {
-                case variant, background, selection, text, selectedText, unselectedOpacity, indicatorColor, height, component
+                case variant, background, selection, text, selectedText, unselectedOpacity, indicatorColor, height, component, shape
             }
+
+            /// The engine draws an edge stripe (a custom bar with `shape: edge`).
+            var isEdge: Bool { isCustom && shape == .edge }
+
+            /// An edge stripe's height above the bottom safe area: `height`, at
+            /// least 28 (49, the classic bar, when unset).
+            var edgeHeight: CGFloat { max(28, CGFloat(height ?? 49)) }
 
             init(from decoder: Decoder) throws {
                 let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -211,6 +222,7 @@ extension DSL.Model {
                 indicatorColor = try c.decodeIfPresent(String.self, forKey: .indicatorColor)
                 height = try? c.decodeIfPresent(Double.self, forKey: .height)
                 component = try c.decodeIfPresent(String.self, forKey: .component)
+                shape = (try? c.decodeIfPresent(Shape.self, forKey: .shape)) ?? .floating
             }
         }
     }

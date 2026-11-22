@@ -125,6 +125,11 @@ class BaseViewController: UIViewController, BaseViewControllerProtocol {
     /// Subclasses override to contribute a persistent bottom additionalSafeAreaInset.
     func baseAdditionalBottomInset() -> CGFloat { 0 }
 
+    /// Part of `additionalSafeAreaInsets.bottom` that stands for a bar the
+    /// system would otherwise put in the safe area (an engine-drawn tab bar):
+    /// the keyboard covers it as it covers a system tab bar.
+    func systemBarBottomInset() -> CGFloat { 0 }
+
     /**
      */
     private func setupSafeAreaBindings() {
@@ -161,7 +166,7 @@ class BaseViewController: UIViewController, BaseViewControllerProtocol {
                 guard let self else { return }
                 
                 var keyboardExpanded = false
-                var originalSafeAreaBottom = (self.view.safeAreaInsets.bottom - self.additionalSafeAreaInsets.bottom)
+                var originalSafeAreaBottom = (self.view.safeAreaInsets.bottom - self.additionalSafeAreaInsets.bottom + self.systemBarBottomInset())
                 if originalSafeAreaBottom < 0 {
                     originalSafeAreaBottom = self.view.safeAreaInsets.bottom
                 }

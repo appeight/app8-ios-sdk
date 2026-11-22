@@ -56,6 +56,11 @@ final class App8Context {
     /// action list) wait for it, then run on the presenting screen's stack.
     var pendingDismissal: Task<Void, Never>?
 
+    /// Set while a context menu's `onPreviewTap` runs: the expanding preview
+    /// is the transition, so a push it starts runs without one of its own
+    /// (context-menu.md, `onPreviewTap`).
+    var suppressesNavigationTransitions = false
+
     init(
         logger: A8Log = A8Log(),
         appearance: App8Appearance = App8Appearance(),

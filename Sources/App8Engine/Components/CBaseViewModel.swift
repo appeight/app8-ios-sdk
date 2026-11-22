@@ -1006,6 +1006,13 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 // when the transition is custom; an explicit `.system` opts out
                 // (and suppresses screen/app defaults downstream).
                 var actionTransition = resolveTransition(action.transition)
+                // A context menu preview tap: the expanding preview is the
+                // transition, a push runs without one of its own.
+                if service.context.suppressesNavigationTransitions,
+                   action.presentation == nil || action.presentation == .push,
+                   (actionTransition?.mode ?? .push) == .push {
+                    actionTransition = DSL.Model.ScreenTransition.instantPush
+                }
 
                 if var zoomTransition = actionTransition, zoomTransition.kind == .nativeZoom, var zoom = zoomTransition.nativeZoom {
                     // Native zoom: resolve the keys in the action's scope now.
