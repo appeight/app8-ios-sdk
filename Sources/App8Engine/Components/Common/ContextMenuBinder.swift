@@ -63,6 +63,7 @@ final class ContextMenuBinder: NSObject, UIContextMenuInteractionDelegate {
             // one piece; a size that changed after it was shown made UIKit
             // draw it twice (the first frame, then the resize).
             let controller = ContextMenuPreviewController(preview: preview, viewModel: viewModel, hostView: host)
+            prepareDestination(of: menu.onPreviewTap, viewModel: viewModel)
             previewProvider = {
                 controller.prepareForPresentation()
                 return controller
@@ -124,6 +125,89 @@ final class ContextMenuBinder: NSObject, UIContextMenuInteractionDelegate {
         }
     }
 
+    // MARK: - Destination built ahead
+
+    private var prepareTask: Task<Void, Never>?
+
+    /// The screen a preview tap pushes is built while the menu is open
+    /// (rendered and laid out at the window size, so its images load), and
+    /// pushed synchronously in the commit: the expanding preview dissolves
+    /// straight into it. Before, the push was loaded after the commit and
+    /// landed ~0.15 s after the preview had gone, showing the old screen and
+    /// then the new one with empty images.
+    private func prepareDestination(of actions: [DSL.Model.Action], viewModel: ComponentViewModelAbstract) {
+        prepareTask?.cancel()
+        let context = viewModel.componentService?.context
+        context?.preparedPush = nil
+        guard !actions.isEmpty else { return }
+        let window = host?.window
+        prepareTask = Task { @MainActor [weak viewModel] in
+            guard let viewModel, let prepared = await viewModel.prepareContextMenuPush(actions), !Task.isCancelled else { return }
+            if let bounds = window?.bounds {
+                prepared.controller.view.frame = bounds
+                prepared.controller.view.setNeedsLayout()
+                prepared.controller.view.layoutIfNeeded()
+            }
+            context?.preparedPush = prepared
+        }
+    }
+
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        willEndFor configuration: UIContextMenuConfiguration,
+        animator: UIContextMenuInteractionAnimating?
+    ) {
+        let context = viewModel?.componentService?.context
+        let finish: () -> Void = { [weak self] in
+            guard let self else { return }
+            // A prepared screen nobody pushed is dropped.
+            self.prepareTask?.cancel()
+            self.prepareTask = nil
+            if self.pendingItemActions == nil { context?.preparedPush = nil }
+            self.menuIsClosing = false
+            self.runPendingItemActions()
+        }
+        menuIsClosing = true
+        if let animator {
+            animator.addCompletion(finish)
+            // The preview has landed on the component after ~0.25 s; UIKit
+            // reports the end ~0.3 s later still (the grid sat still that long
+            // before an item's zoom began). Start the item's actions then.
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.previewLandsAfter) { [weak self] in
+                self?.runPendingItemActions()
+            }
+        } else {
+            finish()
+        }
+    }
+
+    // MARK: - Item actions after the menu has closed
+
+    static let previewLandsAfter: TimeInterval = 0.28
+    private var pendingItemActions: [DSL.Model.Action]?
+    private var menuIsClosing = false
+
+    /// A menu item's actions run once the preview has shrunk back onto the
+    /// component: a zoom they start then grows out of the card at rest.
+    /// Before, the push's zoom ran while the preview was still shrinking
+    /// back, the two animations on top of each other.
+    private func runAfterMenuCloses(_ actions: [DSL.Model.Action]) {
+        pendingItemActions = actions
+        if !menuIsClosing {
+            // `willEndFor` may come after the handler: give it one turn,
+            // and never hold the actions for long.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.runPendingItemActions() }
+        }
+    }
+
+    private func runPendingItemActions() {
+        guard let actions = pendingItemActions else { return }
+        pendingItemActions = nil
+        viewModel?.executeContextMenuActions(actions)
+        // A prepared screen the actions did not take is dropped.
+        viewModel?.componentService?.context.preparedPush = nil
+    }
+
     private func runPreviewTap(_ actions: [DSL.Model.Action]) {
         guard let viewModel else { return }
         let context = viewModel.componentService?.context
@@ -147,7 +231,7 @@ final class ContextMenuBinder: NSObject, UIContextMenuInteractionDelegate {
                 .flatMap { $0.isEmpty ? nil : UIImage(systemName: $0) }
             let actions = item.actions
             let action = UIAction(title: title, image: image, identifier: UIAction.Identifier(item.id)) { [weak self] _ in
-                self?.viewModel?.executeContextMenuActions(actions)
+                self?.runAfterMenuCloses(actions)
             }
             if let subtitle = item.subtitle {
                 let resolved = viewModel.resolvePropertyToString(subtitle)
@@ -310,19 +394,13 @@ final class ContextMenuPreviewController: UIViewController {
         applyCornerRadius()
     }
 
-    /// `preview.cornerRadius`: this view's corners, and those of the system
-    /// platter around it (its clipping ancestors with rounded corners).
+    /// `preview.cornerRadius` on the preview's own view. The system platter
+    /// around it keeps its own corners: on iOS 26 it is drawn in the menu's
+    /// container from a portal of this view, with no public corner setting
+    /// (the lift and the shrink back use `visiblePath`, see `targetedPreview`).
     private func applyCornerRadius() {
         guard let radius = preview.cornerRadius.map({ CGFloat($0) }) else { return }
         view.layer.cornerRadius = radius
         view.layer.cornerCurve = .continuous
-        var ancestor = view.superview
-        for _ in 0..<4 {
-            guard let current = ancestor, !(current is UIWindow) else { break }
-            if current.layer.cornerRadius > 0.5, abs(current.layer.cornerRadius - radius) > 0.01 {
-                current.layer.cornerRadius = radius
-            }
-            ancestor = current.superview
-        }
     }
 }

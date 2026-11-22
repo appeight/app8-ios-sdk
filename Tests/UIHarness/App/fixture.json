@@ -1,0 +1,1617 @@
+{
+ "app": {
+  "title": "Harness",
+  "navigation": {
+   "startFlow": "main",
+   "flows": [
+    {
+     "id": "main",
+     "startScreen": "tabs"
+    }
+   ]
+  },
+  "variables": {
+   "products": {
+    "type": "array",
+    "initialValue": [
+     {
+      "id": "p1",
+      "title": "ITEM 1",
+      "price": "19 EUR",
+      "img": "photo-1",
+      "images": [
+       {
+        "name": "photo-1"
+       },
+       {
+        "name": "photo-1b"
+       },
+       {
+        "name": "photo-1c"
+       }
+      ]
+     },
+     {
+      "id": "p2",
+      "title": "ITEM 2",
+      "price": "29 EUR",
+      "img": "photo-2",
+      "images": [
+       {
+        "name": "photo-2"
+       },
+       {
+        "name": "photo-2b"
+       },
+       {
+        "name": "photo-2c"
+       }
+      ]
+     },
+     {
+      "id": "p3",
+      "title": "ITEM 3",
+      "price": "39 EUR",
+      "img": "photo-3",
+      "images": [
+       {
+        "name": "photo-3"
+       },
+       {
+        "name": "photo-3b"
+       },
+       {
+        "name": "photo-3c"
+       }
+      ]
+     },
+     {
+      "id": "p4",
+      "title": "ITEM 4",
+      "price": "49 EUR",
+      "img": "photo-4",
+      "images": [
+       {
+        "name": "photo-4"
+       },
+       {
+        "name": "photo-4b"
+       },
+       {
+        "name": "photo-4c"
+       }
+      ]
+     },
+     {
+      "id": "p5",
+      "title": "ITEM 5",
+      "price": "59 EUR",
+      "img": "photo-5",
+      "images": [
+       {
+        "name": "photo-5"
+       },
+       {
+        "name": "photo-5b"
+       },
+       {
+        "name": "photo-5c"
+       }
+      ]
+     },
+     {
+      "id": "p6",
+      "title": "ITEM 6",
+      "price": "69 EUR",
+      "img": "photo-6",
+      "images": [
+       {
+        "name": "photo-6"
+       },
+       {
+        "name": "photo-6b"
+       },
+       {
+        "name": "photo-6c"
+       }
+      ]
+     }
+    ]
+   },
+   "saved": {
+    "type": "array",
+    "initialValue": [
+     "p1",
+     "p2"
+    ]
+   }
+  }
+ },
+ "styles": [],
+ "components": [
+  {
+   "id": "ShowPage",
+   "type": "view",
+   "content": {
+    "style": {
+     "material": [
+      {
+       "id": "f000000",
+       "type": "fill",
+       "content": {
+        "solid": "#000000"
+       }
+      }
+     ]
+    },
+    "children": [
+     {
+      "id": "pagePhoto",
+      "type": "image",
+      "content": {
+       "properties": {
+        "type": "remoteAsset",
+        "name": "{{item.img}}"
+       },
+       "style": {
+        "contentMode": "scaleAspectFill"
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "top",
+          "target": "superview"
+         },
+         {
+          "type": "leading",
+          "target": "superview"
+         },
+         {
+          "type": "trailing",
+          "target": "superview"
+         },
+         {
+          "type": "bottom",
+          "target": "superview"
+         }
+        ]
+       },
+       "interaction": {
+        "clipsToBounds": "true"
+       },
+       "transition": {
+        "key": "{{'show-' + item.id}}"
+       }
+      }
+     },
+     {
+      "id": "pageText",
+      "type": "label",
+      "content": {
+       "properties": {
+        "text": "{{item.title}}",
+        "numberOfLines": 1
+       },
+       "style": {
+        "text": {
+         "fontSize": 28,
+         "fontWeight": "bold",
+         "color": "#FFFFFF"
+        }
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "leading",
+          "target": "superview",
+          "constant": 16
+         },
+         {
+          "type": "bottom",
+          "target": "superview",
+          "constant": -120
+         }
+        ]
+       }
+      }
+     },
+     {
+      "id": "pageButton",
+      "type": "button",
+      "content": {
+       "properties": {
+        "text": ""
+       },
+       "style": {
+        "system": {
+         "variant": "plain"
+        }
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "top",
+          "target": "superview"
+         },
+         {
+          "type": "leading",
+          "target": "superview"
+         },
+         {
+          "type": "trailing",
+          "target": "superview"
+         },
+         {
+          "type": "bottom",
+          "target": "superview"
+         }
+        ]
+       },
+       "accessibility": {
+        "label": "{{'open ' + item.id}}"
+       },
+       "actions": {
+        "tap": [
+         {
+          "type": "navigation",
+          "nextScreen": "product",
+          "presentation": "push",
+          "params": {
+           "product": "{{item}}"
+          },
+          "transition": {
+           "preset": "zoom",
+           "sourceKey": "{{'show-' + item.id}}",
+           "alignmentKey": "gallery-0"
+          }
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "Card",
+   "type": "view",
+   "content": {
+    "children": [
+     {
+      "id": "cardBox",
+      "type": "view",
+      "content": {
+       "layout": {
+        "constraints": [
+         {
+          "type": "top",
+          "target": "superview"
+         },
+         {
+          "type": "leading",
+          "target": "superview"
+         },
+         {
+          "type": "trailing",
+          "target": "superview"
+         },
+         {
+          "type": "height",
+          "target": "superview",
+          "attribute": "width",
+          "multiplier": 1.25
+         }
+        ]
+       },
+       "children": [
+        {
+         "id": "cardImage",
+         "type": "image",
+         "content": {
+          "properties": {
+           "type": "remoteAsset",
+           "name": "{{item.img}}"
+          },
+          "style": {
+           "contentMode": "scaleAspectFill"
+          },
+          "layout": {
+           "constraints": [
+            {
+             "type": "top",
+             "target": "superview"
+            },
+            {
+             "type": "leading",
+             "target": "superview"
+            },
+            {
+             "type": "trailing",
+             "target": "superview"
+            },
+            {
+             "type": "bottom",
+             "target": "superview"
+            }
+           ]
+          },
+          "interaction": {
+           "clipsToBounds": "true"
+          },
+          "transition": {
+           "key": "{{'card-' + item.id}}"
+          }
+         }
+        }
+       ]
+      }
+     },
+     {
+      "id": "cardTitle",
+      "type": "label",
+      "content": {
+       "properties": {
+        "text": "{{item.title}}",
+        "numberOfLines": 1
+       },
+       "style": {
+        "text": {
+         "fontSize": 12
+        }
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "top",
+          "target": "cardBox",
+          "attribute": "bottom",
+          "constant": 8
+         },
+         {
+          "type": "leading",
+          "target": "superview",
+          "constant": 8
+         },
+         {
+          "type": "bottom",
+          "target": "superview",
+          "constant": -8
+         }
+        ]
+       }
+      }
+     }
+    ],
+    "accessibility": {
+     "label": "{{'card ' + item.id}}"
+    },
+    "contextMenu": {
+     "preview": {
+      "component": {
+       "templateId": "QuickView"
+      },
+      "width": 300,
+      "cornerRadius": 0
+     },
+     "items": [
+      {
+       "id": "save",
+       "title": "Save",
+       "icon": "star",
+       "actions": [
+        {
+         "type": "toggleArrayValue",
+         "variableName": "saved",
+         "value": "{{item.id}}"
+        }
+       ]
+      },
+      {
+       "id": "view",
+       "title": "View product",
+       "icon": "arrow.up.right",
+       "actions": [
+        {
+         "type": "navigation",
+         "nextScreen": "product",
+         "presentation": "push",
+         "params": {
+          "product": "{{item}}"
+         },
+         "transition": {
+          "preset": "zoom",
+          "sourceKey": "{{'card-' + item.id}}",
+          "alignmentKey": "fit-0"
+         }
+        }
+       ]
+      }
+     ],
+     "onPreviewTap": [
+      {
+       "type": "navigation",
+       "nextScreen": "product",
+       "presentation": "push",
+       "params": {
+        "product": "{{item}}"
+       },
+       "transition": {
+        "preset": "zoom",
+        "sourceKey": "{{'card-' + item.id}}",
+        "alignmentKey": "fit-0"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "QuickView",
+   "type": "view",
+   "content": {
+    "style": {
+     "material": [
+      {
+       "id": "fFFFFFF",
+       "type": "fill",
+       "content": {
+        "solid": "#FFFFFF"
+       }
+      }
+     ]
+    },
+    "children": [
+     {
+      "id": "qvImage",
+      "type": "image",
+      "content": {
+       "properties": {
+        "type": "remoteAsset",
+        "name": "{{item.img}}"
+       },
+       "style": {
+        "contentMode": "scaleAspectFill"
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "top",
+          "target": "superview"
+         },
+         {
+          "type": "leading",
+          "target": "superview"
+         },
+         {
+          "type": "trailing",
+          "target": "superview"
+         },
+         {
+          "type": "height",
+          "target": "superview",
+          "attribute": "width",
+          "multiplier": 1.25
+         }
+        ]
+       },
+       "interaction": {
+        "clipsToBounds": "true"
+       }
+      }
+     },
+     {
+      "id": "qvText",
+      "type": "stackView",
+      "content": {
+       "properties": {
+        "axis": "vertical",
+        "spacing": 6,
+        "alignment": "fill"
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "top",
+          "target": "qvImage",
+          "attribute": "bottom",
+          "constant": 12
+         },
+         {
+          "type": "leading",
+          "target": "superview",
+          "constant": 16
+         },
+         {
+          "type": "trailing",
+          "target": "superview",
+          "constant": -16
+         },
+         {
+          "type": "bottom",
+          "target": "superview",
+          "constant": -16
+         }
+        ]
+       },
+       "children": [
+        {
+         "id": "qvTitle",
+         "type": "label",
+         "content": {
+          "properties": {
+           "text": "{{item.title}}"
+          },
+          "style": {
+           "text": {
+            "fontSize": 13,
+            "fontWeight": "semibold"
+           }
+          }
+         }
+        },
+        {
+         "id": "qvPrice",
+         "type": "label",
+         "content": {
+          "properties": {
+           "text": "{{item.price}}"
+          },
+          "style": {
+           "text": {
+            "fontSize": 13
+           }
+          }
+         }
+        }
+       ]
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "screens": {
+  "tabs": {
+   "type": "tabBarScreen",
+   "id": "tabs",
+   "content": {
+    "tabs": [
+     {
+      "id": "home",
+      "label": "HOME",
+      "icon": "house",
+      "screen": "home"
+     },
+     {
+      "id": "saved",
+      "label": "SAVED",
+      "icon": "star",
+      "screen": "saved",
+      "badge": "{{length(saved) > 0 ? length(saved) : ''}}"
+     },
+     {
+      "id": "bag",
+      "label": "BAG",
+      "icon": "bag",
+      "screen": "bag",
+      "badge": "12"
+     }
+    ],
+    "initialTab": "home",
+    "tintColor": "#FFFFFF",
+    "unselectedColor": "#FFFFFF4D",
+    "badgeColor": "#FFFFFF",
+    "badgeTextColor": "#000000",
+    "barStyle": {
+     "variant": "text",
+     "shape": "floating",
+     "background": "#000000",
+     "cornerRadius": 0,
+     "height": 32,
+     "selection": "opacity",
+     "unselectedOpacity": 0.3,
+     "text": {
+      "fontSize": 12,
+      "fontWeight": "semibold",
+      "color": "#FFFFFF"
+     },
+     "badgePlacement": "inline"
+    }
+   }
+  },
+  "home": {
+   "type": "screen",
+   "id": "home",
+   "content": {
+    "navigationBar": {
+     "hidden": true
+    },
+    "style": {
+     "material": [
+      {
+       "id": "f000000",
+       "type": "fill",
+       "content": {
+        "solid": "#000000"
+       }
+      }
+     ]
+    },
+    "variables": {
+     "homePage": {
+      "type": "number",
+      "initialValue": 0
+     }
+    },
+    "children": [
+     {
+      "id": "showroom",
+      "type": "collection",
+      "content": {
+       "properties": {
+        "data": "{{products}}",
+        "templateName": "ShowPage",
+        "layout": {
+         "type": "vertical",
+         "pagingStyle": "paging",
+         "itemHeight": "fill",
+         "currentPageVariable": "homePage",
+         "showsScrollIndicator": false
+        }
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "top",
+          "target": "superview"
+         },
+         {
+          "type": "leading",
+          "target": "superview"
+         },
+         {
+          "type": "trailing",
+          "target": "superview"
+         },
+         {
+          "type": "bottom",
+          "target": "superview"
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  },
+  "product": {
+   "type": "screen",
+   "id": "product",
+   "content": {
+    "hidesTabBar": true,
+    "navigationBar": {
+     "tintColor": "#000000",
+     "backLabel": "",
+     "rightActions": [
+      {
+       "icon": "{{includes(saved, product.id) ? 'star.fill' : 'star'}}",
+       "action": [
+        {
+         "type": "toggleArrayValue",
+         "variableName": "saved",
+         "value": "{{product.id}}"
+        }
+       ]
+      }
+     ]
+    },
+    "style": {
+     "material": [
+      {
+       "id": "fFFFFFF",
+       "type": "fill",
+       "content": {
+        "solid": "#FFFFFF"
+       }
+      }
+     ]
+    },
+    "variables": {
+     "galleryPage": {
+      "type": "number",
+      "initialValue": 0
+     }
+    },
+    "bottomBar": {
+     "component": {
+      "id": "buyBar",
+      "type": "view",
+      "content": {
+       "style": {
+        "material": [
+         {
+          "id": "f000000",
+          "type": "fill",
+          "content": {
+           "solid": "#000000"
+          }
+         }
+        ]
+       },
+       "layout": {
+        "height": 50
+       },
+       "children": [
+        {
+         "id": "buyLabel",
+         "type": "label",
+         "content": {
+          "properties": {
+           "text": "ADD TO BAG",
+           "numberOfLines": 1
+          },
+          "style": {
+           "text": {
+            "fontSize": 13,
+            "color": "#FFFFFF"
+           }
+          },
+          "layout": {
+           "constraints": [
+            {
+             "type": "centerX",
+             "target": "superview"
+            },
+            {
+             "type": "centerY",
+             "target": "superview"
+            }
+           ]
+          }
+         }
+        }
+       ]
+      }
+     },
+     "insets": {
+      "top": 8,
+      "left": 16,
+      "bottom": 8,
+      "right": 16
+     }
+    },
+    "children": [
+     {
+      "id": "pdpScroll",
+      "type": "scrollView",
+      "content": {
+       "properties": {
+        "direction": "vertical",
+        "showsIndicator": false,
+        "contentInsetAdjustment": "never",
+        "stretchesTopChild": true
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "top",
+          "target": "superview"
+         },
+         {
+          "type": "leading",
+          "target": "superview"
+         },
+         {
+          "type": "trailing",
+          "target": "superview"
+         },
+         {
+          "type": "bottom",
+          "target": "superview"
+         }
+        ]
+       },
+       "children": [
+        {
+         "id": "pdpStack",
+         "type": "stackView",
+         "content": {
+          "properties": {
+           "axis": "vertical",
+           "spacing": 0,
+           "alignment": "fill"
+          },
+          "layout": {
+           "constraints": [
+            {
+             "type": "top",
+             "target": "superview"
+            },
+            {
+             "type": "leading",
+             "target": "superview"
+            },
+            {
+             "type": "trailing",
+             "target": "superview"
+            },
+            {
+             "type": "bottom",
+             "target": "superview"
+            }
+           ]
+          },
+          "children": [
+           {
+            "id": "galleryBox",
+            "type": "view",
+            "content": {
+             "layout": {
+              "constraints": [
+               {
+                "type": "height",
+                "target": "superview",
+                "attribute": "width",
+                "multiplier": 1.5
+               }
+              ]
+             },
+             "children": [
+              {
+               "id": "gallery",
+               "type": "collection",
+               "content": {
+                "properties": {
+                 "data": "{{product.images}}",
+                 "layout": {
+                  "type": "horizontal",
+                  "pagingStyle": "paging",
+                  "itemHeight": "fill",
+                  "currentPageVariable": "galleryPage",
+                  "showsScrollIndicator": false
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                },
+                "template": {
+                 "id": "galleryCell",
+                 "type": "view",
+                 "content": {
+                  "style": {
+                   "material": [
+                    {
+                     "id": "fEEEEEE",
+                     "type": "fill",
+                     "content": {
+                      "solid": "#EEEEEE"
+                     }
+                    }
+                   ]
+                  },
+                  "children": [
+                   {
+                    "id": "galleryImg",
+                    "type": "image",
+                    "content": {
+                     "properties": {
+                      "type": "remoteAsset",
+                      "name": "{{item.name}}"
+                     },
+                     "style": {
+                      "contentMode": "scaleAspectFill"
+                     },
+                     "layout": {
+                      "constraints": [
+                       {
+                        "type": "top",
+                        "target": "superview"
+                       },
+                       {
+                        "type": "leading",
+                        "target": "superview"
+                       },
+                       {
+                        "type": "trailing",
+                        "target": "superview"
+                       },
+                       {
+                        "type": "bottom",
+                        "target": "superview"
+                       }
+                      ]
+                     },
+                     "interaction": {
+                      "clipsToBounds": "true"
+                     },
+                     "transition": {
+                      "key": "{{'gallery-' + item.$index}}"
+                     }
+                    }
+                   },
+                   {
+                    "id": "galleryFit",
+                    "type": "view",
+                    "content": {
+                     "layout": {
+                      "constraints": [
+                       {
+                        "type": "leading",
+                        "target": "superview"
+                       },
+                       {
+                        "type": "trailing",
+                        "target": "superview"
+                       },
+                       {
+                        "type": "centerY",
+                        "target": "superview"
+                       },
+                       {
+                        "type": "height",
+                        "target": "superview",
+                        "attribute": "width",
+                        "multiplier": 1.25
+                       }
+                      ]
+                     },
+                     "interaction": {
+                      "enabled": "false"
+                     },
+                     "transition": {
+                      "key": "{{'fit-' + item.$index}}"
+                     }
+                    }
+                   }
+                  ]
+                 }
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp1",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx1",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl1",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "{{product.title}}",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 20
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp2",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 8
+             }
+            }
+           },
+           {
+            "id": "tx2",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl2",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "{{product.price}}",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp30",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx3",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl3",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp40",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx4",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl4",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp50",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx5",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl5",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp60",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx6",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl6",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp70",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx7",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl7",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp80",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx8",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl8",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. Section text that runs over a few lines so the screen scrolls and the last line can be checked against the bottom bar. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "tx99",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl99",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "LAST LINE",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp100",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           }
+          ]
+         }
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "saved": {
+   "type": "screen",
+   "id": "saved",
+   "content": {
+    "navigationBar": {
+     "title": "Saved",
+     "tintColor": "#000000"
+    },
+    "style": {
+     "material": [
+      {
+       "id": "fFFFFFF",
+       "type": "fill",
+       "content": {
+        "solid": "#FFFFFF"
+       }
+      }
+     ]
+    },
+    "children": [
+     {
+      "id": "savedScroll",
+      "type": "scrollView",
+      "content": {
+       "properties": {
+        "direction": "vertical"
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "top",
+          "target": "superview"
+         },
+         {
+          "type": "leading",
+          "target": "superview"
+         },
+         {
+          "type": "trailing",
+          "target": "superview"
+         },
+         {
+          "type": "bottom",
+          "target": "superview"
+         }
+        ]
+       },
+       "children": [
+        {
+         "id": "grid",
+         "type": "collection",
+         "content": {
+          "properties": {
+           "data": "{{products}}",
+           "templateName": "Card",
+           "layout": {
+            "type": "grid",
+            "columns": 2,
+            "itemSpacing": 2,
+            "lineSpacing": 16,
+            "scrollEnabled": false,
+            "estimatedItemHeight": 300
+           }
+          },
+          "layout": {
+           "constraints": [
+            {
+             "type": "top",
+             "target": "superview"
+            },
+            {
+             "type": "leading",
+             "target": "superview"
+            },
+            {
+             "type": "trailing",
+             "target": "superview"
+            },
+            {
+             "type": "bottom",
+             "target": "superview"
+            }
+           ]
+          },
+          "actions": {
+           "onItemTap": [
+            {
+             "type": "navigation",
+             "nextScreen": "product",
+             "presentation": "push",
+             "params": {
+              "product": "{{item}}"
+             },
+             "transition": {
+              "preset": "zoom",
+              "sourceKey": "{{'card-' + item.id}}",
+              "alignmentKey": "fit-0"
+             }
+            }
+           ]
+          }
+         }
+        }
+       ]
+      }
+     }
+    ]
+   }
+  },
+  "bag": {
+   "type": "screen",
+   "id": "bag",
+   "content": {
+    "navigationBar": {
+     "title": "Bag"
+    },
+    "style": {
+     "material": [
+      {
+       "id": "fFFFFFF",
+       "type": "fill",
+       "content": {
+        "solid": "#FFFFFF"
+       }
+      }
+     ]
+    },
+    "children": []
+   }
+  }
+ }
+}

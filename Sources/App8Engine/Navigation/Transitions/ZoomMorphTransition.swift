@@ -5,22 +5,20 @@
 //  The native zoom from a source that fills (≥ 80%) the presenting screen —
 //  a full-screen pager page — drawn by the engine (transitions.md, "Native
 //  zoom", iOS row; since 0.7.11). UIKit's zoom shrinks and dims the whole
-//  presenting screen and shows the incoming one at once when the source is the
-//  screen itself: it read as a broken modal. This is the pose and morph of
-//  Android and the web:
+//  presenting screen when the source is the screen itself: it read as a
+//  broken modal. This is a shared-element hero instead:
 //
 //  - the presenting screen stays still;
-//  - the incoming screen is posed so its `alignmentKey` element covers the
-//    source rect (uniform scale), clipped to the source, and eases to identity;
-//  - a box travels from the source into the alignment element (hidden until it
-//    lands), showing the source's image and cross-dissolving into the
-//    alignment element's image, both aspect-filled;
-//  - cubic ease-out, 0.36 s in and 0.32 s out; the pop runs it in reverse, the
-//    back swipe and `dismissGesture` scrub the reverse interactively.
+//  - the source photo itself flies from its frame into the `alignmentKey`
+//    element's frame, aspect-filled, cross-dissolving into that element's
+//    image (both ends hidden while the box stands in for them);
+//  - the rest of the incoming screen fades in around it at its own size,
+//    never scaled;
+//  - cubic ease-out, 0.36 s in and 0.32 s out; the pop runs it in reverse,
+//    the back swipe and `dismissGesture` scrub the reverse interactively.
 //
-//  Invariants (as `SharedElementTransitionAnimator`): the hidden alignment
-//  element, the mask and the incoming transform are restored and the box is
-//  removed on every completion path; `completeTransition` always runs.
+//  Invariants: the box is removed, both ends and the zoomed screen are fully
+//  visible again on every completion path; `completeTransition` always runs.
 //
 
 import ObjectiveC
@@ -89,6 +87,7 @@ final class ZoomMorphTransition: NSObject {
     static func interactionController(for animator: UIViewControllerAnimatedTransitioning) -> UIViewControllerInteractiveTransitioning? {
         guard let animator = animator as? ZoomMorphAnimator, animator.direction == .reverse,
               let interaction = animator.transition.interaction, interaction.isInteracting else { return nil }
+        interaction.animatorProvider = animator
         return interaction
     }
 
@@ -225,83 +224,105 @@ final class ZoomMorphAnimator: NSObject, UIViewControllerAnimatedTransitioning {
         let toView = ctx.view(forKey: .to) ?? toVC.view!
         let forward = direction == .forward
 
-        // The zoomed screen (incoming on push, leaving on pop) and the presenting one.
+        // The zoomed screen (incoming on push, leaving on pop). It never
+        // scales: only the photo flies; the rest of the screen fades in or out
+        // around it at its own size.
         let zoomed = forward ? toView : fromView
-        let zoomedFrame = forward ? ctx.finalFrame(for: toVC) : ctx.initialFrame(for: fromVC)
         if forward {
             container.addSubview(toView)
-            toView.frame = zoomedFrame
-            toView.layoutIfNeeded()
+            toView.frame = ctx.finalFrame(for: toVC)
         } else {
             container.insertSubview(toView, belowSubview: fromView)
             toView.frame = ctx.finalFrame(for: toVC)
-            toView.layoutIfNeeded()
         }
+        // Twice: a collection lays its cells out on the second pass (the
+        // alignment element is a gallery cell's image).
+        toView.layoutIfNeeded()
+        toView.layoutIfNeeded()
 
         guard let source = transition.sourceView() else {
             return crossDissolve(animator, ctx: ctx, zoomed: zoomed, forward: forward, presenting: forward ? fromView : toView)
         }
         let sourceRect = source.convert(source.bounds, to: container)
-        let alignment = transition.alignmentView(in: zoomed)
-        let alignmentLocal = alignment.map { $0.convert($0.bounds, to: zoomed) } ?? zoomed.bounds
-        let bounds = zoomedFrame.size
-        let center = CGPoint(x: zoomedFrame.midX, y: zoomedFrame.midY)
-        let pose = ZoomMorphTransition.pose(source: sourceRect, alignment: alignmentLocal, bounds: bounds, center: center)
-        let maskPosed = ZoomMorphTransition.localRect(sourceRect, pose: pose, bounds: bounds, center: center)
+        guard let alignment = transition.alignmentView(in: zoomed) else {
+            return crossDissolve(animator, ctx: ctx, zoomed: zoomed, forward: forward, presenting: forward ? fromView : toView)
+        }
+        let alignmentRect = alignment.convert(alignment.bounds, to: container)
         let sourceRadius = source.layer.cornerRadius
+        let alignmentRadius = alignment.layer.cornerRadius
 
-        // Clip of the zoomed screen: the source's shape at the pose, the whole screen at rest.
-        let mask = UIView(frame: forward ? maskPosed : CGRect(origin: .zero, size: bounds))
-        mask.backgroundColor = .black
-        mask.layer.cornerCurve = .continuous
-        mask.layer.cornerRadius = forward ? sourceRadius / max(pose.a, 0.001) : 0
-        zoomed.mask = mask
-        zoomed.transform = forward ? pose : .identity
-
-        // The box: source image → alignment image.
-        let alignmentRect = CGRect(x: zoomedFrame.minX + alignmentLocal.minX, y: zoomedFrame.minY + alignmentLocal.minY,
-                                   width: alignmentLocal.width, height: alignmentLocal.height)
+        // The flying photo: the source's image cross-dissolving into the
+        // alignment element's, both aspect-filled in the moving box.
         let box = UIView(frame: forward ? sourceRect : alignmentRect)
         box.clipsToBounds = true
         box.isUserInteractionEnabled = false
         box.layer.cornerCurve = .continuous
-        box.layer.cornerRadius = forward ? sourceRadius : 0
-        let sourceImage = ZoomMorphTransition.image(in: source)
-        let alignmentImage = alignment.flatMap(ZoomMorphTransition.image(in:))
-        let fromLayer = makeImageView(sourceImage, in: box)
-        let toLayer = makeImageView(alignmentImage, in: box)
-        if fromLayer == nil && toLayer == nil {
-            box.isHidden = true
+        box.layer.cornerRadius = forward ? sourceRadius : alignmentRadius
+        let sourceLayer = makeImageView(ZoomMorphTransition.image(in: source), in: box)
+        let alignmentLayer = makeImageView(ZoomMorphTransition.image(in: alignment), in: box)
+        if sourceLayer == nil, alignmentLayer == nil, let snapshot = source.snapshotView(afterScreenUpdates: false) {
+            snapshot.frame = box.bounds
+            snapshot.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            box.addSubview(snapshot)
         }
-        toLayer?.alpha = forward ? 0 : 1
-        // Without an alignment image the box fades away into the screen
-        // (and back in on the way out) instead of covering it until the end.
-        let fadesBox = toLayer == nil
-        if fadesBox, !forward { box.alpha = 0 }
+        alignmentLayer?.alpha = forward ? 0 : 1
         container.addSubview(box)
-        let alignmentAlpha = alignment?.alpha ?? 1
-        alignment?.alpha = 0
+
+        // Both ends are hidden while the box stands in for them (the presenting
+        // screen keeps the rest of the page: overlays, background).
+        let sourceAlpha = source.alpha
+        let alignmentAlpha = alignment.alpha
+        source.alpha = 0
+        alignment.alpha = 0
+        zoomed.alpha = forward ? 0 : 1
 
         animator.addAnimations {
-            zoomed.transform = forward ? .identity : pose
-            mask.frame = forward ? CGRect(origin: .zero, size: bounds) : maskPosed
-            mask.layer.cornerRadius = forward ? 0 : sourceRadius / max(pose.a, 0.001)
             box.frame = forward ? alignmentRect : sourceRect
-            box.layer.cornerRadius = forward ? 0 : sourceRadius
-            toLayer?.alpha = forward ? 1 : 0
-            if fadesBox { box.alpha = forward ? 0 : 1 }
+            box.layer.cornerRadius = forward ? alignmentRadius : sourceRadius
+            alignmentLayer?.alpha = forward ? 1 : 0
+            zoomed.alpha = forward ? 1 : 0
         }
         animator.addCompletion { position in
             let cancelled = ctx.transitionWasCancelled || position == .start
-            zoomed.transform = .identity
-            zoomed.mask = nil
-            box.removeFromSuperview()
-            alignment?.alpha = alignmentAlpha
+            ZoomMorphAnimator.restore(zoomed: zoomed, box: box, source: source, sourceAlpha: sourceAlpha,
+                                      alignment: alignment, alignmentAlpha: alignmentAlpha)
             if cancelled { toView.removeFromSuperview() }
             ctx.completeTransition(!cancelled)
             if !cancelled, forward { self.transition.installInteraction(on: toVC) }
+            if cancelled, !forward, let nav = fromVC.navigationController {
+                DispatchQueue.main.async { ZoomMorphAnimator.repairNavigationBar(nav) }
+            }
         }
         return animator
+    }
+
+    /// A cancelled interactive pop toward a screen without a navigation bar
+    /// left UIKit's fade of the bar (it rides on this animator) at opacity 0
+    /// with its pacing animation still attached: the bar was invisible and
+    /// its buttons took no taps. Restore it for the screen that stayed.
+    static func repairNavigationBar(_ nav: UINavigationController) {
+        guard nav.transitionCoordinator == nil else { return }
+        let bar = nav.navigationBar
+        // The bar and its buttons' glass (their colour filters ride on the
+        // same pacing): every animation the cancelled pop left behind.
+        func clear(_ layer: CALayer) {
+            layer.removeAllAnimations()
+            layer.sublayers?.forEach(clear)
+        }
+        clear(bar.layer)
+        if !nav.isNavigationBarHidden, bar.alpha < 1 { bar.alpha = 1 }
+        if !nav.isNavigationBarHidden, bar.layer.opacity < 1 { bar.layer.opacity = 1 }
+    }
+
+    /// Every completion path: the box gone, both ends and the zoomed screen
+    /// fully visible and touchable again.
+    static func restore(zoomed: UIView, box: UIView, source: UIView, sourceAlpha: CGFloat, alignment: UIView, alignmentAlpha: CGFloat) {
+        box.removeFromSuperview()
+        zoomed.alpha = 1
+        zoomed.transform = .identity
+        zoomed.mask = nil
+        source.alpha = sourceAlpha
+        alignment.alpha = alignmentAlpha
     }
 
     private func makeImageView(_ image: UIImage?, in box: UIView) -> UIImageView? {
@@ -338,7 +359,7 @@ final class ZoomMorphAnimator: NSObject, UIViewControllerAnimatedTransitioning {
 /// the pose and morph: a pan pops it and scrubs the reverse; it completes past
 /// 25% or with a fling, and runs back otherwise.
 @MainActor
-final class ZoomMorphInteraction: UIPercentDrivenInteractiveTransition, UIGestureRecognizerDelegate {
+final class ZoomMorphInteraction: NSObject, UIViewControllerInteractiveTransitioning, UIGestureRecognizerDelegate {
 
     private(set) var isInteracting = false
     private weak var viewController: UIViewController?
@@ -346,6 +367,81 @@ final class ZoomMorphInteraction: UIPercentDrivenInteractiveTransition, UIGestur
     private let gesture: DSL.Model.ScreenTransition.DismissGesture
     private var edgePan: UIScreenEdgePanGestureRecognizer?
     private var dismissPan: UIPanGestureRecognizer?
+
+    /// UIKit starts the pop's interactive transition on a later turn than the
+    /// `popViewController` call. A quick flick can end before that: a
+    /// `finish()` / `cancel()` sent then is dropped, the transition starts
+    /// afterwards, paused, and never ends (the screen stayed posed, the
+    /// navigation controller stayed mid-transition so its bar buttons and the
+    /// tab bar never came back). The end is held until the transition starts.
+    private var started = false
+    private var pendingProgress: CGFloat = 0
+    private var pendingEnd: Bool?
+
+    /// The pop's animator, set by `ZoomMorphTransition.interactionController(for:)`.
+    weak var animatorProvider: ZoomMorphAnimator?
+    private var context: UIViewControllerContextTransitioning?
+    private var animator: UIViewPropertyAnimator?
+
+    var wantsInteractiveStart: Bool { true }
+
+    /// Drives the pop's property animator directly. (A
+    /// `UIPercentDrivenInteractiveTransition` both paused the container
+    /// layer and used the interruptible animator: after an interactive pop
+    /// the layers it paused never resumed, so the transition's alongside
+    /// animations (the tab bar, the navigation bar) never finished, the tab
+    /// bar stayed hidden and the next screen's bar buttons took no taps.)
+    func startInteractiveTransition(_ transitionContext: UIViewControllerContextTransitioning) {
+        context = transitionContext
+        guard let provider = animatorProvider else {
+            transitionContext.cancelInteractiveTransition()
+            transitionContext.completeTransition(false)
+            return
+        }
+        guard let animator = provider.interruptibleAnimator(using: transitionContext) as? UIViewPropertyAnimator else {
+            transitionContext.cancelInteractiveTransition()
+            transitionContext.completeTransition(false)
+            return
+        }
+        self.animator = animator
+        animator.pauseAnimation()
+        started = true
+        scrub(pendingProgress)
+        if let end = pendingEnd {
+            pendingEnd = nil
+            complete(finishing: end)
+        }
+    }
+
+    private func scrub(_ p: CGFloat) {
+        guard started, let animator, let context else { pendingProgress = p; return }
+        let clamped = min(max(p, 0), 0.999)
+        animator.fractionComplete = clamped
+        context.updateInteractiveTransition(clamped)
+        pendingProgress = clamped
+    }
+
+    private func complete(finishing: Bool) {
+        guard started, let animator, let context else {
+            pendingEnd = finishing
+            return
+        }
+        started = false
+        // Reverse first, then tell UIKit, then run on with the animator's own
+        // timing (UIKit's navigation bar animations ride on the same animator:
+        // a cancel told before the reverse, or a new timing curve, left the
+        // bar at opacity 0 with a pacing animation, and its buttons dead).
+        if finishing {
+            context.finishInteractiveTransition()
+        } else {
+            animator.isReversed = true
+            context.cancelInteractiveTransition()
+        }
+        animator.continueAnimation(withTimingParameters: nil, durationFactor: 0)
+        self.animator = nil
+        self.context = nil
+        pendingProgress = 0
+    }
 
     init(viewController: UIViewController, navigationController: UINavigationController, gesture: DSL.Model.ScreenTransition.DismissGesture) {
         self.viewController = viewController
@@ -379,6 +475,11 @@ final class ZoomMorphInteraction: UIPercentDrivenInteractiveTransition, UIGestur
         return min(1, max(horizontal, vertical))
     }
 
+    /// Past a quarter of the way, or a fling.
+    nonisolated static func finishes(progress: CGFloat, fling: CGFloat) -> Bool {
+        progress > 0.25 || fling > 800
+    }
+
     func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
         guard let view = viewController?.view, let nav = navigationController,
               nav.topViewController === viewController, nav.viewControllers.count > 1,
@@ -405,18 +506,20 @@ final class ZoomMorphInteraction: UIPercentDrivenInteractiveTransition, UIGestur
         switch pan.state {
         case .began:
             isInteracting = true
+            started = false
+            pendingEnd = nil
+            pendingProgress = 0
             navigationController?.popViewController(animated: true)
         case .changed:
-            update(p)
+            scrub(p)
         case .ended:
             isInteracting = false
             let v = pan.velocity(in: view)
             let fling = pan === edgePan ? (rtl ? -v.x : v.x) : max(gesture == .down ? v.y : max(abs(v.x), v.y), 0)
-            completionSpeed = 1
-            if p > 0.25 || fling > 800 { finish() } else { cancel() }
+            complete(finishing: Self.finishes(progress: p, fling: fling))
         case .cancelled, .failed:
             isInteracting = false
-            cancel()
+            complete(finishing: false)
         default:
             break
         }

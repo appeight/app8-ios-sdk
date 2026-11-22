@@ -1,0 +1,42 @@
+name: A8Harness
+options:
+  bundleIdPrefix: dev.app8.harness
+  deploymentTarget:
+    iOS: "18.0"
+packages:
+  App8Engine:
+    path: ../..
+targets:
+  A8Harness:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - package: App8Engine
+    info:
+      path: App/Info.plist
+      properties:
+        UILaunchScreen: {}
+        CFBundleDisplayName: A8Harness
+    settings:
+      base:
+        SWIFT_VERSION: "5.0"
+        CODE_SIGNING_ALLOWED: "NO"
+  A8HarnessUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: A8Harness
+    settings:
+      base:
+        CODE_SIGNING_ALLOWED: "NO"
+        TEST_TARGET_NAME: A8Harness
+schemes:
+  A8Harness:
+    build:
+      targets:
+        A8Harness: all
+        A8HarnessUITests: [test]
+    test:
+      targets: [A8HarnessUITests]

@@ -61,6 +61,24 @@ final class App8Context {
     /// (context-menu.md, `onPreviewTap`).
     var suppressesNavigationTransitions = false
 
+    /// Loads screens by id (the app instance), for screens built ahead of a push.
+    weak var screenLoader: (any ScreenLoaderProtocol)?
+
+    /// A screen built while a context menu was open, for the push its
+    /// preview tap runs: pushed at once when the preview expands, so the
+    /// expansion dissolves straight into it (no frame of the old screen, no
+    /// empty images).
+    var preparedPush: (screenId: String, params: [String: Any], controller: UIViewController)?
+
+    /// Takes the prepared screen when it is the one a push to `screenId`
+    /// with `params` opens.
+    func takePreparedPush(screenId: String, params: [String: Any]) -> UIViewController? {
+        guard let prepared = preparedPush, prepared.screenId == screenId,
+              NSDictionary(dictionary: prepared.params).isEqual(to: params) else { return nil }
+        preparedPush = nil
+        return prepared.controller
+    }
+
     init(
         logger: A8Log = A8Log(),
         appearance: App8Appearance = App8Appearance(),

@@ -129,6 +129,12 @@ final class ModalViewController: UIViewController {
         }
         guard !isDismissing, !isBeingDismissed else { return }
 
+        if case .push = request.type, let prepared = request.preparedScreen,
+           request.transition?.kind == DSL.Model.ScreenTransition.Resolved.Kind.none,
+           navController.transitionCoordinator == nil {
+            UIView.performWithoutAnimation { navController.pushViewController(prepared, animated: false) }
+            return
+        }
         Task { @MainActor in
             do {
                 try await handleRequest(request)

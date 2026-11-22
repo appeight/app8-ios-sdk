@@ -308,6 +308,24 @@ final class Engine0711Tests: XCTestCase {
         XCTAssertEqual(I.progress(translation: CGPoint(x: -200, y: 0), size: size, edgeSwipe: false, downOnly: false, rtl: false), 0.5)
     }
 
+    func testInteractiveDismissFinishesPastAQuarterOrOnAFling() {
+        XCTAssertTrue(ZoomMorphInteraction.finishes(progress: 0.3, fling: 0))
+        XCTAssertTrue(ZoomMorphInteraction.finishes(progress: 0.05, fling: 1200))
+        XCTAssertFalse(ZoomMorphInteraction.finishes(progress: 0.1, fling: 100))
+    }
+
+    // MARK: - Context menu destination built ahead
+
+    func testPreparedPushIsTakenOnlyForTheSameScreenAndParams() {
+        let context = App8Context()
+        let screen = UIViewController()
+        context.preparedPush = ("product", ["product": ["id": "p1"]], screen)
+        XCTAssertNil(context.takePreparedPush(screenId: "product", params: ["product": ["id": "p2"]]))
+        XCTAssertNil(context.takePreparedPush(screenId: "cart", params: ["product": ["id": "p1"]]))
+        XCTAssertTrue(context.takePreparedPush(screenId: "product", params: ["product": ["id": "p1"]]) === screen)
+        XCTAssertNil(context.preparedPush, "taken once")
+    }
+
     // MARK: - Search-only bar
 
     func testSearchOnlyBarSitsInTheBarOnIOS26() {

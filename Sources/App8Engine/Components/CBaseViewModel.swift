@@ -39,6 +39,8 @@ protocol ComponentViewModelAbstract: AnyObject {
     var componentService: ComponentService? { get }
     /// Runs context-menu item / preview-tap actions in this component's scope.
     func executeContextMenuActions(_ actions: [DSL.Model.Action])
+    /// Builds the screen the first push in `actions` opens, ahead of the push.
+    func prepareContextMenuPush(_ actions: [DSL.Model.Action]) async -> (screenId: String, params: [String: Any], controller: UIViewController)?
 }
 
 /// Defaults for lightweight conformers (e.g. `CellVariableStoreWrapper`) that
@@ -59,6 +61,7 @@ extension ComponentViewModelAbstract {
     var contextMenuProps: DSL.Model.ContextMenu? { nil }
     var componentService: ComponentService? { nil }
     func executeContextMenuActions(_ actions: [DSL.Model.Action]) {}
+    func prepareContextMenuPush(_ actions: [DSL.Model.Action]) async -> (screenId: String, params: [String: Any], controller: UIViewController)? { nil }
 }
 
 protocol ComponentService: AnyObject, ComponentRenderer, A8.DataSourceHolder {
@@ -287,6 +290,29 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
     /// Context-menu item / preview-tap actions, in this component's scope.
     func executeContextMenuActions(_ actions: [DSL.Model.Action]) {
         for action in actions { executeAction(action) }
+    }
+
+    func prepareContextMenuPush(_ actions: [DSL.Model.Action]) async -> (screenId: String, params: [String: Any], controller: UIViewController)? {
+        guard let action = actions.first(where: { $0.type == .navigation }), action.isBack != true,
+              let nextScreen = action.nextScreen, action.presentation == nil || action.presentation == .push,
+              let loader = service.context.screenLoader, let appService = service as? App8Service,
+              let component = try? await loader.loadScreen(id: nextScreen) else { return nil }
+        let params = navigationParams(action, context: nil)
+        let controller = await appService.renderScreen(component, screenId: nextScreen, params: params.isEmpty ? nil : params)
+        return (nextScreen, params, controller)
+    }
+
+    /// An action's `params`, string values resolved in `context` (or this scope).
+    func navigationParams(_ action: DSL.Model.Action, context: VariableContext?) -> [String: Any] {
+        var resolvedParams: [String: Any] = [:]
+        for (key, value) in action.params ?? [:] {
+            if let stringValue = value.value as? String {
+                resolvedParams[key] = resolveProperty(stringValue, context: context)
+            } else {
+                resolvedParams[key] = value.value
+            }
+        }
+        return resolvedParams
     }
 
     var animation: AnyPublisher<DSL.Model.Animation?, Never> {
@@ -991,16 +1017,7 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                 NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
                 didPost = true
             } else if let nextScreen = action.nextScreen {
-                var resolvedParams: [String: Any] = [:]
-                if let params = action.params {
-                    for (key, value) in params {
-                        if let stringValue = value.value as? String {
-                            resolvedParams[key] = resolveProperty(stringValue, context: context)
-                        } else {
-                            resolvedParams[key] = value.value
-                        }
-                    }
-                }
+                let resolvedParams = navigationParams(action, context: context)
 
                 // Resolve the action-level transition. `mode` decides the route
                 // when the transition is custom; an explicit `.system` opts out
@@ -1012,16 +1029,25 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                    action.presentation == nil || action.presentation == .push,
                    (actionTransition?.mode ?? .push) == .push {
                     actionTransition = DSL.Model.ScreenTransition.instantPush
+                    // The screen built while the menu was open, pushed at once.
+                    if let prepared = service.context.takePreparedPush(screenId: nextScreen, params: resolvedParams) {
+                        var request = NavigationRequest(type: .push(screenId: nextScreen, params: resolvedParams), transition: actionTransition)
+                        request.preparedScreen = prepared
+                        NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
+                        didPost = true
+                    }
                 }
 
-                if var zoomTransition = actionTransition, zoomTransition.kind == .nativeZoom, var zoom = zoomTransition.nativeZoom {
+                if didPost {
+                    // Posted above (prepared screen).
+                } else if var zoomTransition = actionTransition, zoomTransition.kind == .nativeZoom, var zoom = zoomTransition.nativeZoom {
                     // Native zoom: resolve the keys in the action's scope now.
                     zoom.resolvedSourceKey = resolveKey(zoom.sourceKeyExpression, context: context)
                     zoom.resolvedAlignmentKey = zoom.alignmentKeyExpression.map { resolveKey($0, context: context) }
                     zoomTransition.nativeZoom = zoom
                     actionTransition = zoomTransition
                     let wantsModal = (action.presentation != nil && action.presentation != .push) || zoomTransition.mode == .modal
-                    let request: NavigationRequest
+                    var request: NavigationRequest
                     if wantsModal {
                         let style = action.presentation.flatMap { $0 == .push ? nil : $0.toModalPresentationStyle } ?? .fullScreen
                         request = NavigationRequest(
@@ -1030,6 +1056,8 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
                         )
                     } else {
                         request = NavigationRequest(type: .push(screenId: nextScreen, params: resolvedParams), transition: zoomTransition)
+                        // A menu item's push of the screen built while the menu was open.
+                        request.preparedScreen = service.context.takePreparedPush(screenId: nextScreen, params: resolvedParams)
                     }
                     NotificationCenter.default.post(name: .app8NavigationRequest, object: request)
                 } else if let actionTransition, actionTransition.kind != .system, actionTransition.mode == .modal {

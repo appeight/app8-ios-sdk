@@ -640,6 +640,13 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         edgeStripe?.transform = hidden ? edgeStripeOffscreen : .identity
     }
 
+    /// The bar's resting state at the end of a transition, with no
+    /// animation left on it.
+    private func settleEdgeStripe(hidden: Bool) {
+        edgeStripe?.layer.removeAllAnimations()
+        setEdgeStripe(hidden: hidden)
+    }
+
     private func syncEdgeStripeToSelectedTab() {
         guard edgeStripe != nil, let nav = selectedViewController as? UINavigationController,
               let top = nav.topViewController, nav.transitionCoordinator == nil else { return }
@@ -658,10 +665,27 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         }
         let fromHidden = edgeStripeHidden
         guard fromHidden != toHidden else { return }
+        if coordinator.isInteractive {
+            // An interactive pop: an alongside animation of a view outside the
+            // transition container was left on the bar, paused, after the
+            // pop ended (the bar stayed hidden, the app never went idle).
+            // The bar slides in once the finger lifts on a completing pop.
+            coordinator.notifyWhenInteractionChanges { [weak self] context in
+                guard !context.isCancelled else { return }
+                UIView.animate(withDuration: context.transitionDuration * (1 - context.percentComplete) + 0.1,
+                               delay: 0, options: [.curveEaseOut, .beginFromCurrentState]) {
+                    self?.setEdgeStripe(hidden: toHidden)
+                }
+            }
+            coordinator.animate(alongsideTransition: nil) { [weak self] context in
+                self?.settleEdgeStripe(hidden: context.isCancelled ? fromHidden : toHidden)
+            }
+            return
+        }
         coordinator.animate(alongsideTransition: { [weak self] _ in
             self?.setEdgeStripe(hidden: toHidden)
         }, completion: { [weak self] context in
-            self?.setEdgeStripe(hidden: context.isCancelled ? fromHidden : toHidden)
+            self?.settleEdgeStripe(hidden: context.isCancelled ? fromHidden : toHidden)
         })
     }
 
@@ -780,6 +804,16 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
     @objc private func handleNavigationRequest(_ notification: Notification) {
         guard let request = notification.object as? NavigationRequest else { return }
 
+        // A screen built ahead (context menu preview tap): pushed now, in the
+        // preview's commit, so the expansion dissolves straight into it.
+        if case .push = request.type, let prepared = request.preparedScreen,
+           request.transition?.kind == DSL.Model.ScreenTransition.Resolved.Kind.none,
+           context.pendingDismissal == nil, presentedViewController == nil, parent?.presentedViewController == nil,
+           selectedIndex < tabIds.count, let nav = tabNavigationControllers[tabIds[selectedIndex]],
+           nav.transitionCoordinator == nil {
+            UIView.performWithoutAnimation { nav.pushViewController(prepared, animated: false) }
+            return
+        }
         // Wait for a dismissal the same action list started (see FlowCoordinator).
         let gate = context.pendingDismissal
         // Requests run one after another, each once the previous one's
@@ -840,8 +874,13 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
         case .push(let screenId, let params):
             // A presented modal handles its own pushes.
             guard presentedViewController == nil, parent?.presentedViewController == nil else { return }
-            let screenComponent = try await screenLoader.loadScreen(id: screenId)
-            let screenVC = await appService.renderScreen(screenComponent, screenId: screenId, params: params.isEmpty ? nil : params)
+            let screenVC: UIViewController
+            if let prepared = request.preparedScreen {
+                screenVC = prepared
+            } else {
+                let screenComponent = try await screenLoader.loadScreen(id: screenId)
+                screenVC = await appService.renderScreen(screenComponent, screenId: screenId, params: params.isEmpty ? nil : params)
+            }
             if let transition = request.transition, transition.kind == .nativeZoom {
                 NativeZoomTransition.push(screenVC, on: currentNavController, transition: transition, coordinator: nil, logger: context.logger)
             } else if request.transition?.kind == DSL.Model.ScreenTransition.Resolved.Kind.none {

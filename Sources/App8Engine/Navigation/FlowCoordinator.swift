@@ -188,6 +188,11 @@ final class FlowCoordinator {
         }
 
         let gate = context.pendingDismissal
+        if gate == nil, case .push = request.type, let prepared = request.preparedScreen,
+           request.transition?.kind == DSL.Model.ScreenTransition.Resolved.Kind.none,
+           currentFlowViewController?.pushPrepared(prepared) == true {
+            return
+        }
         Task { @MainActor in
             await gate?.value
             do {
@@ -203,6 +208,10 @@ final class FlowCoordinator {
         case .push(let screenId, let params):
             // When a modal is presented, the modal handles push/pop itself.
             guard currentFlowViewController?.presentedModal == nil else { return }
+            if let prepared = request.preparedScreen {
+                currentFlowViewController?.pushBuiltScreen(prepared, transition: request.transition)
+                return
+            }
             try await currentFlowViewController?.pushScreen(
                 id: screenId,
                 params: params,
