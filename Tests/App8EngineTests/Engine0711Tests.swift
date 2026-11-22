@@ -353,6 +353,16 @@ final class Engine0711Tests: XCTestCase {
         XCTAssertEqual(Array(withShadow.stackedTypeKeys.dropFirst()), [.visualEffect, .fill])
     }
 
+    /// A full-screen page's zoom grows from its picture: a portrait product
+    /// photo (2:3) on a 402 × 874 page is a full-width band in the middle.
+    func testFullScreenSourceZoomsFromThePicture() {
+        let band = SourceProxy.aspectFit(CGSize(width: 600, height: 900), in: CGRect(x: 0, y: 0, width: 402, height: 874))
+        XCTAssertEqual(band.width, 402, accuracy: 0.01)
+        XCTAssertEqual(band.height, 603, accuracy: 0.01)
+        XCTAssertEqual(band.midY, 437, accuracy: 0.01)
+        XCTAssertEqual(SourceProxy.aspectFit(.zero, in: CGRect(x: 0, y: 0, width: 10, height: 10)), CGRect(x: 0, y: 0, width: 10, height: 10))
+    }
+
     // MARK: - Search-only bar
 
     func testSearchOnlyBarSitsInTheBarOnIOS26() {

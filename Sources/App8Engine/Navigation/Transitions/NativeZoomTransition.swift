@@ -156,15 +156,6 @@ enum NativeZoomTransition {
         logger: A8Log?
     ) {
         let presenting = navController.topViewController as? ScreenViewController
-        // A source filling (most of) the presenting screen: the engine's pose
-        // and morph (the navigation delegate returns `ZoomMorphAnimator`).
-        if let zoom = transition.nativeZoom, navController.delegate != nil,
-           ZoomMorphTransition.attachIfFullScreenSource(to: screenVC, zoom: zoom, presentingScreen: presenting) {
-            // The delegate answers the transition methods for this push.
-            CustomTransitionDelegateGate.refresh(navController)
-            navController.pushViewController(screenVC, animated: true)
-            return
-        }
         if let zoom = transition.nativeZoom,
            apply(to: screenVC, zoom: zoom, presentingScreen: presenting, logger: logger) {
             navController.pushViewController(screenVC, animated: true)
@@ -390,7 +381,17 @@ enum SourceProxy {
         guard covers(view, screen), let host = view.superview else { return view }
         let key = ObjectIdentifier(view)
         proxies[key]?.removeFromSuperview()
-        let proxy = UIView(frame: view.frame)
+        // The zoom grows out of the photo's own picture, not out of the whole
+        // screen: the stand-in takes the image's aspect-fit rect in the page
+        // (for a portrait product shot, a full-width band in the middle).
+        // UIKit then zooms the incoming screen from that band, its alignment
+        // element (the first gallery image) landing on the picture, as it
+        // grows a product out of a card; and the dismiss shrinks it back into
+        // that band. With the whole screen as the source there was nothing
+        // to zoom from: the presenting screen shrank and dimmed behind, and
+        // the new screen was simply there.
+        let content = contentRect(of: view)
+        let proxy = UIView(frame: view.convert(content, to: host))
         proxy.isUserInteractionEnabled = false
         proxy.backgroundColor = .clear
         proxy.layer.cornerRadius = view.layer.cornerRadius
@@ -406,6 +407,20 @@ enum SourceProxy {
             }
         }
         return proxy
+    }
+
+    /// The picture's rect in `view`: the aspect-fit rect of the image it
+    /// shows, or its bounds when it shows none.
+    static func contentRect(of view: UIView) -> CGRect {
+        guard let image = ZoomMorphTransition.image(in: view) else { return view.bounds }
+        return aspectFit(image.size, in: view.bounds)
+    }
+
+    nonisolated static func aspectFit(_ size: CGSize, in bounds: CGRect) -> CGRect {
+        guard size.width > 0, size.height > 0, bounds.width > 0, bounds.height > 0 else { return bounds }
+        let scale = min(bounds.width / size.width, bounds.height / size.height)
+        let w = size.width * scale, h = size.height * scale
+        return CGRect(x: bounds.midX - w / 2, y: bounds.midY - h / 2, width: w, height: h)
     }
 
     /// Whether `view`, on screen, covers at least `fillsScreen` of `screen`.

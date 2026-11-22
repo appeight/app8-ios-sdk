@@ -158,6 +158,25 @@ final class HarnessUITests: XCTestCase {
         app.launchEnvironment["A8_BAR"] = nil
     }
 
+    /// Feed photo → product and card → product, push and a slow drag-down
+    /// dismiss held half way, for a side-by-side recording.
+    func test6CompareZooms() {
+        launch()
+        mark("cmp feed push"); app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)).tap(); sleep(2)
+        mark("cmp feed drag")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.8)).press(forDuration: 0.05,
+            thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.9)), withVelocity: .slow, thenHoldForDuration: 0.8)
+        sleep(2)
+        assertGone("feed drag dismiss")
+        app.buttons["SAVED"].tap(); sleep(1)
+        mark("cmp card push"); app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.25)).tap(); sleep(2)
+        mark("cmp card drag")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.8)).press(forDuration: 0.05,
+            thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.9)), withVelocity: .slow, thenHoldForDuration: 0.8)
+        sleep(2)
+        XCTAssertFalse(productShown, "card drag dismiss")
+    }
+
     func testContextMenuPreviewTap() {
         launch(tab: "saved")
         let card = app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.25))
