@@ -477,6 +477,22 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
                     let to = c.attribute ?? c.type
                     let made = makeRelation(from: c.type, to: to, target: targetView, constant: constant, multiplier: c.multiplier.map { CGFloat($0) }, relation: relation)
                     applyPriority(c.priority, to: made)
+                    // A length along the stack's axis relative to the stack's own
+                    // length (`height >= superview + 36` in a vertical stack) is
+                    // circular: the stack is as long as its children. Required, it
+                    // made Auto Layout break one of the stack's own constraints, and
+                    // the stack's content drew out of place (over a sibling above).
+                    // Like the web and Android solvers, the arrangement and the
+                    // children's content sizes win: the relation holds whenever it
+                    // can and yields when it can't, without squeezing a sibling.
+                    // Other relations (a height from the stack's width) stay required.
+                    if targetView === superview, made.priority == .required,
+                       let stack = superview as? UIStackView {
+                        let mainAxis: DSL.Model.Layout.Constraint.Attribute = stack.axis == .vertical ? .height : .width
+                        if c.type == mainAxis, to == mainAxis {
+                            made.priority = .stackRelativeDimension
+                        }
+                    }
                     constraints.append(made)
                 }
             }
@@ -811,3 +827,10 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
 @MainActor private var _styleRegKey: UInt8 = 0
 
 extension App8BaseView: App8ConstraintOwning {}
+
+extension UILayoutPriority {
+    /// A stack child's size relative to its stack: just under the default
+    /// compression resistance (750), so the stack's arrangement and its
+    /// children's content sizes win a conflict; it still beats hugging (250).
+    static let stackRelativeDimension = UILayoutPriority(749)
+}
