@@ -95,10 +95,6 @@ final class CellSiblingChainTests: XCTestCase {
         harness.drain()
         for _ in 0..<3 { harness.superview.layoutIfNeeded() }
         harness.drain()
-        if ProcessInfo.processInfo.environment["A8_DUMP"] != nil {
-            func dump(_ v: UIView, _ d: Int) { print(String(repeating: " ", count: d) + "\(type(of: v)) \(v.frame) id=\((v as? CView)?.layoutModeId ?? "")"); for s in v.subviews where d < 12 { dump(s, d + 1) } }
-            dump(harness.superview, 0)
-        }
         let photos = Self.views(withId: "photo", in: harness.superview)
         // The view after the photo in the card (a view or a stack).
         let infos = photos.compactMap { p in p.superview?.subviews.first { $0 !== p && !($0 is MaterialView) } }
