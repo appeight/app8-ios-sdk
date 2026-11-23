@@ -275,6 +275,20 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         invalidateIntrinsicContentSize()
     }
 
+    /// Whether the last `setLabelText` set an attributed string.
+    private var lastTextWasAttributed = false
+
+    /// A wrapping label has a wrap width committed for its current text and
+    /// environment (no measurement pending) that still matches its container.
+    private var wrapIsCommitted: Bool {
+        guard label.numberOfLines != 1, wrapPhase == .idle, lastWrapNatural > 0,
+              abs(stableReferenceWidth() - lastWrapContainerWidth) < 0.5,
+              !hasUnsizedAncestor() else { return false }
+        // Still the width the label's container grants now (a cell measured at
+        // its estimated size and since resized must measure again).
+        return abs(min(lastWrapNatural, grantedWidth()) - label.preferredMaxLayoutWidth) < 0.5
+    }
+
     private func setPreferredMaxWidth(_ width: CGFloat) {
         guard abs(label.preferredMaxLayoutWidth - width) > 0.5 else { return }
         label.preferredMaxLayoutWidth = width
@@ -420,9 +434,16 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         let huggedOldText = label.numberOfLines != 1 && preferred > 0.5 && preferred + 0.5 >= naturalUnwrappedWidth()
         let hasSpans = (currentSpans?.isEmpty == false)
         let needsAttributed = !textAttributes.isEmpty || hasSpans || autoshrinkConfig != nil
+        // The same text and attributes as on screen (every variable update
+        // re-applies the properties, also when the label doesn't use it).
+        var unchanged = false
+        // Read before the text is set: a measurement committed for this text.
+        let committed = wrapIsCommitted
         if !needsAttributed {
+            unchanged = !lastTextWasAttributed && label.text == text
             label.attributedText = nil
             label.text = text
+            lastTextWasAttributed = false
             autoshrinkSource = nil
         } else {
             // Bake the base font into the attributed string so that:
@@ -437,6 +458,10 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             if let spans = currentSpans, !spans.isEmpty {
                 applySpanOverrides(spans, to: attributed)
             }
+            // Autoshrink rescales its copy: compare against its unscaled source.
+            unchanged = lastTextWasAttributed
+                && (autoshrinkConfig != nil ? autoshrinkSource : label.attributedText)?.isEqual(to: attributed) == true
+            lastTextWasAttributed = true
             label.attributedText = attributed
             if autoshrinkConfig != nil {
                 autoshrinkSource = attributed.copy() as? NSAttributedString
@@ -470,6 +495,11 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
                 self.setNeedsLayout()
                 self.superview?.setNeedsLayout()
             }
+        } else if unchanged, committed {
+            // Same text: keep the committed wrap. Measuring again would
+            // collapse a wrapping label to one line for a layout pass, so an
+            // enclosing scroll view's content would be briefly short and a
+            // scroll that comes to rest then would stop short of the end.
         } else {
             // Force `syncWrapWidth` to re-measure on the next layout pass
             // rather than trust its cache (a measurement in flight was for the
@@ -592,6 +622,9 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         textAttributes = buildTextAttributes(for: textModel)
 
         if let currentText = label.attributedText?.string ?? label.text {
+            // The font or attributes may have changed with the same text:
+            // measure the wrap again.
+            lastWrapNatural = -1
             setLabelText(currentText)
         }
     }
