@@ -1,6 +1,7 @@
 // UI harness for the iOS engine: a generic tab-bar app (flat floating bar, a
 // full-screen pager home pushing a product screen with the hero zoom, a grid
-// of cards with a context menu). Driven by UITests/HarnessUITests.swift.
+// of cards with a context menu, a cover tab with a stretchy top: launch with
+// A8_TAB=cover). Driven by UITests/HarnessUITests.swift.
 //
 //   cd Tests/UIHarness && python3 gen_fixture.py && xcodegen generate
 //   xcodebuild test -project A8Harness.xcodeproj -scheme A8Harness -destination 'id=<simulator>'

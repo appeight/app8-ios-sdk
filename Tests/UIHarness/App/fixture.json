@@ -595,6 +595,12 @@
       "icon": "bag",
       "screen": "bag",
       "badge": "12"
+     },
+     {
+      "id": "cover",
+      "label": "COVER",
+      "icon": "square",
+      "screen": "cover"
      }
     ],
     "initialTab": "home",
@@ -1692,7 +1698,8 @@
    "content": {
     "navigationBar": {
      "title": "Category",
-     "tintColor": "#000000"
+     "tintColor": "#000000",
+     "backLabel": ""
     },
     "style": {
      "material": [
@@ -1784,6 +1791,747 @@
          }
         ]
        }
+      }
+     }
+    ]
+   }
+  },
+  "cover": {
+   "type": "screen",
+   "id": "cover",
+   "content": {
+    "navigationBar": {
+     "tintColor": "#000000",
+     "topEdgeEffect": "hidden",
+     "rightActions": [
+      {
+       "icon": "person.crop.circle",
+       "action": [
+        {
+         "type": "dismiss"
+        }
+       ]
+      }
+     ]
+    },
+    "style": {
+     "material": [
+      {
+       "id": "fFFFFFF",
+       "type": "fill",
+       "content": {
+        "solid": "#FFFFFF"
+       }
+      }
+     ]
+    },
+    "children": [
+     {
+      "id": "coverScroll",
+      "type": "scrollView",
+      "content": {
+       "properties": {
+        "direction": "vertical",
+        "showsIndicator": false,
+        "contentInsetAdjustment": "bottom",
+        "stretchesTopChild": true
+       },
+       "layout": {
+        "constraints": [
+         {
+          "type": "top",
+          "target": "superview"
+         },
+         {
+          "type": "leading",
+          "target": "superview"
+         },
+         {
+          "type": "trailing",
+          "target": "superview"
+         },
+         {
+          "type": "bottom",
+          "target": "superview"
+         }
+        ]
+       },
+       "children": [
+        {
+         "id": "coverStack",
+         "type": "stackView",
+         "content": {
+          "properties": {
+           "axis": "vertical",
+           "spacing": 0,
+           "alignment": "fill"
+          },
+          "layout": {
+           "constraints": [
+            {
+             "type": "top",
+             "target": "superview"
+            },
+            {
+             "type": "leading",
+             "target": "superview"
+            },
+            {
+             "type": "trailing",
+             "target": "superview"
+            },
+            {
+             "type": "bottom",
+             "target": "superview"
+            }
+           ]
+          },
+          "children": [
+           {
+            "id": "coverHero",
+            "type": "view",
+            "content": {
+             "style": {
+              "material": [
+               {
+                "id": "fB0202A",
+                "type": "fill",
+                "content": {
+                 "solid": "#B0202A"
+                }
+               }
+              ]
+             },
+             "layout": {
+              "constraints": [
+               {
+                "type": "height",
+                "target": "superview",
+                "attribute": "width",
+                "op": ">=",
+                "multiplier": 1
+               }
+              ]
+             },
+             "children": [
+              {
+               "id": "coverMark",
+               "type": "view",
+               "content": {
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": 150
+                  },
+                  {
+                   "type": "top",
+                   "target": "safeArea",
+                   "constant": 40
+                  },
+                  {
+                   "type": "width",
+                   "target": "superview",
+                   "multiplier": 0.95
+                  },
+                  {
+                   "type": "height",
+                   "target": "superview",
+                   "attribute": "width",
+                   "multiplier": 0.36
+                  }
+                 ]
+                },
+                "children": [
+                 {
+                  "id": "coverMarkImg",
+                  "type": "image",
+                  "content": {
+                   "properties": {
+                    "type": "remoteAsset",
+                    "name": "cover-mark"
+                   },
+                   "style": {
+                    "contentMode": "scaleAspectFit",
+                    "alpha": 0.25
+                   },
+                   "layout": {
+                    "constraints": [
+                     {
+                      "type": "top",
+                      "target": "superview"
+                     },
+                     {
+                      "type": "leading",
+                      "target": "superview"
+                     },
+                     {
+                      "type": "trailing",
+                      "target": "superview"
+                     },
+                     {
+                      "type": "bottom",
+                      "target": "superview"
+                     }
+                    ]
+                   }
+                  }
+                 }
+                ]
+               }
+              },
+              {
+               "id": "coverText",
+               "type": "stackView",
+               "content": {
+                "properties": {
+                 "axis": "vertical",
+                 "spacing": 6,
+                 "alignment": "fill"
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "top",
+                   "target": "safeArea",
+                   "constant": 76
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview",
+                   "constant": -24
+                  }
+                 ]
+                },
+                "children": [
+                 {
+                  "id": "coverKicker",
+                  "type": "label",
+                  "content": {
+                   "properties": {
+                    "text": "FRIDAY 20:00",
+                    "numberOfLines": 1
+                   },
+                   "style": {
+                    "text": {
+                     "fontSize": 13,
+                     "fontWeight": "regular",
+                     "color": "#FFFFFF"
+                    }
+                   }
+                  }
+                 },
+                 {
+                  "id": "coverTitle",
+                  "type": "label",
+                  "content": {
+                   "properties": {
+                    "text": "HOME TEAM",
+                    "numberOfLines": 1
+                   },
+                   "style": {
+                    "text": {
+                     "fontSize": 40,
+                     "fontWeight": "heavy",
+                     "color": "#FFFFFF"
+                    }
+                   }
+                  }
+                 },
+                 {
+                  "id": "coverVs",
+                  "type": "label",
+                  "content": {
+                   "properties": {
+                    "text": "v",
+                    "numberOfLines": 1
+                   },
+                   "style": {
+                    "text": {
+                     "fontSize": 16,
+                     "fontWeight": "regular",
+                     "color": "#FFFFFF"
+                    }
+                   }
+                  }
+                 },
+                 {
+                  "id": "coverTitle2",
+                  "type": "label",
+                  "content": {
+                   "properties": {
+                    "text": "AWAY TEAM",
+                    "numberOfLines": 1
+                   },
+                   "style": {
+                    "text": {
+                     "fontSize": 40,
+                     "fontWeight": "heavy",
+                     "color": "#FFFFFF"
+                    }
+                   }
+                  }
+                 },
+                 {
+                  "id": "coverGap",
+                  "type": "view",
+                  "content": {
+                   "layout": {
+                    "height": 16
+                   }
+                  }
+                 },
+                 {
+                  "id": "coverButtons",
+                  "type": "stackView",
+                  "content": {
+                   "properties": {
+                    "axis": "horizontal",
+                    "spacing": 8,
+                    "distribution": "fillEqually"
+                   },
+                   "children": [
+                    {
+                     "id": "coverBtn1",
+                     "type": "button",
+                     "content": {
+                      "properties": {
+                       "text": "Primary"
+                      },
+                      "style": {
+                       "system": {
+                        "variant": "filled",
+                        "baseBackgroundColor": "#FFFFFF",
+                        "baseForegroundColor": "#B0202A",
+                        "cornerStyle": "capsule"
+                       }
+                      },
+                      "layout": {
+                       "height": 44
+                      }
+                     }
+                    },
+                    {
+                     "id": "coverBtn2",
+                     "type": "button",
+                     "content": {
+                      "properties": {
+                       "text": "Secondary"
+                      },
+                      "style": {
+                       "system": {
+                        "variant": "bordered",
+                        "baseForegroundColor": "#FFFFFF",
+                        "cornerStyle": "capsule"
+                       }
+                      },
+                      "layout": {
+                       "height": 44
+                      }
+                     }
+                    }
+                   ]
+                  }
+                 }
+                ]
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp201",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx201",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl201",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp202",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx202",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl202",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp203",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx203",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl203",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp204",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx204",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl204",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp205",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx205",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl205",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp206",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx206",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl206",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "id": "sp207",
+            "type": "view",
+            "content": {
+             "layout": {
+              "height": 24
+             }
+            }
+           },
+           {
+            "id": "tx207",
+            "type": "view",
+            "content": {
+             "children": [
+              {
+               "id": "txl207",
+               "type": "label",
+               "content": {
+                "properties": {
+                 "text": "Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. Section text that runs over a few lines so the screen scrolls well past the cover. ",
+                 "numberOfLines": 0
+                },
+                "style": {
+                 "text": {
+                  "fontSize": 14
+                 }
+                },
+                "layout": {
+                 "constraints": [
+                  {
+                   "type": "top",
+                   "target": "superview"
+                  },
+                  {
+                   "type": "leading",
+                   "target": "superview",
+                   "constant": 16
+                  },
+                  {
+                   "type": "trailing",
+                   "target": "superview",
+                   "constant": -16
+                  },
+                  {
+                   "type": "bottom",
+                   "target": "superview"
+                  }
+                 ]
+                }
+               }
+              }
+             ]
+            }
+           }
+          ]
+         }
+        }
+       ]
       }
      }
     ]
