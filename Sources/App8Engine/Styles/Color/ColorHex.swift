@@ -9,13 +9,18 @@ extension DSL.Model.Style.Color {
         struct Ref: Decodable { let id: String }
         static var mappedKeyPath: KeyPath<Self, MappedValue> { \.ui }
 
+        /// The appearance's side, else the other side (one side serves both); neither: clear.
         var ui: UIColor {
-            if let dark {
-                return UIColor { tc in
-                    (tc.userInterfaceStyle == .dark ? dark.ui : light?.ui) ?? .clear
-                }
+            switch (light, dark) {
+            case let (light?, dark?):
+                return UIColor { tc in tc.userInterfaceStyle == .dark ? dark.ui : light.ui }
+            case let (light?, nil):
+                return light.ui
+            case let (nil, dark?):
+                return dark.ui
+            case (nil, nil):
+                return .clear
             }
-            return light?.ui ?? .clear
         }
         
         let source: Source
@@ -52,15 +57,20 @@ extension DSL.Model.Style.Color {
             }
             let container = try decoder.container(keyedBy: CodingKeys.self)
             source = .themed
+            // Either side may be absent: one side serves both appearances.
+            guard container.contains(.light) || container.contains(.dark) else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath,
+                                                        debugDescription: "A themed color needs light or dark"))
+            }
             if let lightRef = try? container.decode(Ref.self, forKey: .light) {
                 self.lightRef = lightRef
             } else {
-                light = try container.decode(Hex.self, forKey: .light)
+                light = try container.decodeIfPresent(Hex.self, forKey: .light)
             }
             if let darkRef = try? container.decode(Ref.self, forKey: .dark) {
                 self.darkRef = darkRef
             } else {
-                dark = try container.decode(Hex.self, forKey: .dark)
+                dark = try container.decodeIfPresent(Hex.self, forKey: .dark)
             }
         }
         
