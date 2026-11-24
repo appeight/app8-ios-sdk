@@ -25,7 +25,9 @@ public final class ExpressionEvaluator {
         "prepend", "append", "uniqueBy", "remove",
         "sortBy", "merge",
         // Clock + date arithmetic
-        "now", "today", "addDays", "addHours", "startOfDay"
+        "now", "today", "addDays", "addHours", "startOfDay",
+        // Locale week (0.7.16)
+        "startOfWeek", "weekdayIndex"
     ])
 
     public init() {}
@@ -35,6 +37,13 @@ public final class ExpressionEvaluator {
     /// `TranslationStore.activeLocaleObject` before each resolve so that the
     /// SDK's `setLocale(...)` override also drives number/date formatting.
     public var locale: Locale = .current
+
+    /// Locale whose first weekday drives `startOfWeek` / `weekdayIndex`.
+    /// nil (the default) follows the device: `Calendar.autoupdatingCurrent`,
+    /// i.e. the region and the user's "First Day of Week" setting. Not
+    /// `locale`: an app's language override ("en") must not move the week
+    /// start away from the device's region. Tests set it (en_US, de_AT).
+    public var firstWeekdayLocale: Locale?
 
     /// Backs the `i18n(key)` function. Populated by `PropertyResolver` before
     /// each evaluate so the active-locale chain (incl. `Bundle.main` fallback)
@@ -797,6 +806,25 @@ public final class ExpressionEvaluator {
             guard let date = parseDate(try evaluate(arguments[0], context: context)) else { return nil }
             return Self.isoString(Calendar.current.startOfDay(for: date))
 
+        case "startOfWeek", "weekdayIndex":
+            // The week of `date` in the device time zone, starting on the
+            // locale's first weekday. weekdayIndex: 0 = that first weekday.
+            // startOfWeek keeps the input's shape like addDays: a date gives
+            // a date, a date-time the start of that day as UTC (startOfDay).
+            guard arguments.count == 1 else {
+                throw ExpressionError.parseError("\(name)() expects 1 argument")
+            }
+            let raw = try evaluate(arguments[0], context: context)
+            guard let date = parseDate(raw) else { return nil }
+            let calendar = weekCalendar()
+            let index = (calendar.component(.weekday, from: date) - calendar.firstWeekday + 7) % 7
+            if name == "weekdayIndex" { return index }
+            guard let first = calendar.date(byAdding: .day, value: -index, to: calendar.startOfDay(for: date)) else { return nil }
+            if let s = raw as? String, Self.isDateOnly(s) {
+                return Self.dateOnlyString(first)
+            }
+            return Self.isoString(calendar.startOfDay(for: first))
+
         case "daysUntil":
             guard arguments.count == 1 else {
                 throw ExpressionError.parseError("daysUntil() expects 1 argument")
@@ -1068,6 +1096,21 @@ public final class ExpressionEvaluator {
         fmt.timeZone = Calendar.current.timeZone
         fmt.dateFormat = "yyyy-MM-dd"
         return fmt.string(from: date)
+    }
+
+    /// Gregorian, in the device time zone, with the first weekday of
+    /// `firstWeekdayLocale` (or the device's).
+    private func weekCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = Calendar.current.timeZone
+        if let firstWeekdayLocale {
+            var localized = Calendar(identifier: .gregorian)
+            localized.locale = firstWeekdayLocale
+            calendar.firstWeekday = localized.firstWeekday
+        } else {
+            calendar.firstWeekday = Calendar.autoupdatingCurrent.firstWeekday
+        }
+        return calendar
     }
 
     static func isDateOnly(_ s: String) -> Bool {
