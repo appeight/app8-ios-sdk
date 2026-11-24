@@ -21,6 +21,13 @@ import UIKit
 /// inside a scroll view the safe area stays put on screen, so the hero lost
 /// height as fast as it was pulled and nothing moved.
 ///
+/// Pins to a safe area inside the hero are held at their rest offsets for the
+/// pull. Inside a scroll view UIKit gives the hero's content view the hero's
+/// own safe-area inset, which shrinks as the hero moves down with the pull
+/// even though the content view's top stays on the screen's top; a child
+/// pinned to the safe area would ride up by the pull. Held, it stays on
+/// screen like a child pinned to the top, as on the web renderer.
+///
 /// A hero that is not a `view` (an image, a video, a pager, a stack with a
 /// height of its own) is all background: it scales as a whole.
 @MainActor
@@ -44,6 +51,9 @@ final class StretchyCoverSession {
     /// their own size instead of stretching.
     private var liftedTops: [NSLayoutConstraint] = []
     private var heldHeights: [NSLayoutConstraint] = []
+    /// Safe-area pins in the hero, and the rest-offset pins standing in for them.
+    private var safeAreaPins: [NSLayoutConstraint] = []
+    private var safeAreaStandIns: [NSLayoutConstraint] = []
     private let heroClipped: Bool
 
     init(hero: UIView) {
@@ -55,6 +65,7 @@ final class StretchyCoverSession {
             return
         }
         let content = view.contentView
+        holdSafeAreaPins(in: hero)
         contentTop = top
         contentTopRest = top.constant
 
@@ -109,10 +120,76 @@ final class StretchyCoverSession {
         contentTop?.constant = contentTopRest
         for cover in coverTops { cover.constraint.constant = cover.rest }
         NSLayoutConstraint.deactivate(heldHeights)
+        // Lifted tops may be safe-area stand-ins: bring them back first, then
+        // swap every stand-in for its original pin.
         NSLayoutConstraint.activate(liftedTops)
+        NSLayoutConstraint.deactivate(safeAreaStandIns)
+        NSLayoutConstraint.activate(safeAreaPins)
         heightLock?.isActive = false
         hero.clipsToBounds = heroClipped
         hero.setNeedsLayout()
+    }
+
+    // MARK: - Safe area
+
+    /// Replaces every active constraint in `hero`'s subtree that ties
+    /// something to a safe area's top or bottom with the same constraint on
+    /// the owning view's edge, offset by that view's rest inset. Nested
+    /// scroll views keep theirs (their content scrolls on its own).
+    private func holdSafeAreaPins(in hero: UIView) {
+        var views: [UIView] = []
+        func collect(_ v: UIView) {
+            views.append(v)
+            if v !== hero, v is UIScrollView { return }
+            v.subviews.forEach(collect)
+        }
+        collect(hero)
+        var seen = Set<ObjectIdentifier>()
+        for v in views {
+            for c in v.constraints where c.isActive && seen.insert(ObjectIdentifier(c)).inserted {
+                guard let standIn = Self.restStandIn(for: c) else { continue }
+                safeAreaPins.append(c)
+                safeAreaStandIns.append(standIn)
+            }
+        }
+        NSLayoutConstraint.deactivate(safeAreaPins)
+        NSLayoutConstraint.activate(safeAreaStandIns)
+    }
+
+    /// `c` with its safe-area guide's top or bottom swapped for the owning
+    /// view's edge plus the guide's rest inset; nil when `c` has no such side.
+    static func restStandIn(for c: NSLayoutConstraint) -> NSLayoutConstraint? {
+        func safeGuide(_ item: AnyObject?) -> (UILayoutGuide, UIView)? {
+            guard let guide = item as? UILayoutGuide, let owner = guide.owningView,
+                  guide === owner.safeAreaLayoutGuide else { return nil }
+            return (guide, owner)
+        }
+        /// Where the guide's edge sits from the owner's same edge, at rest.
+        func inset(_ attribute: NSLayoutConstraint.Attribute, _ guide: UILayoutGuide, _ owner: UIView) -> CGFloat? {
+            switch attribute {
+            case .top: return guide.layoutFrame.minY - owner.bounds.minY
+            case .bottom: return guide.layoutFrame.maxY - owner.bounds.maxY
+            default: return nil
+            }
+        }
+        var first = c.firstItem, second = c.secondItem
+        var constant = c.constant
+        if let (guide, owner) = safeGuide(first), let offset = inset(c.firstAttribute, guide, owner) {
+            // guide.edge = owner.edge + offset  =>  owner.edge = rhs - offset
+            first = owner; constant -= offset
+        } else if let (guide, owner) = safeGuide(second), let offset = inset(c.secondAttribute, guide, owner) {
+            // lhs = guide.edge * m + c  =>  lhs = owner.edge * m + c + m * offset
+            second = owner; constant += c.multiplier * offset
+        } else {
+            return nil
+        }
+        guard let firstItem = first else { return nil }
+        let standIn = NSLayoutConstraint(item: firstItem, attribute: c.firstAttribute, relatedBy: c.relation,
+                                         toItem: second, attribute: c.secondAttribute,
+                                         multiplier: c.multiplier, constant: constant)
+        standIn.priority = c.priority
+        standIn.identifier = "app8.stretchyTop.safeArea"
+        return standIn
     }
 
     // MARK: - Geometry
