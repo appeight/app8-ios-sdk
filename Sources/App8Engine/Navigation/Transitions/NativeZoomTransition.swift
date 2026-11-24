@@ -101,48 +101,68 @@ enum NativeZoomTransition {
                 shouldBeginDismiss(gesture: gesture, context: context, zoomedView: viewController?.view)
             }
         }
-        if let alignmentExpression = zoom.alignmentKeyExpression {
-            let initialAlignment = zoom.resolvedAlignmentKey
-            options.alignmentRectProvider = { [weak presentingScreen] context in
-                MainActor.assumeIsolated {
-                    let zoomedView = context.zoomedViewController.view
-                    // UIKit asks before the incoming screen's first layout pass:
-                    // its gallery cells (the alignment element) do not exist yet,
-                    // the provider found nothing, and UIKit zoomed the whole
-                    // screen out of the source instead of the matched element
-                    // (the new screen just faded in). Lay it out first.
-                    if let zoomedView, zoomedView.bounds.width > 0 {
-                        zoomedView.setNeedsLayout()
-                        zoomedView.layoutIfNeeded()
+        let alignmentExpression = zoom.alignmentKeyExpression
+        let initialAlignment = zoom.resolvedAlignmentKey
+        let sourceExpression = zoom.sourceKeyExpression
+        /// The incoming screen's element the source lines up with, laid out.
+        let alignment: (UIViewController, ScreenViewController?) -> (view: UIView, rect: CGRect)? = { zoomed, presenting in
+            guard let zoomedView = zoomed.view else { return nil }
+            // UIKit asks before the incoming screen's first layout pass: its
+            // gallery cells (the alignment element) do not exist yet, the
+            // provider found nothing, and UIKit zoomed the whole screen out of
+            // the source instead of the matched element (the new screen just
+            // faded in). Lay it out first.
+            if zoomedView.bounds.width > 0 {
+                zoomedView.setNeedsLayout()
+                zoomedView.layoutIfNeeded()
+            }
+            let source = presenting.flatMap { sourceView(sourceExpression, initialKey: initialKey, in: $0) }
+            let sourceAspect = source.flatMap(ZoomPhoto.aspect(of:))
+            if let alignmentExpression {
+                let key = presenting.flatMap { reevaluate(alignmentExpression, in: $0) }
+                let candidates = [key, initialAlignment, alignmentExpression].compactMap { $0 }
+                for candidate in candidates {
+                    if let view = TransitionKeyLocator.view(forKey: candidate, in: zoomedView) {
+                        return (view, ZoomPhoto.alignmentRect(of: view, in: zoomedView, photoAspect: sourceAspect, sourceShape: source?.bounds.size))
                     }
-                    let key = presentingScreen.flatMap { reevaluate(alignmentExpression, in: $0) }
-                    let candidates = [key, initialAlignment, alignmentExpression].compactMap { $0 }
-                    for candidate in candidates {
-                        if let view = TransitionKeyLocator.view(forKey: candidate, in: zoomedView), let zoomedView {
-                            return view.convert(view.bounds, to: zoomedView)
-                        }
-                    }
-                    logger?.warning("transition.zoom.alignmentMissing: no element with key '\(candidates.first ?? alignmentExpression)' on the incoming screen — UIKit zooms the whole screen")
-                    return nil
                 }
+                logger?.warning("transition.zoom.alignmentMissing: no element with key '\(candidates.first ?? alignmentExpression)' on the incoming screen — UIKit zooms the whole screen")
+                return nil
+            }
+            // No alignmentKey: the incoming element with the source's own key
+            // (the same photo in a photo viewer), when both show a photo. Its
+            // drawn picture lines up with the card's, so the photo neither
+            // changes size nor shows the viewer's bars at either end.
+            // Anything else: the whole screen, as before.
+            guard let presenting, let sourceAspect else { return nil }
+            var keys: [String] = []
+            if let key = reevaluate(sourceExpression, in: presenting) { keys.append(key) }
+            keys.append(initialKey)
+            for key in keys {
+                if let view = TransitionKeyLocator.view(forKey: key, in: zoomedView), ZoomPhoto.imageView(in: view) != nil {
+                    return (view, ZoomPhoto.alignmentRect(of: view, in: zoomedView, photoAspect: sourceAspect, sourceShape: source?.bounds.size))
+                }
+            }
+            return nil
+        }
+        options.alignmentRectProvider = { [weak presentingScreen] context in
+            MainActor.assumeIsolated {
+                return alignment(context.zoomedViewController, presentingScreen)?.rect
             }
         }
 
-        let sourceExpression = zoom.sourceKeyExpression
         viewController.preferredTransition = .zoom(options: options) { [weak presentingScreen] context in
             MainActor.assumeIsolated {
                 guard let presentingScreen else { return nil }
-                // Re-evaluated in the presenting screen's scope (dismissal can
-                // return to a different element), then the key the action resolved.
-                var candidates: [String] = []
-                if let key = reevaluate(sourceExpression, in: presentingScreen) { candidates.append(key) }
-                candidates.append(initialKey)
-                for key in candidates {
-                    if let view = TransitionKeyLocator.view(forKey: key, in: presentingScreen.view) {
-                        return SourceProxy.source(for: view, in: presentingScreen.view, coordinator: context.zoomedViewController.transitionCoordinator)
-                    }
+                let zoomed = context.zoomedViewController
+                let coordinator = zoomed.transitionCoordinator
+                guard let view = sourceView(sourceExpression, initialKey: initialKey, in: presentingScreen) else { return nil }
+                let match = alignment(zoomed, presentingScreen)
+                // The zoomed screen's floating controls keep their size and fade.
+                if let match, let window = presentingScreen.view.window {
+                    ZoomOverlays.begin(zoomed: zoomed, over: match.view, coordinator: coordinator, window: window)
                 }
-                return nil
+                return SourceProxy.source(for: view, in: presentingScreen.view, coordinator: coordinator)
             }
         }
         return true
@@ -181,6 +201,19 @@ enum NativeZoomTransition {
             navController.view.layer.add(fade, forKey: kCATransition)
             navController.pushViewController(screenVC, animated: false)
         }
+    }
+
+    /// The source element on `screen`: the expression re-evaluated in its
+    /// scope (a dismissal can return to another gallery page), else the key
+    /// the action resolved.
+    private static func sourceView(_ expression: String, initialKey: String, in screen: ScreenViewController) -> UIView? {
+        var candidates: [String] = []
+        if let key = reevaluate(expression, in: screen) { candidates.append(key) }
+        candidates.append(initialKey)
+        for key in candidates {
+            if let view = TransitionKeyLocator.view(forKey: key, in: screen.view) { return view }
+        }
+        return nil
     }
 
     /// `expression` in the presenting screen's scope; nil when it doesn't resolve.
@@ -370,6 +403,144 @@ enum NativeZoomTransition {
         if velocityX > 0 { return scroll.contentOffset.x > minX + 0.5 }
         if velocityX < 0 { return scroll.contentOffset.x < maxX - 0.5 }
         return true
+    }
+}
+
+/// The photo an element draws, for lining the zoom up with it.
+@MainActor
+enum ZoomPhoto {
+    /// The image view drawing `view`'s picture: `view` itself, or a
+    /// descendant filling it (an image component wraps its UIImageView).
+    static func imageView(in view: UIView) -> UIImageView? {
+        if let image = view as? UIImageView { return image }
+        var queue: [UIView] = view.subviews
+        var index = 0
+        while index < queue.count, index < 24 {
+            let candidate = queue[index]
+            index += 1
+            if let image = candidate as? UIImageView {
+                let frame = image.convert(image.bounds, to: view)
+                if abs(frame.width - view.bounds.width) <= 1, abs(frame.height - view.bounds.height) <= 1 { return image }
+            }
+            queue.append(contentsOf: candidate.subviews)
+        }
+        return nil
+    }
+
+    /// The width / height of the photo `view` shows, once it has one.
+    static func aspect(of view: UIView) -> CGFloat? {
+        guard let size = imageView(in: view)?.image?.size, size.width > 0, size.height > 0 else { return nil }
+        return size.width / size.height
+    }
+
+    /// Where `view` draws its picture, in `root`'s coordinates: an aspect-fit
+    /// image (a photo viewer's page, edge to edge with bars above and below)
+    /// draws it in the middle of its frame, and that is what the source
+    /// lines up with. Anything else: its frame. Before the image has loaded,
+    /// `fallbackAspect` (the source photo's) stands in.
+    static func pictureRect(of view: UIView, in root: UIView, fallbackAspect: CGFloat?) -> CGRect {
+        let frame = view.convert(view.bounds, to: root)
+        guard let image = imageView(in: view), image.contentMode == .scaleAspectFit else { return frame }
+        let size = image.image?.size ?? .zero
+        guard let aspect = size.width > 0 && size.height > 0 ? size.width / size.height : fallbackAspect, aspect > 0 else { return frame }
+        return fit(aspect: aspect, in: frame)
+    }
+
+    /// The rect UIKit lines the source up with. UIKit fits it into the source
+    /// (aspect fit): for a photo drawn aspect-fit, the part of the picture in
+    /// the source's shape, centred, so the photo covers the source exactly as
+    /// the card's aspect-filled photo does (no bars, no size jump). Anything
+    /// else: its frame, as before.
+    static func alignmentRect(of view: UIView, in root: UIView, photoAspect: CGFloat?, sourceShape: CGSize?) -> CGRect {
+        let picture = pictureRect(of: view, in: root, fallbackAspect: photoAspect)
+        guard picture != view.convert(view.bounds, to: root),
+              let shape = sourceShape, shape.width > 0, shape.height > 0 else { return picture }
+        return fit(aspect: shape.width / shape.height, in: picture)
+    }
+
+    /// The largest rect of `aspect` centred in `rect` (scaleAspectFit).
+    static func fit(aspect: CGFloat, in rect: CGRect) -> CGRect {
+        let width = min(rect.width, rect.height * aspect)
+        let height = width / aspect
+        return CGRect(x: rect.midX - width / 2, y: rect.midY - height / 2, width: width, height: height)
+    }
+}
+
+/// The zoomed screen's controls floating over the zoomed photo (a viewer's
+/// close button, page counter, like button). UIKit's zoom draws a live copy
+/// of the zoomed screen and scales that, so these would grow out of the card
+/// and shrink back into it. Instead the real ones are hidden for the
+/// transition and still copies of them, at their own size and place, fade
+/// above it: in, over the second half of an appearance; out, over the first
+/// 30 % of a disappearance (an interactive one scrubs and reverses them with
+/// the drag, as the coordinator does with any alongside animation).
+@MainActor
+enum ZoomOverlays {
+    /// What is painted above `element`'s branch of `zoomed`'s view (later
+    /// siblings of it and of each ancestor, or earlier ones raised by
+    /// zPosition) and overlaps it.
+    static func overlays(over element: UIView, in root: UIView) -> [UIView] {
+        let box = element.convert(element.bounds, to: root)
+        var result: [UIView] = []
+        var node: UIView = element
+        while node !== root, let parent = node.superview {
+            var above = false
+            for sibling in parent.subviews {
+                if sibling === node { above = true; continue }
+                guard above || sibling.layer.zPosition > node.layer.zPosition else { continue }
+                guard !sibling.isHidden, sibling.alpha > 0.01, sibling.bounds.width >= 1, sibling.bounds.height >= 1 else { continue }
+                if sibling.convert(sibling.bounds, to: root).intersects(box) { result.append(sibling) }
+            }
+            node = parent
+        }
+        return result
+    }
+
+    static func begin(zoomed: UIViewController, over element: UIView, coordinator: UIViewControllerTransitionCoordinator?, window: UIWindow) {
+        guard let coordinator, let root = zoomed.view else { return }
+        let views = overlays(over: element, in: root)
+        guard !views.isEmpty else { return }
+        let appearing = isAppearing(zoomed, in: coordinator)
+        // Where the zoomed screen ends (appearing) or stands (disappearing).
+        let origin = root.window == nil ? root.frame.origin : root.convert(CGPoint.zero, to: window)
+        var copies: [(view: UIView, alpha: CGFloat, copy: UIView)] = []
+        for view in views {
+            guard let copy = view.snapshotView(afterScreenUpdates: appearing) else { continue }
+            let frame = view.convert(view.bounds, to: root)
+            copy.frame = frame.offsetBy(dx: origin.x, dy: origin.y)
+            copy.isUserInteractionEnabled = false
+            copy.alpha = appearing ? 0 : 1
+            window.addSubview(copy)
+            copies.append((view, view.alpha, copy))
+            view.alpha = 0
+        }
+        coordinator.animate(alongsideTransition: { _ in
+            UIView.animateKeyframes(withDuration: 0, delay: 0, options: []) {
+                if appearing {
+                    UIView.addKeyframe(withRelativeStartTime: 0.5, relativeDuration: 0.5) { copies.forEach { $0.copy.alpha = 1 } }
+                } else {
+                    UIView.addKeyframe(withRelativeStartTime: 0, relativeDuration: 0.3) { copies.forEach { $0.copy.alpha = 0 } }
+                }
+            }
+        }, completion: { _ in
+            MainActor.assumeIsolated {
+                for item in copies {
+                    item.copy.removeFromSuperview()
+                    item.view.alpha = item.alpha
+                }
+            }
+        })
+    }
+
+    /// Whether `zoomed` is coming on screen in this transition.
+    private static func isAppearing(_ zoomed: UIViewController, in coordinator: UIViewControllerTransitionCoordinator) -> Bool {
+        guard let to = coordinator.viewController(forKey: .to) else { return zoomed.isBeingPresented || zoomed.isMovingToParent }
+        var node: UIViewController? = zoomed
+        while let current = node {
+            if current === to { return true }
+            node = current.parent
+        }
+        return false
     }
 }
 
