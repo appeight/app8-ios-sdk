@@ -467,7 +467,9 @@ enum ZoomPhoto {
 }
 
 /// The zoomed screen's controls floating over the zoomed photo (a viewer's
-/// close button, page counter, like button). UIKit's zoom draws a live copy
+/// close button and page counter above its pager). Content in the same
+/// scroll view or container as the photo (a hero's gradient and title) is
+/// not one of them: it zooms with the screen. UIKit's zoom draws a live copy
 /// of the zoomed screen and scales that, so these would grow out of the card
 /// and shrink back into it. Instead the real ones are hidden for the
 /// transition and still copies of them, at their own size and place, fade
@@ -476,13 +478,13 @@ enum ZoomPhoto {
 /// the drag, as the coordinator does with any alongside animation).
 @MainActor
 enum ZoomOverlays {
-    /// What is painted above `element`'s branch of `zoomed`'s view (later
-    /// siblings of it and of each ancestor, or earlier ones raised by
-    /// zPosition) and overlaps it.
+    /// What is painted above the branch holding `element`, from outside the
+    /// outermost scroll view holding it (`chromeStart`) up to `root` (later
+    /// siblings, or earlier ones raised by zPosition), and overlaps it.
     static func overlays(over element: UIView, in root: UIView) -> [UIView] {
         let box = element.convert(element.bounds, to: root)
         var result: [UIView] = []
-        var node: UIView = element
+        guard var node: UIView = chromeStart(for: element, in: root) else { return [] }
         while node !== root, let parent = node.superview {
             var above = false
             for sibling in parent.subviews {
@@ -494,6 +496,23 @@ enum ZoomOverlays {
             node = parent
         }
         return result
+    }
+
+    /// Where the search for floating controls starts: the outermost scroll
+    /// view holding `element` below `root` (a viewer's pager, a screen's
+    /// scroll view), or `element`'s own container without one. Everything
+    /// inside it (a hero's gradient and title over the photo, a gallery's
+    /// page counter) is content that zooms with the screen; only what floats
+    /// above it is chrome. Nil when `element` is not under `root`.
+    static func chromeStart(for element: UIView, in root: UIView) -> UIView? {
+        var outer: UIView?
+        var node = element.superview
+        while let current = node, current !== root {
+            if current is UIScrollView { outer = current }
+            node = current.superview
+        }
+        guard node === root else { return nil }
+        return outer ?? element.superview
     }
 
     static func begin(zoomed: UIViewController, over element: UIView, coordinator: UIViewControllerTransitionCoordinator?, window: UIWindow) {

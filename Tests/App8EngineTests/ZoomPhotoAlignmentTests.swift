@@ -73,11 +73,15 @@ final class ZoomPhotoAlignmentTests: XCTestCase {
         XCTAssertEqual(ZoomPhoto.aspect(of: fill) ?? 0, 0.8, accuracy: 0.001)
     }
 
-    func testOverlaysAreTheControlsAboveThePhoto() {
+    func testOverlaysAreTheControlsAboveThePager() {
         let root = screen()
-        let pager = UIView(frame: root.bounds)
-        let page = imageElement(frame: pager.bounds, image: photo(CGSize(width: 10, height: 10)), mode: .scaleAspectFit)
-        pager.addSubview(page)
+        // A photo viewer: a paging scroller of pages, and screen-level
+        // controls above it.
+        let pager = UIScrollView(frame: root.bounds)
+        let cell = UIView(frame: pager.bounds)
+        let page = imageElement(frame: cell.bounds, image: photo(CGSize(width: 10, height: 10)), mode: .scaleAspectFit)
+        cell.addSubview(page)
+        pager.addSubview(cell)
         let background = UIView(frame: root.bounds)
         let counter = UILabel(frame: CGRect(x: 16, y: 80, width: 40, height: 14))
         let close = UIView(frame: CGRect(x: 350, y: 66, width: 44, height: 44))
@@ -94,16 +98,44 @@ final class ZoomPhotoAlignmentTests: XCTestCase {
         XCTAssertTrue(overlays.contains { $0 === close })
     }
 
-    func testOverlaysOnlyWhereTheyCoverTheAlignedElement() {
+    func testContentInTheSameCoverOrScrollViewZoomsWithTheScreen() {
         let root = screen()
-        let card = UIView(frame: CGRect(x: 0, y: 0, width: 402, height: 500))
-        let count = UILabel(frame: CGRect(x: 16, y: 470, width: 40, height: 14))
-        let title = UILabel(frame: CGRect(x: 16, y: 520, width: 300, height: 30))
-        root.addSubview(card)
-        root.addSubview(count)
-        root.addSubview(title)
-        let overlays = ZoomOverlays.overlays(over: card, in: root)
+        // A profile screen: a scroll view whose hero cover holds the photo
+        // with a gradient and a title over it; a back button floats above
+        // the scroll view.
+        let scroll = UIScrollView(frame: root.bounds)
+        let stack = UIView(frame: CGRect(x: 0, y: 0, width: 402, height: 1400))
+        let hero = UIView(frame: CGRect(x: 0, y: 0, width: 402, height: 520))
+        let number = UILabel(frame: CGRect(x: 0, y: 40, width: 402, height: 200))
+        let image = imageElement(frame: hero.bounds, image: photo(CGSize(width: 10, height: 10)), mode: .scaleAspectFill)
+        let gradient = UIView(frame: CGRect(x: 0, y: 320, width: 402, height: 200))
+        let names = UIView(frame: CGRect(x: 16, y: 420, width: 300, height: 80))
+        [number, image, gradient, names].forEach(hero.addSubview)
+        let facts = UIView(frame: CGRect(x: 0, y: 500, width: 402, height: 300))
+        stack.addSubview(hero)
+        stack.addSubview(facts)
+        scroll.addSubview(stack)
+        let back = UIView(frame: CGRect(x: 8, y: 60, width: 44, height: 44))
+        root.addSubview(scroll)
+        root.addSubview(back)
+        let overlays = ZoomOverlays.overlays(over: image, in: root)
+        XCTAssertEqual(overlays.count, 1, "only the floating back button")
+        XCTAssertTrue(overlays.first === back)
+    }
+
+    func testWithoutAScrollViewTheElementsOwnContainerIsContent() {
+        let root = screen()
+        let cover = UIView(frame: CGRect(x: 0, y: 0, width: 402, height: 500))
+        let image = imageElement(frame: cover.bounds, image: photo(CGSize(width: 10, height: 10)), mode: .scaleAspectFill)
+        let caption = UILabel(frame: CGRect(x: 16, y: 470, width: 200, height: 14))
+        cover.addSubview(image)
+        cover.addSubview(caption)
+        let close = UIView(frame: CGRect(x: 350, y: 66, width: 44, height: 44))
+        root.addSubview(cover)
+        root.addSubview(close)
+        let overlays = ZoomOverlays.overlays(over: image, in: root)
         XCTAssertEqual(overlays.count, 1)
-        XCTAssertTrue(overlays.first === count)
+        XCTAssertTrue(overlays.first === close)
+        XCTAssertTrue(ZoomOverlays.chromeStart(for: image, in: root) === cover)
     }
 }
