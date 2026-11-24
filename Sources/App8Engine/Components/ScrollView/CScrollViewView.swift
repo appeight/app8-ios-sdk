@@ -307,8 +307,7 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
             }
         } else {
             scrollView.isScrollEnabled = true
-            stretchHero?.transform = .identity
-            stretchHero = nil
+            endStretch()
             lastStretch = 0
             for (index, child) in viewModel.component.children.enumerated() {
                 let result = viewModel.service.renderComponent(child, superview: scrollContentView, parentPath: viewModel.componentPath, parentVariableStore: viewModel.variableStore)
@@ -402,34 +401,54 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
 
     // MARK: - Stretchy top
 
-    /// Pull-down at the top (scroll-view.md, "Stretchy top"): the hero scales
-    /// uniformly about its bottom edge's centre so its top stays on the scroll
-    /// view's top edge. A transform, not constraints: the content below keeps
-    /// its layout (it moves with the pull as usual), a pager inside the hero
-    /// keeps its bounds and paging, and nothing re-lays out per frame.
+    /// Pull-down at the top (scroll-view.md, "Stretchy top"): the hero's
+    /// frame grows by the pull with its top on the scroll view's top edge;
+    /// only its background scales, its other children are laid out again in
+    /// the taller frame (see `StretchyCoverSession`). The content below keeps
+    /// its layout and moves with the pull as usual.
     private func applyStretchyTop() {
         guard let props = viewModel?.component.properties,
               props.stretchesTopChild == true,
               (props.direction ?? .vertical) == .vertical,
-              !zoomMode,
+              !zoomMode, !measuringStretchRest,
               let child = topChildView else { return }
         let pull = max(0, -(scrollView.contentOffset.y + scrollView.adjustedContentInset.top))
         guard abs(pull - lastStretch) > 0.01 || (pull == 0) != (lastStretch == 0) else { return }
         lastStretch = pull
         if pull == 0 {
-            stretchHero?.transform = .identity
-            stretchHero = nil
+            endStretch()
             return
         }
-        if stretchHero == nil || stretchHero?.isDescendant(of: child) != true {
-            stretchHero = Self.stretchHero(from: child)
+        if stretchSession == nil || stretchSession?.hero.isDescendant(of: child) != true {
+            endStretch()
+            let hero = Self.stretchHero(from: child)
+            // A hero whose height comes from its content can already have
+            // lost height to this first frame of the pull (see
+            // `StretchyCoverSession`): lay it out at rest first.
+            if hero is CView {
+                measuringStretchRest = true
+                let offset = scrollView.bounds.origin
+                scrollView.bounds.origin.y = -scrollView.adjustedContentInset.top
+                scrollView.layoutIfNeeded()
+                stretchSession = StretchyCoverSession(hero: hero)
+                scrollView.bounds.origin = offset
+                measuringStretchRest = false
+            } else {
+                stretchSession = StretchyCoverSession(hero: hero)
+            }
         }
-        guard let hero = stretchHero else { return }
-        hero.transform = Self.stretchTransform(height: hero.bounds.height, pull: pull)
+        stretchSession?.update(pull: pull)
     }
 
-    /// The view being scaled by the current pull (identity again at rest).
-    private weak var stretchHero: UIView?
+    private func endStretch() {
+        stretchSession?.end()
+        stretchSession = nil
+    }
+
+    /// The current pull (nil at rest).
+    private var stretchSession: StretchyCoverSession?
+    /// Set while the hero is laid out at rest for a new pull.
+    private var measuringStretchRest = false
 
     /// The hero of a stretchy top: `first`, or, while it is a container whose
     /// height comes from its content (a vertical stack, or a view without a
@@ -456,8 +475,17 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         // A `view` component lays its children out in a content view filling it.
         let content = view.subviews.first { sub in sub.subviews.contains { $0.accessibilityIdentifier != nil } } ?? view
         guard let firstChild = content.subviews.first(where: { !$0.isHidden && $0.accessibilityIdentifier != nil }),
-              isPinnedToTop(firstChild, in: content) else { return nil }
+              isPinnedToTop(firstChild, in: content), isContainer(firstChild) else { return nil }
         return firstChild
+    }
+
+    /// A stack, or a `view` with children of its own: a wrapper the hero can
+    /// sit in. A leaf (an image, a video, a pager, an empty view) pinned to
+    /// the top is the container's background, not its hero.
+    private static func isContainer(_ view: UIView) -> Bool {
+        if view is CStackViewView { return true }
+        guard let box = view as? CView else { return false }
+        return box.contentView.subviews.contains { $0.accessibilityIdentifier != nil }
     }
 
     private static func firstDescendant<T: UIView>(_ type: T.Type, in view: UIView, depth: Int) -> T? {
@@ -488,6 +516,9 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
         if let owner = child as? App8ConstraintOwning { candidates += owner.app8InstalledConstraints }
         return candidates.contains { c in
             guard c.isActive, c.relation == .equal else { return false }
+            // Flush with the top: a child set down from it (`constant` 40) is
+            // content inside the container, not its hero.
+            guard abs(c.constant) < 0.5 else { return false }
             if c.firstItem === child, c.firstAttribute == .top, c.secondItem === parent, c.secondAttribute == .top { return true }
             if c.secondItem === child, c.secondAttribute == .top, c.firstItem === parent, c.firstAttribute == .top { return true }
             return false
@@ -497,9 +528,7 @@ class CScrollViewView: App8BaseView<DSL.Model.Component.ScrollView.C>, CViewProt
     /// Uniform scale `(h + d) / h` about the bottom edge's centre, for a view
     /// whose anchor is its centre.
     nonisolated static func stretchTransform(height h: CGFloat, pull d: CGFloat) -> CGAffineTransform {
-        guard h > 0.5, d > 0 else { return .identity }
-        let scale = (h + d) / h
-        return CGAffineTransform(translationX: 0, y: -(h * (scale - 1)) / 2).scaledBy(x: scale, y: scale)
+        StretchyCoverSession.scale(height: h, pull: d)
     }
 
     // MARK: - Auto-scroll lifecycle

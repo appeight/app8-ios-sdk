@@ -75,13 +75,37 @@ info={"type":"screen","id":"info","content":{"navigationBar":{"title":"Info"},"s
 category={"type":"screen","id":"category","content":{"navigationBar":{"title":"Category","tintColor":"#000000","backLabel":""},"style":{"material":fill("#FFFFFF")},
   "children":[{"id":"catGrid","type":"collection","content":{"properties":{"data":"{{products}}","templateName":"Card","layout":{"type":"grid","columns":2,"itemSpacing":2,"lineSpacing":16,"estimatedItemHeight":300}},
     "layout":{"constraints":E}}}]}}
+# A tab root with a coloured cover under the status bar (contentInsetAdjustment bottom),
+# the cover's height from `height >= width`, a decorative image and a text block pinned to
+# the safe area, and a block pinned to the cover's bottom: the stretchy top's cover case.
+def label(i,t,size,color="#FFFFFF",weight="regular"): return {"id":i,"type":"label","content":{"properties":{"text":t,"numberOfLines":1},"style":{"text":{"fontSize":size,"fontWeight":weight,"color":color}}}}
+coverHero={"id":"coverHero","type":"view","content":{"style":{"material":fill("#B0202A")},
+  "layout":{"constraints":[{"type":"height","target":"superview","attribute":"width","op":">=","multiplier":1}]},"children":[
+  {"id":"coverMark","type":"view","content":{"layout":{"constraints":[{"type":"trailing","target":"superview","constant":150},{"type":"top","target":"safeArea","constant":40},
+     {"type":"width","target":"superview","multiplier":0.95},{"type":"height","target":"superview","attribute":"width","multiplier":0.36}]},"children":[
+     {"id":"coverMarkImg","type":"image","content":{"properties":{"type":"remoteAsset","name":"cover-mark"},"style":{"contentMode":"scaleAspectFit","alpha":0.25},"layout":{"constraints":E}}}]}},
+  {"id":"coverText","type":"stackView","content":{"properties":{"axis":"vertical","spacing":6,"alignment":"fill"},
+     "layout":{"constraints":[{"type":"leading","target":"superview","constant":16},{"type":"trailing","target":"superview","constant":-16},{"type":"top","target":"safeArea","constant":76},{"type":"bottom","target":"superview","constant":-24}]},
+     "children":[label("coverKicker","FRIDAY 20:00",13),label("coverTitle","HOME TEAM",40,weight="heavy"),label("coverVs","v",16),label("coverTitle2","AWAY TEAM",40,weight="heavy"),
+       {"id":"coverGap","type":"view","content":{"layout":{"height":16}}},
+       {"id":"coverButtons","type":"stackView","content":{"properties":{"axis":"horizontal","spacing":8,"distribution":"fillEqually"},"children":[
+         {"id":"coverBtn1","type":"button","content":{"properties":{"text":"Primary"},"style":{"system":{"variant":"filled","baseBackgroundColor":"#FFFFFF","baseForegroundColor":"#B0202A","cornerStyle":"capsule"}},"layout":{"height":44}}},
+         {"id":"coverBtn2","type":"button","content":{"properties":{"text":"Secondary"},"style":{"system":{"variant":"bordered","baseForegroundColor":"#FFFFFF","cornerStyle":"capsule"}},"layout":{"height":44}}}]}}]}}]}}
+coverBody=[coverHero]
+for i in range(1,8):
+    coverBody += [spacer(200+i,24), text(200+i,"Section text that runs over a few lines so the screen scrolls well past the cover. "*3)]
+cover={"type":"screen","id":"cover","content":{"navigationBar":{"tintColor":"#000000","topEdgeEffect":"hidden","rightActions":[{"icon":"person.crop.circle","action":[{"type":"dismiss"}]}]},
+  "style":{"material":fill("#FFFFFF")},
+  "children":[{"id":"coverScroll","type":"scrollView","content":{"properties":{"direction":"vertical","showsIndicator":False,"contentInsetAdjustment":"bottom","stretchesTopChild":True},
+     "layout":{"constraints":E},"children":[{"id":"coverStack","type":"stackView","content":{"properties":{"axis":"vertical","spacing":0,"alignment":"fill"},"layout":{"constraints":E},"children":coverBody}}]}}]}}
 tabs={"type":"tabBarScreen","id":"tabs","content":{"tabs":[{"id":"home","label":"HOME","icon":"house","screen":"home"},
    {"id":"saved","label":"SAVED","icon":"star","screen":"saved","badge":"{{length(saved) > 0 ? length(saved) : ''}}"},
-   {"id":"bag","label":"BAG","icon":"bag","screen":"bag","badge":"12"}],"initialTab":"home",
+   {"id":"bag","label":"BAG","icon":"bag","screen":"bag","badge":"12"},
+   {"id":"cover","label":"COVER","icon":"square","screen":"cover"}],"initialTab":"home",
    "tintColor":"#FFFFFF","unselectedColor":"#FFFFFF4D","badgeColor":"#FFFFFF","badgeTextColor":"#000000",
    "barStyle":{"variant":"text","shape":"floating","background":"#000000","cornerRadius":0,"height":32,"selection":"opacity","unselectedOpacity":0.3,
      "text":{"fontSize":12,"fontWeight":"semibold","color":"#FFFFFF"},"badgePlacement":"inline"}}}
 app={"title":"Harness","navigation":{"startFlow":"main","flows":[{"id":"main","startScreen":"tabs"}]},
   "variables":{"products":{"type":"array","initialValue":products},"saved":{"type":"array","initialValue":["p1","p2"]}}}
-bundle={"app":app,"styles":[],"components":[ShowPage,Card,QuickView],"screens":{"tabs":tabs,"home":home,"product":product,"saved":saved,"bag":bag,"category":category,"info":info}}
+bundle={"app":app,"styles":[],"components":[ShowPage,Card,QuickView],"screens":{"tabs":tabs,"home":home,"product":product,"saved":saved,"bag":bag,"category":category,"info":info,"cover":cover}}
 json.dump(bundle,open("App/fixture.json","w"),indent=1)
