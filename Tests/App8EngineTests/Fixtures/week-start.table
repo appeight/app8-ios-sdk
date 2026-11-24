@@ -1,0 +1,58 @@
+{
+  "description": "Engine 0.7.16: startOfWeek(date) and weekdayIndex(date) follow the locale's first weekday (en-US Sunday, de-AT and en-GB Monday). Every renderer's expression tests evaluate each `expression` with `variables` in scope, the first weekday of the case's `locale` and the table's `timeZone`, and compare the result to `expected` (numbers compare by value: 1 == 1.0). A date (yyyy-MM-dd) gives a date; a date-time gives the start of that day in the time zone as UTC (like startOfDay). Input that does not parse gives null. Each SDK keeps a copy; its test checks the copy against this file when the conformance checkout is next to it.",
+  "timeZone": "Europe/Vienna",
+  "variables": {
+    "day": "2026-11-25",
+    "nothing": null
+  },
+  "cases": [
+    { "locale": "en-US", "expression": "{{startOfWeek('2026-11-25')}}", "expected": "2026-11-22" },
+    { "locale": "en-US", "expression": "{{weekdayIndex('2026-11-25')}}", "expected": 3 },
+    { "locale": "de-AT", "expression": "{{startOfWeek('2026-11-25')}}", "expected": "2026-11-23" },
+    { "locale": "de-AT", "expression": "{{weekdayIndex('2026-11-25')}}", "expected": 2 },
+    { "locale": "en-GB", "expression": "{{startOfWeek('2026-11-25')}}", "expected": "2026-11-23" },
+    { "locale": "en-GB", "expression": "{{weekdayIndex('2026-11-25')}}", "expected": 2 },
+
+    { "locale": "en-US", "expression": "{{startOfWeek('2026-11-22')}}", "expected": "2026-11-22" },
+    { "locale": "en-US", "expression": "{{weekdayIndex('2026-11-22')}}", "expected": 0 },
+    { "locale": "de-AT", "expression": "{{startOfWeek('2026-11-23')}}", "expected": "2026-11-23" },
+    { "locale": "de-AT", "expression": "{{weekdayIndex('2026-11-23')}}", "expected": 0 },
+    { "locale": "en-US", "expression": "{{weekdayIndex('2026-11-23')}}", "expected": 1 },
+
+    { "locale": "en-US", "expression": "{{startOfWeek('2026-11-28')}}", "expected": "2026-11-22" },
+    { "locale": "en-US", "expression": "{{weekdayIndex('2026-11-28')}}", "expected": 6 },
+    { "locale": "de-AT", "expression": "{{startOfWeek('2026-11-28')}}", "expected": "2026-11-23" },
+    { "locale": "de-AT", "expression": "{{weekdayIndex('2026-11-28')}}", "expected": 5 },
+    { "locale": "en-US", "expression": "{{startOfWeek('2026-11-29')}}", "expected": "2026-11-29" },
+    { "locale": "en-US", "expression": "{{weekdayIndex('2026-11-29')}}", "expected": 0 },
+    { "locale": "de-AT", "expression": "{{startOfWeek('2026-11-29')}}", "expected": "2026-11-23" },
+    { "locale": "de-AT", "expression": "{{weekdayIndex('2026-11-29')}}", "expected": 6 },
+
+    { "locale": "en-US", "expression": "{{startOfWeek('2026-12-01')}}", "expected": "2026-11-29" },
+    { "locale": "de-AT", "expression": "{{startOfWeek('2026-12-01')}}", "expected": "2026-11-30" },
+    { "locale": "de-AT", "expression": "{{weekdayIndex('2026-12-01')}}", "expected": 1 },
+    { "locale": "en-US", "expression": "{{startOfWeek('2027-01-01')}}", "expected": "2026-12-27" },
+    { "locale": "en-US", "expression": "{{weekdayIndex('2027-01-01')}}", "expected": 5 },
+    { "locale": "de-AT", "expression": "{{startOfWeek('2027-01-01')}}", "expected": "2026-12-28" },
+    { "locale": "de-AT", "expression": "{{weekdayIndex('2027-01-01')}}", "expected": 4 },
+
+    { "locale": "en-US", "expression": "{{map([0, 1, 2, 3, 4, 5, 6], addDays(startOfWeek(day), item))}}", "expected": ["2026-11-22", "2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28"] },
+    { "locale": "de-AT", "expression": "{{map([0, 1, 2, 3, 4, 5, 6], addDays(startOfWeek(day), item))}}", "expected": ["2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29"] },
+    { "locale": "en-US", "expression": "{{addDays(startOfWeek(day), weekdayIndex(day)) == day}}", "expected": true },
+    { "locale": "de-AT", "expression": "{{addDays(startOfWeek(day), weekdayIndex(day)) == day}}", "expected": true },
+
+    { "locale": "en-US", "expression": "{{startOfWeek('2026-11-25T10:00:00Z')}}", "expected": "2026-11-21T23:00:00Z" },
+    { "locale": "de-AT", "expression": "{{startOfWeek('2026-11-25T10:00:00Z')}}", "expected": "2026-11-22T23:00:00Z" },
+    { "locale": "en-US", "expression": "{{weekdayIndex('2026-11-28T23:30:00Z')}}", "expected": 0 },
+    { "locale": "de-AT", "expression": "{{weekdayIndex('2026-11-28T23:30:00Z')}}", "expected": 6 },
+    { "locale": "de-AT", "expression": "{{weekdayIndex('2026-11-29T00:30:00+01:00')}}", "expected": 6 },
+    { "locale": "en-US", "expression": "{{startOfWeek('2026-03-31T10:00:00Z')}}", "expected": "2026-03-28T23:00:00Z" },
+    { "locale": "de-AT", "expression": "{{startOfWeek('2026-03-31T10:00:00.250+00:00')}}", "expected": "2026-03-29T22:00:00Z" },
+
+    { "locale": "de-AT", "expression": "{{startOfWeek('soon')}}", "expected": null },
+    { "locale": "de-AT", "expression": "{{weekdayIndex('2026-13-01')}}", "expected": null },
+    { "locale": "en-US", "expression": "{{startOfWeek(nothing)}}", "expected": null },
+    { "locale": "en-US", "expression": "{{weekdayIndex(20261125)}}", "expected": null },
+    { "locale": "en-US", "expression": "{{startOfWeek('bad') == null ? 'n/a' : 'ok'}}", "expected": "n/a" }
+  ]
+}
