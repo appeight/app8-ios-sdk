@@ -286,7 +286,23 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
               !hasUnsizedAncestor() else { return false }
         // Still the width the label's container grants now (a cell measured at
         // its estimated size and since resized must measure again).
-        return abs(min(lastWrapNatural, grantedWidth()) - label.preferredMaxLayoutWidth) < 0.5
+        let target = min(lastWrapNatural, grantedWidth())
+        let preferred = label.preferredMaxLayoutWidth
+        if abs(target - preferred) < 0.5 { return true }
+        // A label that hugs its wrapped text (`trailing <=`, a leading-aligned
+        // stack) makes its own container as narrow as its widest wrapped
+        // line, so the granted width reads narrower than the committed wrap.
+        // While every wrapped line still fits that width, wrapping there
+        // breaks the lines in the same places: the wrap holds. (Measuring
+        // again would drop the label to one line for a pass, and a scroll
+        // view resting at its end would be clamped by the difference.)
+        return target < preferred && usedWrapWidth(at: preferred) <= target + 0.5
+    }
+
+    /// The width of the widest line when the text wraps at `width`.
+    private func usedWrapWidth(at width: CGFloat) -> CGFloat {
+        let bounds = CGRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)
+        return ceil(label.textRect(forBounds: bounds, limitedToNumberOfLines: label.numberOfLines).width)
     }
 
     private func setPreferredMaxWidth(_ width: CGFloat) {
