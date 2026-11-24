@@ -5,6 +5,7 @@
 
 import Foundation
 import Testing
+import UIKit
 @testable import App8Engine
 
 private enum TestError: Error { case castFailed }
@@ -163,6 +164,32 @@ func pageControlDecodesLiteralNumbers() throws {
     let content = try decodeComponent(json, as: DSL.Model.Component.PageControl.C.self)
     #expect(content.properties.numberOfPages == "5")
     #expect(content.properties.currentPage == "0")
+}
+
+@Test
+func pageControlDecodesStyle() throws {
+    func style(_ fragment: String) throws -> DSL.Model.Component.PageControl.Look {
+        let json = componentJSON(type: "pageControl", properties: "{ \"numberOfPages\": \"3\"\(fragment) }")
+        return try decodeComponent(json, as: DSL.Model.Component.PageControl.C.self).properties.style
+    }
+    #expect(try style("") == .automatic)
+    #expect(try style(", \"style\": \"automatic\"") == .automatic)
+    #expect(try style(", \"style\": \"light\"") == .light)
+    #expect(try style(", \"style\": \"dark\"") == .dark)
+    #expect(try style(", \"style\": \"sepia\"") == .automatic)
+    #expect(try style(", \"style\": 3") == .automatic)
+}
+
+@Test
+func pageControlStyleResolvesAgainstInterfaceStyle() {
+    typealias Look = DSL.Model.Component.PageControl.Look
+    #expect(Look.automatic.isDark(for: .dark))
+    #expect(!Look.automatic.isDark(for: .light))
+    #expect(!Look.automatic.isDark(for: .unspecified))
+    #expect(!Look.light.isDark(for: .dark))
+    #expect(!Look.light.isDark(for: .light))
+    #expect(Look.dark.isDark(for: .light))
+    #expect(Look.dark.isDark(for: .dark))
 }
 
 // MARK: - Picker Model Tests

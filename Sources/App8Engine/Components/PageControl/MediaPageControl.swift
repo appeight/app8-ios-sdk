@@ -1,10 +1,12 @@
 import UIKit
 
-/// Page dots in the iOS 26 style for media: a blurred dark capsule behind
-/// white dots, the current dot fully white and the others at half opacity,
-/// so it reads on any photo. A tint color, when set, replaces the white of
-/// that kind of dot. Same metrics as the web
-/// renderer: a 26 pt tall capsule, `pages * 16 + 10` wide, 7 pt dots 9 pt apart.
+/// Page dots in the iOS 26 style for media: a blurred capsule behind the
+/// dots, the current dot solid and the others at half opacity, so it reads on
+/// any photo. Dark look: a dark capsule with white dots; light look: a light
+/// capsule with black dots (`look`; `automatic` follows the trait collection's
+/// `userInterfaceStyle`). A tint color, when set, replaces the default color
+/// of that kind of dot. Same metrics as the web renderer: a 26 pt tall
+/// capsule, `pages * 16 + 10` wide, 7 pt dots 9 pt apart.
 final class MediaPageControl: UIControl {
 
     static let dotSize: CGFloat = 7
@@ -29,12 +31,20 @@ final class MediaPageControl: UIControl {
         }
     }
 
-    /// Color of the other dots; nil keeps white at half opacity.
+    /// `automatic` (light or dark by the trait collection), `light` or `dark`.
+    var look: DSL.Model.Component.PageControl.Look = .automatic {
+        didSet { if look != oldValue { applyLook() } }
+    }
+
+    /// Whether the capsule and default dots currently draw dark.
+    private(set) var drawsDark = false
+
+    /// Color of the other dots; nil keeps the look's color at half opacity.
     var pageIndicatorTintColor: UIColor? {
         didSet { if pageIndicatorTintColor != oldValue { updateDotColors() } }
     }
 
-    /// Color of the current dot; nil keeps white.
+    /// Color of the current dot; nil keeps the look's color (white on dark, black on light).
     var currentPageIndicatorTintColor: UIColor? {
         didSet { if currentPageIndicatorTintColor != oldValue { updateDotColors() } }
     }
@@ -48,7 +58,7 @@ final class MediaPageControl: UIControl {
         numberOfPages > 0 ? max(0, min(currentPage, numberOfPages - 1)) : 0
     }
 
-    private let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+    private let blurView = UIVisualEffectView(effect: nil)
     private let dimView = UIView()
     private var dots: [CALayer] = []
 
@@ -58,14 +68,37 @@ final class MediaPageControl: UIControl {
         blurView.clipsToBounds = true
         addSubview(blurView)
         dimView.isUserInteractionEnabled = false
-        dimView.backgroundColor = UIColor.black.withAlphaComponent(0.28)
         blurView.contentView.addSubview(dimView)
         isAccessibilityElement = true
         accessibilityTraits = .adjustable
+        applyLook(force: true)
         updateVisibility()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (control: MediaPageControl, _: UITraitCollection) in
+            control.applyLook()
+        }
     }
 
+    /// The dark look is today's media capsule (ultra-thin dark material under
+    /// a 28 % black dim, white dots); the light one its mirror (ultra-thin
+    /// light material under a 40 % white wash, black dots).
+    private func applyLook(force: Bool = false) {
+        let dark = look.isDark(for: traitCollection.userInterfaceStyle)
+        guard force || dark != drawsDark else { return }
+        drawsDark = dark
+        blurView.effect = UIBlurEffect(style: dark ? .systemUltraThinMaterialDark : .systemUltraThinMaterialLight)
+        dimView.backgroundColor = dark ? UIColor.black.withAlphaComponent(0.28) : UIColor.white.withAlphaComponent(0.4)
+        updateDotColors()
+    }
+
+    /// The look's dot color: white on the dark capsule, black on the light one.
+    private var lookDotColor: UIColor { drawsDark ? .white : .black }
+
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        applyLook()
+    }
 
     override var intrinsicContentSize: CGSize {
         guard numberOfPages > 0 else { return CGSize(width: 0, height: Self.height) }
@@ -108,8 +141,8 @@ final class MediaPageControl: UIControl {
         let current = displayedPage
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.2)
-        let currentColor = currentPageIndicatorTintColor ?? .white
-        let otherColor = pageIndicatorTintColor ?? UIColor.white.withAlphaComponent(0.5)
+        let currentColor = currentPageIndicatorTintColor ?? lookDotColor
+        let otherColor = pageIndicatorTintColor ?? lookDotColor.withAlphaComponent(0.5)
         for (index, dot) in dots.enumerated() {
             dot.backgroundColor = (index == current ? currentColor : otherColor).cgColor
         }
