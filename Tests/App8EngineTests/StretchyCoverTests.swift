@@ -146,4 +146,81 @@ final class StretchyCoverTests: XCTestCase {
         let cover = try XCTUnwrap(Self.view("cover", in: scroll))
         XCTAssertEqual(CScrollViewView.stretchHero(from: cover).accessibilityIdentifier, "cover")
     }
+
+    // MARK: - Top pins stay at the top (safe area and superview)
+
+    /// A cover under a 47 pt top safe area (a notch), its height fixed, with
+    /// a mark pinned to the safe area's top and a badge pinned to the cover's
+    /// top. The cover's top stays on the screen's top during a pull, so both
+    /// keep their place on screen, as on the web renderer.
+    func testTopPinnedChildrenKeepTheirPlaceOnScreen() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let vc = UIViewController()
+        vc.additionalSafeAreaInsets = UIEdgeInsets(top: 47, left: 0, bottom: 0, right: 0)
+        window.rootViewController = vc
+        window.makeKeyAndVisible()
+        let harness = RenderHarness(size: CGSize(width: 390, height: 844), inWindow: false)
+        harness.superview.frame = vc.view.bounds
+        vc.view.addSubview(harness.superview)
+        try harness.render(#"""
+        { "type": "scrollView", "id": "s", "content": {
+            "properties": { "stretchesTopChild": true, "contentInsetAdjustment": "never" },
+            "layout": { "constraints": \#(Self.edges) },
+            "children": [ { "type": "stackView", "id": "stack", "content": {
+              "properties": { "axis": "vertical", "spacing": 0, "alignment": "fill" },
+              "layout": { "constraints": \#(Self.edges) },
+              "children": [
+                { "type": "view", "id": "hero", "content": {
+                    "style": { "material": [ { "id": "f", "type": "fill", "content": { "solid": "#AA2233" } } ] },
+                    "layout": { "constraints": [ { "type": "height", "target": "superview", "attribute": "width", "multiplier": 1.18 } ] },
+                    "children": [
+                      { "type": "view", "id": "mark", "content": { "layout": { "width": 60, "height": 40, "constraints": [
+                          { "type": "top", "target": "safeArea", "constant": 40 }, { "type": "trailing", "target": "superview", "constant": -16 } ] } } },
+                      { "type": "view", "id": "badge", "content": { "layout": { "width": 40, "height": 24, "constraints": [
+                          { "type": "top", "target": "superview", "constant": 12 }, { "type": "leading", "target": "superview", "constant": 12 } ] } } },
+                      { "type": "stackView", "id": "text", "content": {
+                          "properties": { "axis": "vertical" },
+                          "layout": { "constraints": [ { "type": "top", "target": "safeArea", "constant": 120 },
+                            { "type": "leading", "target": "superview", "constant": 16 }, { "type": "trailing", "target": "superview", "constant": -16 },
+                            { "type": "bottom", "target": "superview", "constant": -50 } ] },
+                          "children": [ { "type": "view", "id": "line", "content": { "layout": { "height": 44 } } } ] } },
+                      { "type": "view", "id": "foot", "content": { "layout": { "height": 30, "constraints": [
+                          { "type": "leading", "target": "superview" }, { "type": "trailing", "target": "superview" },
+                          { "type": "bottom", "target": "superview", "constant": -10 } ] } } } ] } },
+                { "type": "view", "id": "below", "content": { "layout": { "height": 1200 } } } ] } } ] } }
+        """#)
+        harness.drain()
+        window.layoutIfNeeded()
+        let scroll = try XCTUnwrap(harness.find(App8ZoomingScrollView.self))
+        let hero = try XCTUnwrap(Self.view("hero", in: scroll))
+        let onScreen = { (id: String) -> CGRect in
+            let v = Self.view(id, in: hero)!
+            return v.superview!.convert(v.frame, to: window)
+        }
+        let rest = (mark: onScreen("mark"), badge: onScreen("badge"), foot: onScreen("foot"), text: onScreen("text"))
+        XCTAssertGreaterThan(rest.mark.minY, 47 + 40 - 0.5, "the safe area reaches the cover")
+
+        for d: CGFloat in [20, 40, 100] {
+            scroll.setContentOffset(CGPoint(x: 0, y: -d), animated: false)
+            // A layout pass, as a frame does: UIKit updates the safe areas
+            // (the cover's shrinks with the pull) and lays the cover out.
+            window.layoutIfNeeded()
+            XCTAssertEqual(scroll.contentOffset.y, -d, accuracy: 0.5)
+            XCTAssertEqual(onScreen("mark").minY, rest.mark.minY, accuracy: 0.5, "safe-area pin @\(d)")
+            XCTAssertEqual(onScreen("mark").height, 40, accuracy: 0.5)
+            XCTAssertEqual(onScreen("badge").minY, rest.badge.minY, accuracy: 0.5, "superview pin @\(d)")
+            XCTAssertEqual(onScreen("foot").minY, rest.foot.minY + d, accuracy: 0.5, "bottom pin @\(d)")
+            XCTAssertEqual(onScreen("text").height, rest.text.height, accuracy: 0.5, "safe-area top + bottom: its size @\(d)")
+            XCTAssertEqual(onScreen("text").maxY, rest.text.maxY + d, accuracy: 0.5, "and on the bottom @\(d)")
+        }
+        scroll.setContentOffset(.zero, animated: false)
+        window.layoutIfNeeded()
+        XCTAssertEqual(onScreen("mark"), rest.mark)
+        XCTAssertEqual(onScreen("badge"), rest.badge)
+        XCTAssertEqual(onScreen("text"), rest.text)
+        func all(_ v: UIView) -> [UIView] { [v] + v.subviews.flatMap(all) }
+        let leftovers = all(hero).flatMap(\.constraints).filter { $0.identifier?.hasPrefix("app8.stretchyTop") == true && $0.isActive }
+        XCTAssertEqual(leftovers, [], "no stand-in survives the pull")
+        window.isHidden = true
+    }
 }
