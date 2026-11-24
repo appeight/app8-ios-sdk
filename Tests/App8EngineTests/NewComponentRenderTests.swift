@@ -194,7 +194,7 @@ final class NewComponentRenderTests: XCTestCase {
         {
             "type": "pageControl", "id": "test-dots",
             "content": {
-                "properties": { "numberOfPages": "5", "currentPage": "2" },
+                "properties": { "numberOfPages": "5", "currentPage": "2", "style": "dark" },
                 "layout": { "width": 200, "height": 30 }
             }
         }
@@ -210,7 +210,7 @@ final class NewComponentRenderTests: XCTestCase {
         XCTAssertEqual(control.intrinsicContentSize, CGSize(width: 90, height: 26))
         XCTAssertNotNil(findView(ofType: UIVisualEffectView.self, in: control), "blurred capsule behind the dots")
 
-        // Without DSL tints the dots are white: current opaque, others at 50 %
+        // Dark style without DSL tints: the dots are white, current opaque, others at 50 %
         // (with tints they take the DSL colors, as on the web renderer).
         control.frame = CGRect(origin: .zero, size: control.intrinsicContentSize)
         control.layoutIfNeeded()
@@ -226,6 +226,84 @@ final class NewComponentRenderTests: XCTestCase {
         // 7 pt dots, 9 pt apart, centred.
         XCTAssertEqual(dots[1].frame.minX - dots[0].frame.maxX, 9, accuracy: 0.01)
         XCTAssertEqual(dots[0].frame.minX, control.bounds.width - dots[4].frame.maxX, accuracy: 0.01)
+    }
+
+    // MARK: - PageControl style (0.7.16)
+
+    /// Renders a 3-page control with `properties` (JSON object body) and `style`
+    /// in a window pinned to `trait`; returns the control and its dot colors.
+    private func renderPageControl(_ properties: String, style: String = "{}", trait: UIUserInterfaceStyle) throws -> (MediaPageControl, [UIColor]) {
+        window.overrideUserInterfaceStyle = trait
+        let superview = try render("""
+        {
+            "type": "pageControl", "id": "styled-dots",
+            "content": {
+                "properties": { "numberOfPages": "3", "currentPage": "0", \(properties) },
+                "style": \(style),
+                "layout": { "width": 200, "height": 30 }
+            }
+        }
+        """)
+        let control = try XCTUnwrap(findView(ofType: MediaPageControl.self, in: superview))
+        control.frame = CGRect(origin: .zero, size: control.intrinsicContentSize)
+        control.layoutIfNeeded()
+        let dots = (control.layer.sublayers ?? []).filter { $0.bounds.width == MediaPageControl.dotSize }
+        return (control, dots.compactMap { $0.backgroundColor.map { UIColor(cgColor: $0) } })
+    }
+
+    private func whiteAlpha(_ color: UIColor) -> (CGFloat, CGFloat) {
+        var white: CGFloat = 0, alpha: CGFloat = 0
+        color.getWhite(&white, alpha: &alpha)
+        return ((white * 100).rounded() / 100, (alpha * 10).rounded() / 10)
+    }
+
+    func testPageControlAutomaticFollowsLightTrait() throws {
+        let (control, colors) = try renderPageControl(#""hidesForSinglePage": true"#, trait: .light)
+        XCTAssertFalse(control.drawsDark, "automatic on a light screen: light capsule")
+        XCTAssertEqual(colors.map(whiteAlpha).map(\.0), [0, 0, 0], "dark dots")
+        XCTAssertEqual(colors.map(whiteAlpha).map(\.1), [1, 0.5, 0.5])
+    }
+
+    func testPageControlAutomaticFollowsDarkTrait() throws {
+        let (control, colors) = try renderPageControl(#""style": "automatic""#, trait: .dark)
+        XCTAssertTrue(control.drawsDark, "automatic on a dark screen: dark capsule")
+        XCTAssertEqual(colors.map(whiteAlpha).map(\.0), [1, 1, 1], "light dots")
+    }
+
+    func testPageControlAutomaticSwitchesWithTrait() throws {
+        let (control, _) = try renderPageControl(#""style": "automatic""#, trait: .light)
+        XCTAssertFalse(control.drawsDark)
+        window.overrideUserInterfaceStyle = .dark
+        control.setNeedsLayout()
+        window.layoutIfNeeded()
+        XCTAssertTrue(control.drawsDark, "follows a change of the interface style")
+    }
+
+    func testPageControlExplicitLightIgnoresDarkTrait() throws {
+        let (control, colors) = try renderPageControl(#""style": "light""#, trait: .dark)
+        XCTAssertFalse(control.drawsDark)
+        XCTAssertEqual(colors.map(whiteAlpha).map(\.0), [0, 0, 0])
+    }
+
+    func testPageControlExplicitDarkIgnoresLightTrait() throws {
+        let (control, colors) = try renderPageControl(#""style": "dark""#, trait: .light)
+        XCTAssertTrue(control.drawsDark)
+        XCTAssertEqual(colors.map(whiteAlpha).map(\.0), [1, 1, 1])
+    }
+
+    func testPageControlUnknownStyleIsAutomatic() throws {
+        let (control, _) = try renderPageControl(#""style": "sepia""#, trait: .dark)
+        XCTAssertTrue(control.drawsDark, "unknown style reads as automatic")
+    }
+
+    func testPageControlExplicitTintsWinOverStyle() throws {
+        let (_, colors) = try renderPageControl(
+            #""style": "light""#,
+            style: ##"{ "currentPageIndicatorTintColor": "#FFFFFF", "pageIndicatorTintColor": "#FFFFFF80" }"##,
+            trait: .light
+        )
+        XCTAssertEqual(colors.map(whiteAlpha).map(\.0), [1, 1, 1], "explicit dot colors win over the style's")
+        XCTAssertEqual(colors.map(whiteAlpha).map(\.1), [1, 0.5, 0.5])
     }
 
     // MARK: - Picker (Menu)
