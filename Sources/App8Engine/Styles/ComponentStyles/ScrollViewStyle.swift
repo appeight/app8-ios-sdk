@@ -7,7 +7,7 @@ extension DSL.Model.Style {
     struct ScrollView: Decodable, BaseStyleProtocol, StylePointerResolvable {
         let contentMode: View.ContentMode?
         @Wrapped var material: Material?
-        let alpha: CGFloat?
+        @Alpha var alpha: CGFloat?
         let transform: View.Transform?
 
         mutating func resolveStylePointers(resolver: (String) -> (any Entity)?) {
@@ -17,5 +17,12 @@ extension DSL.Model.Style {
         func isResolved() -> Bool {
             material?.isResolved() ?? true
         }
+    }
+}
+
+extension DSL.Model.Style.ScrollView: DSL.Model.Style.AlphaExpressionHolder {
+    var alphaSlot: DSL.Model.Style.Alpha {
+        get { _alpha }
+        set { _alpha = newValue }
     }
 }

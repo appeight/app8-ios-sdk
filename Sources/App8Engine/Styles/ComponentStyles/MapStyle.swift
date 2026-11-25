@@ -5,7 +5,7 @@ extension DSL.Model.Style {
     struct Map: Decodable, BaseStyleProtocol, StylePointerResolvable, Sendable {
         let contentMode: View.ContentMode?
         @Wrapped var material: Material?
-        let alpha: CGFloat?
+        @Alpha var alpha: CGFloat?
         let transform: View.Transform?
 
         let corner: Corner?
@@ -24,5 +24,12 @@ extension DSL.Model.Style {
         func unresolvedPointerIds() -> [String] {
             _material.unresolvedPointerIds()
         }
+    }
+}
+
+extension DSL.Model.Style.Map: DSL.Model.Style.AlphaExpressionHolder {
+    var alphaSlot: DSL.Model.Style.Alpha {
+        get { _alpha }
+        set { _alpha = newValue }
     }
 }

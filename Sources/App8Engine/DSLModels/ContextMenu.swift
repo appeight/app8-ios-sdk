@@ -55,9 +55,8 @@ extension DSL.Model {
                 if raw["id"] == nil { raw["id"] = .string("contextMenuPreview") }
                 if raw["type"] == nil { raw["type"] = .string("view") }
                 let data = try JSONEncoder().encode(JSONValue.object(raw))
-                let nested = JSONDecoder()
-                nested.userInfo = decoder.userInfo
-                component = try nested.decode(Component.`Any`.self, from: data)
+                component = try LenientDocumentDecoding.decodeNested(
+                    Component.`Any`.self, from: data, userInfo: decoder.userInfo, at: c.codingPath + [CodingKeys.component])
             }
         }
 

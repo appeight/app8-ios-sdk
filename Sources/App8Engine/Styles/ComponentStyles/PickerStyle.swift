@@ -5,7 +5,7 @@ extension DSL.Model.Style {
     struct Picker: Decodable, BaseStyleProtocol, StylePointerResolvable {
         let contentMode: View.ContentMode?
         @Wrapped var material: Material?
-        let alpha: CGFloat?
+        @Alpha var alpha: CGFloat?
         let transform: View.Transform?
 
         /// Text style for menu mode button label
@@ -39,5 +39,12 @@ extension DSL.Model.Style {
         func isResolved() -> Bool {
             (material?.isResolved() ?? true) && (text?.isResolved() ?? true) && (label?.isResolved() ?? true)
         }
+    }
+}
+
+extension DSL.Model.Style.Picker: DSL.Model.Style.AlphaExpressionHolder {
+    var alphaSlot: DSL.Model.Style.Alpha {
+        get { _alpha }
+        set { _alpha = newValue }
     }
 }

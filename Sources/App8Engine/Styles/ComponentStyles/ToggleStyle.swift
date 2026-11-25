@@ -5,7 +5,7 @@ extension DSL.Model.Style {
     struct Toggle: Decodable, BaseStyleProtocol, StylePointerResolvable {
         let contentMode: View.ContentMode?
         @Wrapped var material: Material?
-        let alpha: CGFloat?
+        @Alpha var alpha: CGFloat?
         let transform: View.Transform?
 
         /// Tint color when the toggle is on
@@ -20,5 +20,12 @@ extension DSL.Model.Style {
         func isResolved() -> Bool {
             material?.isResolved() ?? true
         }
+    }
+}
+
+extension DSL.Model.Style.Toggle: DSL.Model.Style.AlphaExpressionHolder {
+    var alphaSlot: DSL.Model.Style.Alpha {
+        get { _alpha }
+        set { _alpha = newValue }
     }
 }

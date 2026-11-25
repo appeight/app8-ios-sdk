@@ -861,7 +861,7 @@ final class TabBarScreenViewController: UITabBarController, UIGestureRecognizerD
             do {
                 try await self.handleRequest(request)
             } catch {
-                self.context.logger.error("Navigation error: \(error)")
+                self.context.logger.critical("Navigation error: \(error.localizedDescription)")
             }
         }
         navigationQueue = task

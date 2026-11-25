@@ -5,7 +5,7 @@ extension DSL.Model.Style {
     struct Image: Decodable, BaseStyleProtocol, StylePointerResolvable {
         let contentMode: View.ContentMode?
         @Wrapped var material: Material?
-        let alpha: CGFloat?
+        @Alpha var alpha: CGFloat?
         let transform: View.Transform?
         let blendMode: View.BlendMode?
         @Wrapped var tintColor: Color.Themed?
@@ -51,5 +51,12 @@ extension DSL.Model.Style {
                 }
             }
         }
+    }
+}
+
+extension DSL.Model.Style.Image: DSL.Model.Style.AlphaExpressionHolder {
+    var alphaSlot: DSL.Model.Style.Alpha {
+        get { _alpha }
+        set { _alpha = newValue }
     }
 }

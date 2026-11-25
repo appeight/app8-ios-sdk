@@ -5,7 +5,7 @@ extension DSL.Model.Style {
     struct Icon: Decodable, BaseStyleProtocol, StylePointerResolvable {
         let contentMode: View.ContentMode?
         @Wrapped var material: Material?
-        let alpha: CGFloat?
+        @Alpha var alpha: CGFloat?
         let transform: View.Transform?
 
         @Wrapped var tint: Color.Themed?
@@ -32,7 +32,7 @@ extension DSL.Model.Style {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             contentMode        = try c.decodeIfPresent(View.ContentMode.self, forKey: .contentMode)
             _material          = try c.decode(Wrapped<Material>.self, forKey: .material)
-            alpha              = try c.decodeIfPresent(CGFloat.self, forKey: .alpha)
+            _alpha             = try c.decode(Alpha.self, forKey: .alpha)
             transform          = try c.decodeIfPresent(View.Transform.self, forKey: .transform)
             _tint              = try c.decode(Wrapped<Color.Themed>.self, forKey: .tint)
             renderingMode      = try c.decodeIfPresent(RenderingMode.self, forKey: .renderingMode)
@@ -87,5 +87,12 @@ extension DSL.Model.Style {
                 }
             }
         }
+    }
+}
+
+extension DSL.Model.Style.Icon: DSL.Model.Style.AlphaExpressionHolder {
+    var alphaSlot: DSL.Model.Style.Alpha {
+        get { _alpha }
+        set { _alpha = newValue }
     }
 }

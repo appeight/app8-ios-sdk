@@ -139,7 +139,7 @@ final class ModalViewController: UIViewController {
             do {
                 try await handleRequest(request)
             } catch {
-                context.logger.error("Navigation error: \(error)")
+                context.logger.critical("Navigation error: \(error.localizedDescription)")
             }
         }
     }

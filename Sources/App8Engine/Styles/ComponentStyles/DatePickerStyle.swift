@@ -5,7 +5,7 @@ extension DSL.Model.Style {
     struct DatePicker: Decodable, BaseStyleProtocol, StylePointerResolvable {
         let contentMode: View.ContentMode?
         @Wrapped var material: Material?
-        let alpha: CGFloat?
+        @Alpha var alpha: CGFloat?
         let transform: View.Transform?
 
         /// Accent/tint color for the date picker controls
@@ -18,5 +18,12 @@ extension DSL.Model.Style {
         func isResolved() -> Bool {
             material?.isResolved() ?? true
         }
+    }
+}
+
+extension DSL.Model.Style.DatePicker: DSL.Model.Style.AlphaExpressionHolder {
+    var alphaSlot: DSL.Model.Style.Alpha {
+        get { _alpha }
+        set { _alpha = newValue }
     }
 }

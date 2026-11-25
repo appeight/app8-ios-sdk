@@ -177,6 +177,16 @@ class CBaseViewModel<Component: DSL.Model.Component.EntityContent & DSL.Model.St
         var signature = Self.colorExpressionStrings(in: style)
             .map { "\($0)=\(resolvePropertyToString($0));" }
             .joined()
+        // `alpha` may be an expression too (since 0.7.17): resolve it here so the
+        // style re-emits, and the view fades, when a variable it reads changes.
+        var style = style
+        if var holder = style as? DSL.Model.Style.AlphaExpressionHolder,
+           let expression = holder.alphaSlot.expression {
+            let value = resolvePropertyToFloat(expression)
+            signature += "alpha:\(expression)=\(value.map { "\($0)" } ?? "nil");"
+            holder.alphaSlot.wrappedValue = value.map { min(max($0, 0), 1) }
+            if let updated = holder as? Component.Style { style = updated }
+        }
         guard var resolvable = style as? DSL.Model.Style.StylePointerResolvable else { return (style, signature) }
         resolvable.resolveStylePointers { [self] id in
             guard DSL.Model.Style.`Any`.isColorExpression(id) else { return nil }

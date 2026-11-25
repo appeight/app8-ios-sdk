@@ -5,7 +5,7 @@ extension DSL.Model.Style {
     struct Label: Decodable, BaseStyleProtocol, StylePointerResolvable {
         let contentMode: View.ContentMode?
         @Wrapped var material: Material?
-        let alpha: CGFloat?
+        @Alpha var alpha: CGFloat?
         let transform: View.Transform?
         @Wrapped var text: TextModel?
 
@@ -17,5 +17,12 @@ extension DSL.Model.Style {
         func isResolved() -> Bool {
             (material?.isResolved() ?? true) && (text?.isResolved() ?? true)
         }
+    }
+}
+
+extension DSL.Model.Style.Label: DSL.Model.Style.AlphaExpressionHolder {
+    var alphaSlot: DSL.Model.Style.Alpha {
+        get { _alpha }
+        set { _alpha = newValue }
     }
 }
