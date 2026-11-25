@@ -85,7 +85,7 @@ enum HiddenTransition {
         }
         restoreClipping(view, record: record)
         if view.isHidden != hidden { view.isHidden = hidden }
-        if !hidden { reattachContent(view, record: record) }
+        if !hidden { reattachContent(view, record: record); view.remeasureWrappingLabelsAfterShowing() }
         NativeVisibility.invalidate()
     }
 
@@ -160,6 +160,7 @@ enum HiddenTransition {
             if view.isHidden {
                 view.alpha = 0
                 view.isHidden = false
+                view.remeasureWrappingLabelsAfterShowing()
             }
         }
         record.inFlight = true
