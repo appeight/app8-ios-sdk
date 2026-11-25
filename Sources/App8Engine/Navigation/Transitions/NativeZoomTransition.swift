@@ -162,6 +162,9 @@ enum NativeZoomTransition {
                 if let match, let window = presentingScreen.view.window {
                     ZoomOverlays.begin(zoomed: zoomed, over: match.view, coordinator: coordinator, window: window)
                 }
+                // The destination's photo is still loading (decoded again after the push, the card's copy evicted from
+                // the memory cache): the zoom would grow an empty box out of the card and the photo pop in after it.
+                if let match { ZoomPhoto.prime(match.view, from: view) }
                 return SourceProxy.source(for: view, in: presentingScreen.view, coordinator: coordinator)
             }
         }
@@ -423,6 +426,33 @@ enum ZoomPhoto {
                 if abs(frame.width - view.bounds.width) <= 1, abs(frame.height - view.bounds.height) <= 1 { return image }
             }
             queue.append(contentsOf: candidate.subviews)
+        }
+        return nil
+    }
+
+    /// Shows the source's picture in `target`'s empty image view when both show the same image source (the card's
+    /// photo and the product page's first gallery photo share a URL): the zoom then grows the photo itself. The
+    /// target's own load replaces it with the same picture. Different pictures, or a target that already has its
+    /// image, are left alone. Returns whether it primed.
+    @discardableResult
+    static func prime(_ target: UIView, from source: UIView) -> Bool {
+        guard let dst = imageView(in: target), let src = imageView(in: source) else { return false }
+        return prime(dst, key: imageKey(of: dst), from: src, key: imageKey(of: src))
+    }
+
+    @discardableResult
+    static func prime(_ dst: UIImageView, key dstKey: String?, from src: UIImageView, key srcKey: String?) -> Bool {
+        guard dst.image == nil, let image = src.image, let dstKey, let srcKey, dstKey == srcKey else { return false }
+        dst.image = image
+        return true
+    }
+
+    /// The image source of the image component drawing `imageView`.
+    private static func imageKey(of imageView: UIImageView) -> String? {
+        var node: UIView? = imageView
+        while let current = node {
+            if let component = current as? CImageView { return component.shownImageKey }
+            node = current.superview
         }
         return nil
     }

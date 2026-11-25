@@ -102,6 +102,9 @@ class CImageView: App8BaseView<DSL.Model.Component.Image.C>, CViewProtocol {
 
     /// Last loaded image key to skip redundant loads on reuse
     private var lastLoadedImageKey: String?
+    /// The image source this view shows or is loading (URL, asset name or photo reference); nil without one. Read by
+    /// the native zoom to tell whether a destination photo is the same picture as its source.
+    var shownImageKey: String? { lastLoadedImageKey }
 
     // TODO: take 'animated' flag into account
     private func configureContent(viewModel: CImageViewModel, animated: Bool = false) {
