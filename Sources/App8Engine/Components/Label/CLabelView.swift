@@ -127,6 +127,20 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         // and re-open the measurement, oscillating between wrapped and unwrapped.
         let referenceWidth = stableReferenceWidth()
 
+        // Hidden (this label or an ancestor up to the scroll view): there is no
+        // width to measure against, and a hidden stack item still counts on its
+        // stack's cross axis (UIStackView collapses only the main axis). A wrap
+        // measured at zero width (one word per line) made a chip row as tall as
+        // its hidden chips, and their later re-measures moved a scroll resting
+        // at its end. Report the unwrapped size; measure once shown.
+        if Self.measuresWhileHidden == 0, isInsideHiddenView() {
+            let natural = naturalUnwrappedWidth()
+            wrapPhase = .idle
+            lastWrapNatural = -1
+            if natural > 0.5 { setPreferredMaxWidth(natural) }
+            return
+        }
+
         // Steady-state fast path: once committed (`lastWrapNatural > 0`, reset to
         // -1 on every text change), skip the `boundingRect` measurement entirely
         // while the environment width is unchanged.
@@ -203,6 +217,19 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         } else if !hasUnsizedAncestor() {
             remeasureAfterUnsized = 0
         }
+    }
+
+    /// Set while `settleWrappingLabels` lays out a view that is about to appear.
+    static var measuresWhileHidden = 0
+
+    /// Whether this view or an ancestor below the nearest scroll view is hidden.
+    private func isInsideHiddenView() -> Bool {
+        var node: UIView? = self
+        while let view = node, !(view is UIScrollView) {
+            if view.isHidden { return true }
+            node = view.superview
+        }
+        return false
     }
 
     /// Whether an ancestor up to and including the nearest scroll view has no
@@ -816,6 +843,10 @@ extension UIView {
     /// than that line, the cell keeps the sibling's height and the text is
     /// squeezed. Labels inside nested scroll views settle in their own cells.
     func settleWrappingLabels(passes: Int = 3) {
+        // Also while this view is still hidden (an appearing stack item is
+        // laid out at full size first): its labels measure as if shown.
+        CLabelView.measuresWhileHidden += 1
+        defer { CLabelView.measuresWhileHidden -= 1 }
         for _ in 0..<passes {
             guard Self.markWrappingLabels(in: self) else { return }
             layoutIfNeeded()
@@ -824,6 +855,13 @@ extension UIView {
 
     /// Marks every multi-line label below `view` (not crossing into scroll
     /// views) for layout; returns whether there was any.
+    /// A view was shown: its wrapping labels skipped measuring while hidden
+    /// (`CLabelView.syncWrapWidth`) and measure now, at their real width.
+    func remeasureWrappingLabelsAfterShowing() {
+        if let labelView = self as? CLabelView, labelView.wrapsText { labelView.setNeedsLayout() }
+        _ = Self.markWrappingLabels(in: self)
+    }
+
     private static func markWrappingLabels(in view: UIView) -> Bool {
         var found = false
         for subview in view.subviews {
