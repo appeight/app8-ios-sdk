@@ -6,7 +6,7 @@ extension DSL.Model.Style {
 
         let contentMode: View.ContentMode?
         @Wrapped var material: Material?
-        let alpha: CGFloat?
+        @Alpha var alpha: CGFloat?
         let transform: View.Transform?
 
         @Wrapped var text: TextModel?
@@ -39,5 +39,12 @@ extension DSL.Model.Style {
             if _tintColor.base != nil { base._tintColor = _tintColor }
             return base
         }
+    }
+}
+
+extension DSL.Model.Style.TextField: DSL.Model.Style.AlphaExpressionHolder {
+    var alphaSlot: DSL.Model.Style.Alpha {
+        get { _alpha }
+        set { _alpha = newValue }
     }
 }

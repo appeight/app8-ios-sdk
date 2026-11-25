@@ -8,7 +8,7 @@ extension DSL.Model.Style {
         /// `AVLayerVideoGravity` via `videoGravity`. Default fill.
         let contentMode: View.ContentMode?
         @Wrapped var material: Material?
-        let alpha: CGFloat?
+        @Alpha var alpha: CGFloat?
         let transform: View.Transform?
         let corner: Corner?
 
@@ -33,5 +33,12 @@ extension DSL.Model.Style {
         func unresolvedPointerIds() -> [String] {
             _material.unresolvedPointerIds()
         }
+    }
+}
+
+extension DSL.Model.Style.Video: DSL.Model.Style.AlphaExpressionHolder {
+    var alphaSlot: DSL.Model.Style.Alpha {
+        get { _alpha }
+        set { _alpha = newValue }
     }
 }

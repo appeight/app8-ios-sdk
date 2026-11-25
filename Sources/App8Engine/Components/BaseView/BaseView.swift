@@ -778,6 +778,15 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
                               multiplier: CGFloat? = nil,
                               relation: DSL.Model.Layout.Constraint.Relation = .equal) -> NSLayoutConstraint {
         let m = multiplier ?? 1
+        // A position (edge or centre) with a multiplier scales the target's
+        // position measured in the superview's bounds: `centerX` × 2 of the
+        // superview is its trailing edge, × 0.5 a quarter of its width.
+        // Anchors can't carry a multiplier on positions, so build the
+        // constraint from attributes. Before 0.7.17 the multiplier was dropped.
+        // UIKit rejects a zero multiplier on a position: that one stays 1.
+        if m != 1, m != 0, m.isFinite, let made = positionRelation(from: from, to: to, target: target, constant: constant, multiplier: m, relation: relation) {
+            return made
+        }
         switch (from, to) {
         case (.leading,  .leading):  return relate(leadingAnchor,  target.leadingAnchor,  relation, constant)
         case (.leading,  .trailing): return relate(leadingAnchor,  target.trailingAnchor, relation, constant)
@@ -820,6 +829,42 @@ class App8BaseView<Content: DSL.Model.Component.EntityContent>: UIView, App8Base
             case .height:   return relateDim(heightAnchor, target.heightAnchor, relation, constant, m)
             }
         }
+    }
+
+    /// `from = target.to × multiplier + constant` for a position attribute, with
+    /// the same attribute pairs as `makeRelation` (anything else like to like).
+    /// Nil for width and height, which keep their anchor form.
+    private func positionRelation(from: DSL.Model.Layout.Constraint.Attribute,
+                                  to: DSL.Model.Layout.Constraint.Attribute,
+                                  target: UIView,
+                                  constant: CGFloat,
+                                  multiplier: CGFloat,
+                                  relation: DSL.Model.Layout.Constraint.Relation) -> NSLayoutConstraint? {
+        let horizontal: Set<DSL.Model.Layout.Constraint.Attribute> = [.leading, .trailing, .centerX]
+        let vertical: Set<DSL.Model.Layout.Constraint.Attribute> = [.top, .bottom, .centerY]
+        let axis: Set<DSL.Model.Layout.Constraint.Attribute>
+        if horizontal.contains(from) { axis = horizontal } else if vertical.contains(from) { axis = vertical } else { return nil }
+        let pair = axis.contains(to) ? to : from
+        func ns(_ a: DSL.Model.Layout.Constraint.Attribute) -> NSLayoutConstraint.Attribute {
+            switch a {
+            case .leading: return .leading
+            case .trailing: return .trailing
+            case .top: return .top
+            case .bottom: return .bottom
+            case .centerX: return .centerX
+            case .centerY: return .centerY
+            case .width: return .width
+            case .height: return .height
+            }
+        }
+        let rel: NSLayoutConstraint.Relation
+        switch relation {
+        case .equal: rel = .equal
+        case .greaterThanOrEqual: rel = .greaterThanOrEqual
+        case .lessThanOrEqual: rel = .lessThanOrEqual
+        }
+        return NSLayoutConstraint(item: self, attribute: ns(from), relatedBy: rel,
+                                  toItem: target, attribute: ns(pair), multiplier: multiplier, constant: constant)
     }
 }
 

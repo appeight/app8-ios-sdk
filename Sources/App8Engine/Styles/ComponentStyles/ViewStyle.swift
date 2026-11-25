@@ -26,7 +26,7 @@ extension DSL.Model.Style {
 
         private(set) var contentMode: ContentMode?
         @Wrapped var material: Material?
-        private(set) var alpha: CGFloat?
+        @Alpha private(set) var alpha: CGFloat? = nil
         private(set) var transform: Transform?
         private(set) var blendMode: BlendMode?
         /// Adaptive glass: `auto` (default) follows the content behind, `light` / `dark` pin it.
@@ -201,5 +201,12 @@ extension DSL.Model.Style {
                 }
             }
         }
+    }
+}
+
+extension DSL.Model.Style.View: DSL.Model.Style.AlphaExpressionHolder {
+    var alphaSlot: DSL.Model.Style.Alpha {
+        get { _alpha }
+        set { _alpha = newValue }
     }
 }

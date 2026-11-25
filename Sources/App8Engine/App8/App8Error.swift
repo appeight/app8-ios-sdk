@@ -32,7 +32,7 @@ extension App8 {
             case .stylesheetDecodeFailed(let id, let underlying):
                 return "Failed to decode stylesheet '\(id)': \(underlying)"
             case .screenDecodeFailed(let id, let underlying):
-                return "Failed to decode screen '\(id)': \(underlying)"
+                return "Failed to decode screen '\(id)': \(Self.describe(underlying))"
             case .componentDecodeFailed(let id, let underlying):
                 return "Failed to decode component '\(id)': \(underlying)"
             case .serviceNotAvailable:
@@ -45,6 +45,24 @@ extension App8 {
                 return "Screen '\(screenId)' not found."
             case .notImplemented(let api):
                 return "\(api) is not implemented yet."
+            }
+        }
+
+        /// A decoding failure as its JSON path and reason
+        /// (`at content.style.alpha: expected Double — …`).
+        static func describe(_ error: Swift.Error) -> String {
+            guard let decoding = error as? DecodingError else { return "\(error)" }
+            switch decoding {
+            case .typeMismatch(let type, let c):
+                return "at \(jsonPath(from: c.codingPath)): expected \(type) — \(c.debugDescription)"
+            case .valueNotFound(let type, let c):
+                return "at \(jsonPath(from: c.codingPath)): missing \(type) — \(c.debugDescription)"
+            case .keyNotFound(let key, let c):
+                return "at \(jsonPath(from: c.codingPath)): missing required '\(key.stringValue)'"
+            case .dataCorrupted(let c):
+                return "at \(jsonPath(from: c.codingPath)): \(c.debugDescription)"
+            @unknown default:
+                return "\(error)"
             }
         }
     }

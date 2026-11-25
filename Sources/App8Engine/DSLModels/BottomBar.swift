@@ -59,7 +59,8 @@ extension DSL.Model {
             if let raw = try c.decodeIfPresent(JSONValue.self, forKey: .component) {
                 let pinned = Self.pinned(raw)
                 let data = try JSONEncoder().encode(pinned)
-                component = try JSONDecoder().decode(Component.`Any`.self, from: data)
+                component = try LenientDocumentDecoding.decodeNested(
+                    Component.`Any`.self, from: data, userInfo: decoder.userInfo, at: c.codingPath + [CodingKeys.component])
             } else {
                 component = nil
             }

@@ -50,6 +50,26 @@ enum LenientDocumentDecoding {
         }
     }
 
+    /// A document embedded in another one and decoded with its own decoder
+    /// (a bottom bar's component, a context-menu preview). Its coding paths
+    /// start at the embedded document, so the outer document's decoding can't
+    /// drop a bad value inside it: before 0.7.17 one mistyped style field there
+    /// failed the whole screen. Drops are warned with the outer path.
+    static func decodeNested<T: Decodable>(
+        _ type: T.Type,
+        from data: Data,
+        userInfo: [CodingUserInfoKey: Any],
+        at outerPath: [CodingKey]
+    ) throws -> T {
+        let decoder = JSONDecoder()
+        decoder.userInfo = userInfo
+        let logger = userInfo[.app8Logger] as? A8Log
+        let prefix = jsonPath(from: outerPath)
+        return try decode(type, from: data, using: decoder) {
+            logger?.warning("screen: \(prefix): \($0)")
+        }
+    }
+
     /// The coding path of the offending value. For a missing required key the
     /// path is its container: dropping the container lets an optional parent
     /// fall back to its default.

@@ -5,7 +5,7 @@ extension DSL.Model.Style {
     struct ActivityIndicator: Decodable, BaseStyleProtocol, StylePointerResolvable {
         let contentMode: View.ContentMode?
         @Wrapped var material: Material?
-        let alpha: CGFloat?
+        @Alpha var alpha: CGFloat?
         let transform: View.Transform?
 
         /// "medium" or "large". Default: "medium"
@@ -31,5 +31,12 @@ extension DSL.Model.Style {
         func isResolved() -> Bool {
             material?.isResolved() ?? true
         }
+    }
+}
+
+extension DSL.Model.Style.ActivityIndicator: DSL.Model.Style.AlphaExpressionHolder {
+    var alphaSlot: DSL.Model.Style.Alpha {
+        get { _alpha }
+        set { _alpha = newValue }
     }
 }
