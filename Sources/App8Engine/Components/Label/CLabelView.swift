@@ -22,6 +22,9 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     // MARK: - Text Attributes (letter-spacing / line-height)
     private var textAttributes: [NSAttributedString.Key: Any] = [:]
 
+    /// The text style has an underline or strikethrough and letter spacing.
+    private var endsDecorationAtLastGlyph = false
+
     // MARK: - Inline span overrides (per-character-range style)
     private var currentSpans: [DSL.Model.Component.Label.Properties.Span]?
     /// `properties.numberOfLines`; wins over the text style's `numberOfLines`.
@@ -501,6 +504,13 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             if let spans = currentSpans, !spans.isEmpty {
                 applySpanOverrides(spans, to: attributed)
             }
+            // Letter spacing is space between glyphs. UIKit adds it after the
+            // last glyph too, and an underline or strikethrough then runs
+            // past the text by that much: end the line at the last glyph.
+            if endsDecorationAtLastGlyph, attributed.length > 0 {
+                let last = (attributed.string as NSString).rangeOfComposedCharacterSequence(at: attributed.length - 1)
+                attributed.addAttribute(.kern, value: 0, range: last)
+            }
             // Autoshrink rescales its copy: compare against its unscaled source.
             unchanged = lastTextWasAttributed
                 && (autoshrinkConfig != nil ? autoshrinkSource : label.attributedText)?.isEqual(to: attributed) == true
@@ -693,6 +703,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         if textModel.strikethrough == true {
             attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
         }
+        endsDecorationAtLastGlyph = attrs[.kern] != nil && (textModel.underline == true || textModel.strikethrough == true)
 
         if let lineHeight = textModel.lineHeight {
             let paragraphStyle = NSMutableParagraphStyle()
