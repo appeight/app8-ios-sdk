@@ -9,7 +9,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     private var propertiesCancellable: AnyCancellable?
     weak var materialView: MaterialView?
     let contentView = UIView()
-    private let label = UILabel()
+    private let label = LineBoxLabel()
 
     override var intrinsicContentSource: UIView? { label }
 
@@ -676,6 +676,10 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     /// Returns empty when neither is configured (caller then uses plain text).
     private func buildTextAttributes(for textModel: DSL.Model.Style.TextModel) -> [NSAttributedString.Key: Any] {
         var attrs: [NSAttributedString.Key: Any] = [:]
+        var halfLeading: CGFloat = 0
+        // A line lower than the font's own: the glyphs overflow it by the
+        // (negative) half-leading on both sides; give them room to draw.
+        defer { label.verticalOverflow = max(0, -halfLeading) }
 
         if let letterSpacing = textModel.letterSpacing, letterSpacing.type == .fixed {
             attrs[.kern] = letterSpacing.value
@@ -699,6 +703,12 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             case .fixed:
                 paragraphStyle.minimumLineHeight = lineHeight.value
                 paragraphStyle.maximumLineHeight = lineHeight.value
+                // Half-leading: UIKit puts the whole difference between the
+                // line height and the font's own above the glyphs; the spec
+                // splits it evenly above and below (as CSS does), so raise
+                // the baseline by half of it. The line pitch stays the same.
+                halfLeading = (lineHeight.value - textModel.resolveUIFont().lineHeight) / 2
+                attrs[.baselineOffset] = halfLeading
             case .multiplier:
                 paragraphStyle.lineHeightMultiple = lineHeight.value
             case .interLineSpacing:
@@ -791,6 +801,11 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
             if mutable.maximumLineHeight > 0 { mutable.maximumLineHeight *= scale }
             if mutable.lineSpacing > 0 { mutable.lineSpacing *= scale }
             m.addAttribute(.paragraphStyle, value: mutable, range: range)
+        }
+        m.enumerateAttribute(.baselineOffset, in: fullRange, options: []) { value, range, _ in
+            if let offset = value as? CGFloat, offset != 0 {
+                m.addAttribute(.baselineOffset, value: offset * scale, range: range)
+            }
         }
         return m
     }
@@ -942,5 +957,26 @@ extension CLabelView: ReuseRefreshable {
     func refreshForReusedItem() {
         guard let viewModel else { return }
         applyProperties(viewModel.currentProperties)
+    }
+}
+
+/// A label whose glyphs may overflow its line box. A fixed line height below
+/// the font's natural one leaves the glyphs taller than their line; a
+/// `UILabel` draws only inside its bounds and would cut them off. The label's
+/// frame is `verticalOverflow` taller than its alignment rectangle on both
+/// sides, so layout still sees lines × line height while the drawing has room.
+/// UIKit centres the text in the bounds, so the lines do not move.
+final class LineBoxLabel: UILabel {
+    var verticalOverflow: CGFloat = 0 {
+        didSet {
+            guard abs(verticalOverflow - oldValue) > 0.01 else { return }
+            invalidateIntrinsicContentSize()
+            superview?.setNeedsLayout()
+            setNeedsLayout()
+        }
+    }
+
+    override var alignmentRectInsets: UIEdgeInsets {
+        UIEdgeInsets(top: verticalOverflow, left: 0, bottom: verticalOverflow, right: 0)
     }
 }
