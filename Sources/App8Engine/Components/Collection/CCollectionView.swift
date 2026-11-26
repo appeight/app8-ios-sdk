@@ -21,6 +21,9 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         cv.backgroundColor = .clear
         cv.delegate = self
         cv.dataSource = self
+        cv.onFrameHeightChange = { [weak self] previous, height in
+            self?.frameHeightDidChange(from: previous, to: height)
+        }
         return cv
     }()
 
@@ -850,6 +853,34 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
             applyPendingPage(animated: false)
         }
         recordRestingPageIfNeeded()
+    }
+
+    /// `itemHeight: "fill"` items are as tall as the collection's frame. A
+    /// vertical compositional layout is not invalidated when only the height
+    /// of its collection view changes, so items measured before the frame got
+    /// its final height (a safe area or a sibling above that settles after
+    /// the first layout) kept the old height: a pager whose frame shrank by
+    /// 25 pt rested 25 pt short on page 2, 50 pt on page 3 and so on, because
+    /// the scroll view pages by its frame. Measure the items again and keep
+    /// the page that was showing. Called from the collection view's layout
+    /// pass, before it lays out for the new height.
+    private func frameHeightDidChange(from previous: CGFloat, to height: CGFloat) {
+        guard isPlainVertical, height > 0, let config = viewModel?.component.properties.layout, config.itemHeightFill else { return }
+        // The first height: nothing was measured against another one unless
+        // the layout already has content.
+        guard previous > 0 || collectionView.collectionViewLayout.collectionViewContentSize.height > 0 else { return }
+        collectionView.collectionViewLayout.invalidateLayout()
+        guard usesVerticalPaging, previous > 0, !collectionView.isDragging, !collectionView.isDecelerating,
+              collectionView.numberOfSections > 0 else { return }
+        let insets = (config.contentInsets?.top ?? 0) + (config.contentInsets?.bottom ?? 0)
+        let spacing = config.itemSpacing ?? 0
+        let top = collectionView.contentInset.top
+        let page = ((collectionView.contentOffset.y + top) / (max(1, previous - insets) + spacing)).rounded()
+        let last = CGFloat(max(0, collectionView.numberOfItems(inSection: 0) - 1))
+        let y = max(0, min(page, last)) * (max(1, height - insets) + spacing) - top
+        if abs(collectionView.contentOffset.y - y) > 0.01 {
+            collectionView.contentOffset.y = y
+        }
     }
 
     /// Horizontal sections scroll in scroll views UIKit embeds for orthogonal
@@ -2155,6 +2186,21 @@ final class App8CollectionView: UICollectionView {
     /// Adjusted top inset, and its safe-area part, last seen.
     private var lastAdjustedTop: CGFloat = 0
     private var lastSystemTop: CGFloat = 0
+
+    /// Called in the layout pass when the frame's height is not the one of
+    /// the previous pass (0 on the first one), before the layout runs.
+    var onFrameHeightChange: ((_ previous: CGFloat, _ height: CGFloat) -> Void)?
+    private var lastLayoutHeight: CGFloat = 0
+
+    override func layoutSubviews() {
+        let height = bounds.height
+        if abs(height - lastLayoutHeight) > 0.01 {
+            let previous = lastLayoutHeight
+            lastLayoutHeight = height
+            onFrameHeightChange?(previous, height)
+        }
+        super.layoutSubviews()
+    }
 
     override func adjustedContentInsetDidChange() {
         super.adjustedContentInsetDidChange()
