@@ -138,12 +138,16 @@ extension DSL.Model.Style {
                 paragraph.lineBreakMode = .byTruncatingTail
             }
             
+            // A fixed line: its leading is split evenly above and below the
+            // font's ascent + descent, as for labels (UIKit puts it all above).
+            let halfLeading = paragraph.maximumLineHeight > 0 ? font.halfLeading(forLineHeight: paragraph.maximumLineHeight) : 0
+
             return [
                 .font: font,
                 .foregroundColor: color,
                 .kern: letterSpacing,
                 .paragraphStyle: paragraph,
-                .baselineOffset : baselineOffset]
+                .baselineOffset : baselineOffset + halfLeading]
         }
         
         func copy() -> Self {
