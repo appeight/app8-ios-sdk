@@ -870,17 +870,55 @@ final class CCollectionView: App8BaseView<CollectionContent>, CViewProtocol {
         // the layout already has content.
         guard previous > 0 || collectionView.collectionViewLayout.collectionViewContentSize.height > 0 else { return }
         collectionView.collectionViewLayout.invalidateLayout()
-        guard usesVerticalPaging, previous > 0, !collectionView.isDragging, !collectionView.isDecelerating,
-              collectionView.numberOfSections > 0 else { return }
+        guard usesVerticalPaging, previous > 0, collectionView.numberOfSections > 0 else { return }
         let insets = (config.contentInsets?.top ?? 0) + (config.contentInsets?.bottom ?? 0)
-        let spacing = config.itemSpacing ?? 0
+        let previousLength = max(1, previous - insets) + (config.itemSpacing ?? 0)
+        // The user's finger or a deceleration owns the offset: moving it now
+        // would be undone by the gesture or cut the animation short. Realign
+        // when the scroll ends (`realignPageAfterScrollIfNeeded`).
+        if collectionView.isDragging {
+            // The release picks its page with the frame it finds then.
+            pageRealign = PageRealign(restLength: nil)
+            return
+        }
+        if collectionView.isDecelerating {
+            // The resting offset was chosen with the page length of the frame
+            // at release: the first one, if the frame changes more than once.
+            pageRealign = PageRealign(restLength: pageRealign?.restLength ?? previousLength)
+            return
+        }
+        alignToPage(measuredWith: previousLength)
+    }
+
+    /// A frame change waiting for the scroll to end. `restLength`: the page
+    /// length the scroll's resting offset is a multiple of; `nil` when it
+    /// rests on a page of the current frame (or will, once released).
+    private struct PageRealign { var restLength: CGFloat? }
+    private var pageRealign: PageRealign?
+
+    /// Puts the page that shows at an offset expressed in pages of `length`
+    /// flush in the current frame.
+    private func alignToPage(measuredWith length: CGFloat) {
+        guard usesVerticalPaging, length > 0, collectionView.numberOfSections > 0 else { return }
+        let current = verticalPageLength
+        guard current > 0 else { return }
         let top = collectionView.contentInset.top
-        let page = ((collectionView.contentOffset.y + top) / (max(1, previous - insets) + spacing)).rounded()
+        let page = ((collectionView.contentOffset.y + top) / length).rounded()
         let last = CGFloat(max(0, collectionView.numberOfItems(inSection: 0) - 1))
-        let y = max(0, min(page, last)) * (max(1, height - insets) + spacing) - top
+        let y = max(0, min(page, last)) * current - top
         if abs(collectionView.contentOffset.y - y) > 0.01 {
             collectionView.contentOffset.y = y
         }
+    }
+
+    /// The scroll came to rest: apply the realign a frame change left behind
+    /// while a drag or a deceleration was in flight.
+    private func realignPageAfterScrollIfNeeded() {
+        guard let realign = pageRealign, !collectionView.isDragging, !collectionView.isDecelerating else { return }
+        pageRealign = nil
+        // Items first: the frame change only invalidated the layout.
+        collectionView.layoutIfNeeded()
+        alignToPage(measuredWith: realign.restLength ?? verticalPageLength)
     }
 
     /// Horizontal sections scroll in scroll views UIKit embeds for orthogonal
@@ -2053,6 +2091,9 @@ extension CCollectionView: UICollectionViewDelegate {
         // The user took over from a variable-driven scroll.
         isScrollingFromVariable = false
         dragStartPage = usesVerticalPaging ? verticalPage(at: scrollView.contentOffset.y) : nil
+        // A deceleration towards a page of an earlier frame was caught: the
+        // release picks a page of the current one.
+        if pageRealign != nil { pageRealign = PageRealign(restLength: nil) }
         // The user took over; don't snap back to a restored offset.
         pendingRestoreToken = nil
     }
@@ -2072,6 +2113,14 @@ extension CCollectionView: UICollectionViewDelegate {
         let maxY = scrollView.contentSize.height + scrollView.contentInset.bottom - scrollView.bounds.height
         targetContentOffset.pointee.y = max(-top, min(CGFloat(page) * length - top, maxY))
         dragStartPage = nil
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { realignPageAfterScrollIfNeeded() }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        realignPageAfterScrollIfNeeded()
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -2191,6 +2240,11 @@ final class App8CollectionView: UICollectionView {
     /// the previous pass (0 on the first one), before the layout runs.
     var onFrameHeightChange: ((_ previous: CGFloat, _ height: CGFloat) -> Void)?
     private var lastLayoutHeight: CGFloat = 0
+
+    /// Tests only: stands in for a touch, which a unit test cannot produce.
+    var scrollGestureForTesting: (dragging: Bool, decelerating: Bool)?
+    override var isDragging: Bool { scrollGestureForTesting?.dragging ?? super.isDragging }
+    override var isDecelerating: Bool { scrollGestureForTesting?.decelerating ?? super.isDecelerating }
 
     override func layoutSubviews() {
         let height = bounds.height

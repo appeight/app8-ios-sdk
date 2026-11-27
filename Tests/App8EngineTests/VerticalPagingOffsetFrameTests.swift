@@ -7,7 +7,8 @@
 //  both. Every page is the pager's own frame and every page rests flush: the
 //  rest offset of page n is n × the frame height, also after the frame got
 //  its final height in a later layout pass (a safe area that arrives after
-//  the first layout).
+//  the first layout), and also when the frame changes while the user drags
+//  or the pager decelerates: it then realigns when the scroll ends.
 //
 
 import XCTest
@@ -172,5 +173,96 @@ final class VerticalPagingOffsetFrameTests: XCTestCase {
         XCTAssertEqual(page.height, cv.bounds.height, accuracy: 0.5)
         XCTAssertEqual(page.minY - cv.contentOffset.y, 0, accuracy: 0.5)
         try check("after the frame change", host)
+    }
+
+    // MARK: - Frame changes during a gesture
+
+    private static let tallBar = UIEdgeInsets(top: 59, left: 0, bottom: 83, right: 0)
+
+    /// Page `index`'s top minus the pager's visible top, as it is now.
+    private func offset(of index: Int, in host: Host) throws -> CGFloat {
+        let cv = host.pager
+        let attributes = try XCTUnwrap(cv.layoutAttributesForItem(at: IndexPath(item: index, section: 0)))
+        return attributes.frame.minY - (cv.contentOffset.y + cv.adjustedContentInset.top)
+    }
+
+    /// The safe area changes while the pager decelerates towards page
+    /// `index + 1`, then the deceleration ends on the offset it was aimed at.
+    private func frameChangeWhileDecelerating(to index: Int, from: UIEdgeInsets, to insets: UIEdgeInsets) throws -> (host: Host, during: CGFloat, after: CGFloat) {
+        let host = try host(top: Self.safeTop, bottom: Self.safeBottom, safeArea: from)
+        let pager = try XCTUnwrap(host.pager as? App8CollectionView)
+        XCTAssertEqual(try restOffset(of: index, in: host), 0, accuracy: 0.5)
+        let before = pager.bounds.height
+        pager.scrollGestureForTesting = (dragging: false, decelerating: true)
+        host.controller.additionalSafeAreaInsets = insets
+        settle(host.controller)
+        XCTAssertNotEqual(pager.bounds.height, before, accuracy: 1, "the frame changed")
+        let during = try offset(of: index, in: host)
+        XCTAssertEqual(pager.contentOffset.y, CGFloat(index) * before, accuracy: 0.5, "the offset is the gesture's while it runs")
+        pager.scrollGestureForTesting = nil
+        pager.delegate?.scrollViewDidEndDecelerating?(pager)
+        settle(host.controller)
+        return (host, during, try offset(of: index, in: host))
+    }
+
+    func testFrameShrinksWhileDecelerating() throws {
+        let result = try frameChangeWhileDecelerating(to: 5, from: Self.safe, to: Self.tallBar)
+        print(String(format: "[pager] frame shrinks while decelerating to page 6: off by %.2f during, %.2f after the scroll ends", result.during, result.after))
+        XCTAssertEqual(result.after, 0, accuracy: 0.5, "page 6 rests flush once the scroll ends")
+        try check("after a frame change mid-deceleration", result.host)
+    }
+
+    func testFrameGrowsWhileDecelerating() throws {
+        let result = try frameChangeWhileDecelerating(to: 5, from: Self.tallBar, to: Self.safe)
+        print(String(format: "[pager] frame grows while decelerating to page 6: off by %.2f during, %.2f after the scroll ends", result.during, result.after))
+        XCTAssertEqual(result.after, 0, accuracy: 0.5, "page 6 rests flush once the scroll ends")
+        try check("after the frame grew mid-deceleration", result.host)
+    }
+
+    /// The frame grows with nothing in flight: the page showing stays.
+    func testThePageShowingStaysWhenTheFrameGrows() throws {
+        let host = try host(top: Self.safeTop, bottom: Self.safeBottom, safeArea: Self.tallBar)
+        XCTAssertEqual(try restOffset(of: 5, in: host), 0, accuracy: 0.5)
+        host.controller.additionalSafeAreaInsets = Self.safe
+        settle(host.controller)
+        XCTAssertEqual(try offset(of: 5, in: host), 0, accuracy: 0.5)
+        try check("after the frame grew", host)
+    }
+
+    /// The frame changes under the user's finger; the finger lifts without a
+    /// fling: the pager rests on the page that shows, flush.
+    func testFrameChangesWhileDragging() throws {
+        let host = try host(top: Self.safeTop, bottom: Self.safeBottom, safeArea: Self.safe)
+        let pager = try XCTUnwrap(host.pager as? App8CollectionView)
+        XCTAssertEqual(try restOffset(of: 3, in: host), 0, accuracy: 0.5)
+        pager.delegate?.scrollViewWillBeginDragging?(pager)
+        pager.scrollGestureForTesting = (dragging: true, decelerating: false)
+        host.controller.additionalSafeAreaInsets = Self.tallBar
+        settle(host.controller)
+        let during = try offset(of: 3, in: host)
+        pager.scrollGestureForTesting = nil
+        pager.delegate?.scrollViewDidEndDragging?(pager, willDecelerate: false)
+        settle(host.controller)
+        let after = try offset(of: 3, in: host)
+        print(String(format: "[pager] frame shrinks while dragging on page 4: off by %.2f during, %.2f after the finger lifts", during, after))
+        XCTAssertEqual(after, 0, accuracy: 0.5, "page 4 rests flush once the drag ends")
+        try check("after a frame change mid-drag", host)
+    }
+
+    /// Two frame changes during one deceleration: the page it was aimed at
+    /// when the finger lifted still wins.
+    func testFrameChangesTwiceWhileDecelerating() throws {
+        let host = try host(top: Self.safeTop, bottom: Self.safeBottom, safeArea: Self.safe)
+        let pager = try XCTUnwrap(host.pager as? App8CollectionView)
+        XCTAssertEqual(try restOffset(of: 6, in: host), 0, accuracy: 0.5)
+        pager.scrollGestureForTesting = (dragging: false, decelerating: true)
+        host.controller.additionalSafeAreaInsets = Self.tallBar
+        settle(host.controller)
+        host.controller.additionalSafeAreaInsets = UIEdgeInsets(top: 59, left: 0, bottom: 120, right: 0)
+        settle(host.controller)
+        pager.scrollGestureForTesting = nil
+        pager.delegate?.scrollViewDidEndDecelerating?(pager)
+        settle(host.controller)
+        XCTAssertEqual(try offset(of: 6, in: host), 0, accuracy: 0.5)
     }
 }
