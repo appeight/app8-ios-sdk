@@ -1,5 +1,6 @@
 import UIKit
 import Combine
+import CoreText
 
 class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
 
@@ -24,6 +25,13 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
 
     /// The text style has an underline or strikethrough and letter spacing.
     private var endsDecorationAtLastGlyph = false
+    /// The text as set, while its line ends are kept free of letter spacing
+    /// (`syncLineEnds`); the label shows a copy marked for its width.
+    private var lineEndSource: NSAttributedString?
+    /// `lineEndSource` with the line ends of its unwrapped lines marked.
+    private var lineEndUnwrapped: NSAttributedString?
+    /// The width the label's copy was marked for.
+    private var lineEndWidth: CGFloat = -1
 
     // MARK: - Inline span overrides (per-character-range style)
     private var currentSpans: [DSL.Model.Component.Label.Properties.Span]?
@@ -79,6 +87,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     override func layoutSubviews() {
         super.layoutSubviews()
         syncWrapWidth()
+        syncLineEnds()
         performAutoshrinkIfNeeded()
     }
 
@@ -348,7 +357,10 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     /// against.
     private func naturalUnwrappedWidth() -> CGFloat {
         let attributed: NSAttributedString
-        if let attr = label.attributedText, attr.length > 0 {
+        if let source = lineEndUnwrapped, source.length > 0 {
+            // Not the label's copy: its marks depend on where it wraps.
+            attributed = source
+        } else if let attr = label.attributedText, attr.length > 0 {
             attributed = attr
         } else if let text = label.text, !text.isEmpty {
             attributed = NSAttributedString(string: text, attributes: [.font: label.font as Any])
@@ -487,6 +499,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         let committed = wrapIsCommitted
         if !needsAttributed {
             unchanged = !lastTextWasAttributed && label.text == text
+            clearLineEnds()
             label.attributedText = nil
             label.text = text
             lastTextWasAttributed = false
@@ -505,17 +518,28 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
                 applySpanOverrides(spans, to: attributed)
             }
             // Letter spacing is space between glyphs. UIKit adds it after the
-            // last glyph too, and an underline or strikethrough then runs
-            // past the text by that much: end the line at the last glyph.
-            if endsDecorationAtLastGlyph, attributed.length > 0 {
+            // last glyph of a line too, and an underline or strikethrough
+            // then runs past the text by that much: every line ends at its
+            // last glyph. Where the lines end depends on the width, so the
+            // label shows a copy marked for it (`syncLineEnds`).
+            let endsLines = endsDecorationAtLastGlyph && attributed.length > 0 && autoshrinkConfig == nil
+            if endsDecorationAtLastGlyph, !endsLines, attributed.length > 0 {
+                // Autoshrink rescales the text per width: only the string's end.
                 let last = (attributed.string as NSString).rangeOfComposedCharacterSequence(at: attributed.length - 1)
                 attributed.addAttribute(.kern, value: 0, range: last)
             }
             // Autoshrink rescales its copy: compare against its unscaled source.
             unchanged = lastTextWasAttributed
-                && (autoshrinkConfig != nil ? autoshrinkSource : label.attributedText)?.isEqual(to: attributed) == true
+                && (autoshrinkConfig != nil ? autoshrinkSource : lineEndSource ?? label.attributedText)?.isEqual(to: attributed) == true
             lastTextWasAttributed = true
-            label.attributedText = attributed
+            if endsLines {
+                lineEndSource = attributed.copy() as? NSAttributedString
+                lineEndUnwrapped = LineEnds.marked(attributed, width: LineEnds.unbounded, wrapsCharacters: false)
+                syncLineEnds(force: true)
+            } else {
+                clearLineEnds()
+                label.attributedText = attributed
+            }
             if autoshrinkConfig != nil {
                 autoshrinkSource = attributed.copy() as? NSAttributedString
                 autoshrinkLastWidth = -1
@@ -579,6 +603,39 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         }
     }
 
+    private func clearLineEnds() {
+        guard lineEndSource != nil else { return }
+        lineEndSource = nil
+        lineEndUnwrapped = nil
+        lineEndWidth = -1
+        label.sizingText = nil
+        label.accessibilityLabel = nil
+    }
+
+    /// Shows `lineEndSource` with the letter spacing removed after the last
+    /// glyph of every line at the label's current width, and cut with an
+    /// ellipsis that has none either when it does not fit its lines.
+    private func syncLineEnds(force: Bool = false) {
+        guard let source = lineEndSource else { return }
+        let width = bounds.width > 0.5 ? bounds.width : LineEnds.unbounded
+        guard force || abs(width - lineEndWidth) > 0.01 else { return }
+        lineEndWidth = width
+        let mode = currentTextModel?.lineBreakMode?.ui ?? .byTruncatingTail
+        let marked = LineEnds.marked(source, width: width, wrapsCharacters: mode == .byCharWrapping)
+        let cut = mode == .byTruncatingTail
+            ? LineEnds.truncated(source, marked: marked, width: width, numberOfLines: label.numberOfLines)
+            : nil
+        // A cut text is shorter than the label's content: the size the label
+        // asks for, and what assistive technologies read, stay the whole text.
+        label.sizingText = cut == nil ? nil : marked
+        label.accessibilityLabel = cut == nil ? nil : source.string
+        let shown = cut ?? marked
+        if label.attributedText?.isEqual(to: shown) != true {
+            label.attributedText = shown
+            invalidateIntrinsicContentSize()
+        }
+    }
+
     /// Apply each span's overrides on top of the base attributes. Out-of-range
     /// indices clamp silently. Spans win over base in their range — last span
     /// in the array wins on overlap.
@@ -628,6 +685,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
     private func applyPropertyNumberOfLines(_ lines: Int?) {
         guard lines != propertyNumberOfLines else { return }
         propertyNumberOfLines = lines
+        lineEndWidth = -1
         if let textModel = currentTextModel {
             // Rebuilds autoshrink and paragraph attributes for the new cap too.
             applyTextModel(textModel)
@@ -674,7 +732,9 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         }
         textAttributes = buildTextAttributes(for: textModel)
 
-        if let currentText = label.attributedText?.string ?? label.text {
+        // The line cap or the break mode may have changed: mark the lines again.
+        lineEndWidth = -1
+        if let currentText = lineEndSource?.string ?? label.attributedText?.string ?? label.text {
             // The font or attributes may have changed with the same text:
             // measure the wrap again.
             lastWrapNatural = -1
@@ -703,7 +763,7 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
         if textModel.strikethrough == true {
             attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
         }
-        endsDecorationAtLastGlyph = attrs[.kern] != nil && (textModel.underline == true || textModel.strikethrough == true)
+        endsDecorationAtLastGlyph = (attrs[.kern] as? CGFloat ?? 0) != 0 && (textModel.underline == true || textModel.strikethrough == true)
 
         if let lineHeight = textModel.lineHeight {
             let paragraphStyle = NSMutableParagraphStyle()
@@ -716,9 +776,11 @@ class CLabelView: App8BaseView<DSL.Model.Component.Label.C>, CViewProtocol {
                 paragraphStyle.maximumLineHeight = lineHeight.value
                 // Half-leading: UIKit puts the whole difference between the
                 // line height and the font's own above the glyphs; the spec
-                // splits it evenly above and below (as CSS does), so raise
-                // the baseline by half of it. The line pitch stays the same.
-                halfLeading = (lineHeight.value - textModel.resolveUIFont().lineHeight) / 2
+                // splits it evenly above and below the font's ascent +
+                // descent (as CSS does; the font's line gap is not part of
+                // it), so raise the baseline by half of it. The line pitch
+                // stays the same.
+                halfLeading = textModel.resolveUIFont().halfLeading(forLineHeight: lineHeight.value)
                 attrs[.baselineOffset] = halfLeading
             case .multiplier:
                 paragraphStyle.lineHeightMultiple = lineHeight.value
@@ -978,6 +1040,28 @@ extension CLabelView: ReuseRefreshable {
 /// sides, so layout still sees lines × line height while the drawing has room.
 /// UIKit centres the text in the bounds, so the lines do not move.
 final class LineBoxLabel: UILabel {
+    /// The whole text while the label shows a copy cut with an ellipsis: the
+    /// label keeps asking for the size of its content, not of the cut copy
+    /// (a label cut once would otherwise never ask for more room).
+    var sizingText: NSAttributedString? {
+        didSet {
+            guard sizingText != oldValue else { return }
+            invalidateIntrinsicContentSize()
+        }
+    }
+
+    private static let sizer = UILabel()
+
+    override var intrinsicContentSize: CGSize {
+        guard let sizingText else { return super.intrinsicContentSize }
+        let sizer = Self.sizer
+        sizer.numberOfLines = numberOfLines
+        sizer.preferredMaxLayoutWidth = preferredMaxLayoutWidth
+        sizer.lineBreakStrategy = lineBreakStrategy
+        sizer.attributedText = sizingText
+        return sizer.intrinsicContentSize
+    }
+
     var verticalOverflow: CGFloat = 0 {
         didSet {
             guard abs(verticalOverflow - oldValue) > 0.01 else { return }
@@ -989,5 +1073,141 @@ final class LineBoxLabel: UILabel {
 
     override var alignmentRectInsets: UIEdgeInsets {
         UIEdgeInsets(top: verticalOverflow, left: 0, bottom: verticalOverflow, right: 0)
+    }
+}
+
+extension UIFont {
+    /// CSS half-leading of a fixed line height: half of what the line height
+    /// adds to (or takes from) the font's ascent + descent. The font's line
+    /// gap is not part of the content area.
+    func halfLeading(forLineHeight lineHeight: CGFloat) -> CGFloat {
+        (lineHeight - (ascender - descender)) / 2
+    }
+}
+
+/// Where the lines of a text end at a given width, to keep letter spacing
+/// between glyphs only: UIKit adds it after the last glyph of a line as well.
+enum LineEnds {
+
+    static let unbounded: CGFloat = 1_000_000
+
+    /// `source` with no letter spacing after the last glyph of each line it
+    /// has at `width`. Trailing spaces and the line break do not count: the
+    /// last glyph is the last one drawn, and the spaces a wrapped line ends
+    /// in take no width (UIKit counts them into the label's width).
+    static func marked(_ source: NSAttributedString, width: CGFloat, wrapsCharacters: Bool) -> NSAttributedString {
+        // Removing the spacing at a line's end changes what fits on it, so
+        // the lines are laid out again with the marks until they hold.
+        var current = source
+        var ends: [Int] = []
+        for _ in 0..<4 {
+            let next = lineEnds(of: current, width: width, wrapsCharacters: wrapsCharacters)
+            if next.map(\.last.location) == ends { break }
+            ends = next.map(\.last.location)
+            let copy = NSMutableAttributedString(attributedString: source)
+            for end in next {
+                copy.addAttribute(.kern, value: 0, range: end.last)
+                var index = end.spaces.location
+                while index < NSMaxRange(end.spaces) {
+                    let space = (source.string as NSString).rangeOfComposedCharacterSequence(at: index)
+                    var attributes = source.attributes(at: index, effectiveRange: nil)
+                    attributes[.kern] = 0
+                    let advance = CTLineGetTypographicBounds(CTLineCreateWithAttributedString(
+                        NSAttributedString(string: (source.string as NSString).substring(with: space), attributes: attributes)), nil, nil, nil)
+                    copy.addAttribute(.kern, value: -CGFloat(advance), range: space)
+                    index = NSMaxRange(space)
+                }
+            }
+            current = copy
+        }
+        return current
+    }
+
+    /// `marked` cut to `numberOfLines` lines with an ellipsis that carries no
+    /// letter spacing; `nil` when it fits. UIKit's own ellipsis takes the
+    /// spacing of a character it replaces and the decoration runs past it.
+    static func truncated(_ source: NSAttributedString, marked: NSAttributedString, width: CGFloat, numberOfLines: Int) -> NSAttributedString? {
+        guard numberOfLines > 0, width < unbounded else { return nil }
+        let lines = lineRanges(of: marked, width: width, wrapsCharacters: false)
+        guard lines.count > numberOfLines else { return nil }
+        let start = lines[numberOfLines - 1].location
+        let string = source.string as NSString
+        // The rest of the paragraph the last line starts.
+        let paragraphEnd = string.rangeOfCharacter(from: .newlines, options: [], range: NSRange(location: start, length: string.length - start)).location
+        let end = paragraphEnd == NSNotFound ? string.length : paragraphEnd
+        // Ends of composed characters after `start`, each a candidate cut.
+        var cuts: [Int] = []
+        var index = start
+        while index < end {
+            index = NSMaxRange(string.rangeOfComposedCharacterSequence(at: index))
+            cuts.append(min(index, end))
+        }
+        func line(cutAt cut: Int) -> NSAttributedString {
+            var kept = cut
+            while kept > start, let scalar = UnicodeScalar(string.character(at: kept - 1)), CharacterSet.whitespaces.contains(scalar) { kept -= 1 }
+            let result = NSMutableAttributedString(attributedString: source.attributedSubstring(from: NSRange(location: start, length: kept - start)))
+            var attributes = source.attributes(at: max(start, kept - 1), effectiveRange: nil)
+            attributes[.kern] = 0
+            result.append(NSAttributedString(string: "\u{2026}", attributes: attributes))
+            return result
+        }
+        func fits(_ line: NSAttributedString) -> Bool {
+            let used = CTLineGetTypographicBounds(CTLineCreateWithAttributedString(line), nil, nil, nil)
+            // Half a point of room: UIKit must not cut the line again.
+            return CGFloat(used) <= width - 0.5
+        }
+        var low = 0, high = cuts.count   // number of composed characters kept
+        while low < high {
+            let middle = (low + high + 1) / 2
+            if fits(line(cutAt: cuts[middle - 1])) { low = middle } else { high = middle - 1 }
+        }
+        let result = NSMutableAttributedString(attributedString: marked.attributedSubstring(from: NSRange(location: 0, length: start)))
+        result.append(line(cutAt: low > 0 ? cuts[low - 1] : start))
+        return result
+    }
+
+    /// The last drawn composed character of each line, and the spaces after
+    /// it up to the line's break.
+    private static func lineEnds(of text: NSAttributedString, width: CGFloat, wrapsCharacters: Bool) -> [(last: NSRange, spaces: NSRange)] {
+        let string = text.string as NSString
+        func isIn(_ set: CharacterSet, _ index: Int) -> Bool {
+            UnicodeScalar(string.character(at: index)).map(set.contains) ?? false
+        }
+        return lineRanges(of: text, width: width, wrapsCharacters: wrapsCharacters).compactMap { line in
+            var end = NSMaxRange(line)
+            while end > line.location, isIn(.newlines, end - 1) { end -= 1 }
+            var index = end - 1
+            while index >= line.location, isIn(.whitespaces, index) { index -= 1 }
+            guard index >= line.location else { return nil }
+            let last = string.rangeOfComposedCharacterSequence(at: index)
+            return (last, NSRange(location: NSMaxRange(last), length: max(0, end - NSMaxRange(last))))
+        }
+    }
+
+    /// The character range of each line of `text` wrapped at `width`.
+    private static func lineRanges(of text: NSAttributedString, width: CGFloat, wrapsCharacters: Bool) -> [NSRange] {
+        let storage = NSTextStorage(attributedString: text)
+        let all = NSRange(location: 0, length: storage.length)
+        // Wrap as the label does; a truncating paragraph style (line-limited
+        // labels carry one) would lay each paragraph out as one line.
+        storage.enumerateAttribute(.paragraphStyle, in: all, options: []) { value, range, _ in
+            let style = ((value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle) ?? {
+                let style = NSMutableParagraphStyle()
+                style.lineBreakStrategy = .pushOut
+                return style
+            }()
+            style.lineBreakMode = wrapsCharacters ? .byCharWrapping : .byWordWrapping
+            storage.addAttribute(.paragraphStyle, value: style, range: range)
+        }
+        let manager = NSLayoutManager()
+        storage.addLayoutManager(manager)
+        let container = NSTextContainer(size: CGSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        manager.addTextContainer(container)
+        var ranges: [NSRange] = []
+        manager.enumerateLineFragments(forGlyphRange: manager.glyphRange(for: container)) { _, _, _, glyphs, _ in
+            ranges.append(manager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil))
+        }
+        return ranges
     }
 }

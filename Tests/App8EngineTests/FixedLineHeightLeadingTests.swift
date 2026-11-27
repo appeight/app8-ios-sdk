@@ -2,12 +2,14 @@
 //  FixedLineHeightLeadingTests.swift
 //  App8EngineTests
 //
-//  A `fixed` line height splits its leading (line height − the font's natural
-//  line height) evenly above and below the glyphs, like CSS half-leading. A
+//  A `fixed` line height splits its leading (line height − the font's ascent
+//  + descent, without its line gap) evenly above and below the glyphs, like
+//  CSS half-leading. A
 //  one-line label centred in a box therefore draws its glyphs where the same
 //  label without a line height draws them. UIKit by itself puts all of the
 //  extra height above the glyphs, so the text sat (lineHeight − natural) / 2
-//  low: 14 pt text on a 22 pt line was 2.65 pt low.
+//  low: 14 pt text on a 22 pt line was 2.65 pt low ((22 − 16.71) / 2; drawn on
+//  the 3x pixel grid that measures as 2.67 pt).
 //
 //  The tests measure drawn ink (rendered pixels), not frames.
 //
@@ -22,7 +24,8 @@ final class FixedLineHeightLeadingTests: XCTestCase {
 
     /// Renders a 200 × 120 box with one label and returns the label and the
     /// drawn ink rows of the whole box, in points from the box's top.
-    private func render(text: String, style: String, constraints: String, width: CGFloat = 200, height: CGFloat = 120) throws -> (label: UILabel, ink: InkRows) {
+    private func render(text: String, style: String, constraints: String, width: CGFloat = 200, height: CGFloat = 120, numberOfLines: Int? = nil) throws -> (label: UILabel, ink: InkRows) {
+        let lines = numberOfLines.map { #", "numberOfLines": \#($0)"# } ?? ""
         let json = """
         {
           "type": "view", "id": "box",
@@ -31,7 +34,7 @@ final class FixedLineHeightLeadingTests: XCTestCase {
             "children": [
               { "type": "label", "id": "text",
                 "content": {
-                  "properties": { "text": "\(text)" },
+                  "properties": { "text": "\(text)"\(lines) },
                   "style": { "text": \(style) },
                   "layout": { "constraints": [ \(constraints) ] }
                 } }
@@ -127,53 +130,105 @@ final class FixedLineHeightLeadingTests: XCTestCase {
         // The line itself is placed on whole pixels: up to 2 px at 3x.
         XCTAssertEqual(fixed.ink.bottom - natural.ink.bottom, 0, accuracy: 0.7)
     }
-}
 
-/// Rows of a rendered view that contain dark ink, in points.
-@MainActor
-struct InkRows {
-    /// Runs of consecutive ink rows (one per text line when lines do not touch).
-    let bands: [ClosedRange<CGFloat>]
-    /// Leftmost and rightmost ink column, in points.
-    let columns: ClosedRange<CGFloat>?
-
-    var top: CGFloat { bands.first?.lowerBound ?? .nan }
-    var bottom: CGFloat { bands.last?.upperBound ?? .nan }
-    var centre: CGFloat { (top + bottom) / 2 }
-
-    init(of view: UIView, scale: CGFloat, in rect: CGRect? = nil) {
-        let size = view.bounds.size
-        let width = Int(size.width * scale), height = Int(size.height * scale)
-        var pixels = [UInt8](repeating: 255, count: width * height * 4)
-        let context = CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
-                                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-        context.setFillColor(UIColor.white.cgColor)
-        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        context.translateBy(x: 0, y: CGFloat(height))
-        context.scaleBy(x: scale, y: -scale)
-        UIGraphicsPushContext(context)
-        view.layer.render(in: context)
-        UIGraphicsPopContext()
-
-        let x0 = max(0, Int((rect?.minX ?? 0) * scale)), x1 = min(width, Int((rect?.maxX ?? size.width) * scale))
-        let y0 = max(0, Int((rect?.minY ?? 0) * scale)), y1 = min(height, Int((rect?.maxY ?? size.height) * scale))
-        var bands: [ClosedRange<CGFloat>] = []
-        var start: Int?
-        var minX = Int.max, maxX = Int.min
-        for y in y0..<y1 {
-            var ink = false
-            for x in x0..<x1 where pixels[(y * width + x) * 4] < 128 {
-                ink = true
-                minX = min(minX, x); maxX = max(maxX, x)
-            }
-            if ink, start == nil { start = y }
-            if !ink, let s = start {
-                bands.append(CGFloat(s) / scale ... CGFloat(y) / scale)
-                start = nil
+    /// A state style switches between a roomy and a tight line height at run
+    /// time: the room for the overflowing glyphs (the label's alignment
+    /// insets) follows, in both directions.
+    func testOverflowRoomFollowsAStateStyleChange() throws {
+        func text(_ lineHeight: Int) -> String { ##"{ "text": { "fontSize": 40, "color": "#000000", "lineHeight": { "type": "fixed", "value": \##(lineHeight) } } }"## }
+        let json = """
+        {
+          "type": "view", "id": "box",
+          "content": {
+            "variables": { "tight": { "type": "boolean", "initialValue": false } },
+            "layout": { "width": 200, "height": 120 },
+            "children": [
+              { "type": "label", "id": "text",
+                "content": {
+                  "properties": { "text": "Hxgp" },
+                  "style": \(text(60)),
+                  "states": { "roomy": { "style": \(text(60)) }, "tight": { "style": \(text(30)) } },
+                  "defaultStateName": "{{tight ? 'tight' : 'roomy'}}",
+                  "layout": { "constraints": [ \(Self.centred) ] }
+                } }
+            ]
+          }
+        }
+        """
+        let harness = RenderHarness(size: CGSize(width: 200, height: 120), inWindow: false)
+        try harness.render(json)
+        func settle() {
+            for _ in 0..<3 {
+                harness.drain(0.1)
+                harness.superview.setNeedsLayout()
+                harness.superview.layoutIfNeeded()
             }
         }
-        if let s = start { bands.append(CGFloat(s) / scale ... CGFloat(y1) / scale) }
-        self.bands = bands
-        columns = minX <= maxX ? CGFloat(minX) / scale ... CGFloat(maxX + 1) / scale : nil
+        settle()
+        let label = try XCTUnwrap(harness.find(LineBoxLabel.self))
+        let component = try XCTUnwrap(harness.service.componentRegistry.viewRegistry.view(forId: "box.text"))
+        let root = try XCTUnwrap(harness.viewModel("box", as: CViewModel.self))
+        let font = UIFont.systemFont(ofSize: 40)
+        let overflow = ((font.ascender - font.descender) - 30) / 2
+        let natural = try render(text: "Hxgp", style: style(size: 40, lineHeight: nil), constraints: Self.centred)
+        let naturalInk = natural.ink.bottom - natural.ink.top
+
+        func check(_ name: String, lineHeight: CGFloat, overflow: CGFloat) {
+            let ink = InkRows(of: harness.superview, scale: Self.scale)
+            print(String(format: "[leading] state %@: overflow %.2f, insets top %.2f, component height %.2f, label frame y %.2f height %.2f, ink %.2f…%.2f",
+                         name, label.verticalOverflow, label.alignmentRectInsets.top, component.frame.height, label.frame.minY, label.frame.height, ink.top, ink.bottom))
+            XCTAssertEqual(label.verticalOverflow, overflow, accuracy: 0.05, "\(name): overflow")
+            XCTAssertEqual(component.frame.height, lineHeight, accuracy: 0.5, "\(name): the component is one line high")
+            XCTAssertEqual(label.frame.minY, -overflow, accuracy: 0.5, "\(name): the label starts its overflow above the line")
+            XCTAssertEqual(label.frame.height, lineHeight + 2 * overflow, accuracy: 0.5, "\(name): the label's frame holds the glyphs")
+            XCTAssertEqual(ink.centre, natural.ink.centre, accuracy: 0.5, "\(name): the glyphs are centred")
+            XCTAssertEqual(ink.bottom - ink.top, naturalInk, accuracy: 0.5, "\(name): no ink is clipped")
+        }
+
+        check("roomy", lineHeight: 60, overflow: 0)
+        try root.variableStore.setValue(name: "tight", value: true)
+        settle()
+        check("tight", lineHeight: 30, overflow: overflow)
+        try root.variableStore.setValue(name: "tight", value: false)
+        settle()
+        check("roomy again", lineHeight: 60, overflow: 0)
+    }
+
+    /// Fonts with a line gap: the leading is split around ascent + descent,
+    /// the gap is not part of it. The baseline of the first line is
+    /// (line height − (ascent + descent)) / 2 + ascent below the label's top.
+    func testHalfLeadingIgnoresTheFontsLineGap() throws {
+        var checked = 0
+        for name in ["HiraginoSans-W3", "Thonburi", "TimesNewRomanPSMT", "HelveticaNeue"] {
+            guard let font = UIFont(name: name, size: 40) else { continue }
+            XCTAssertGreaterThan(font.leading, 0.5, "\(name) has a line gap")
+            checked += 1
+            let fixed = try render(text: "HHH", style: style(size: 40, lineHeight: 64, extra: #", "fontFamily": "\#(name)""#), constraints: Self.topLeading)
+            let content = font.ascender - font.descender
+            let expected = (64 - content) / 2 + font.ascender
+            let withGap = (64 - content - font.leading) / 2 + font.ascender
+            print(String(format: "[leading] %@ 40/64: line gap %.2f, UIFont.lineHeight %.2f, ascent + descent %.2f; baseline at %.2f, expected %.2f (%.2f if the gap counted)",
+                         name, font.leading, font.lineHeight, content, fixed.ink.bottom, expected, withGap))
+            XCTAssertEqual(fixed.ink.bottom, expected, accuracy: 0.5, "\(name): baseline of a 40 pt H on a 64 pt line")
+            XCTAssertEqual(font.halfLeading(forLineHeight: 64), (64 - content) / 2, accuracy: 0.001)
+        }
+        XCTAssertGreaterThanOrEqual(checked, 1, "the test host has a font with a line gap")
+    }
+
+    /// Tight lines with a line limit: the last visible line's descenders are
+    /// not cut off. Two of four lines draw as low as a two-line text does.
+    func testTightLinesWithALineLimitKeepTheLastLinesDescenders() throws {
+        let whole = try render(text: "Hgp Hgp", style: style(size: 40, lineHeight: 36), constraints: Self.topLeading, width: 110, height: 200)
+        let limited = try render(text: "Hgp Hgp Hgp Hgp", style: style(size: 40, lineHeight: 36), constraints: Self.topLeading, width: 110, height: 200, numberOfLines: 2)
+        let font = UIFont.systemFont(ofSize: 40)
+        // Baseline of line 2 plus the descender of "g" / "p".
+        let overflow = ((font.ascender - font.descender) - 36) / 2
+        print(String(format: "[leading] tight 40/36, 2 of 4 lines: ink %.2f…%.2f; two-line text %.2f…%.2f; line box ends at %.2f, glyph box at %.2f",
+                     limited.ink.top, limited.ink.bottom, whole.ink.top, whole.ink.bottom, 72.0, 72 + overflow))
+        XCTAssertEqual(whole.label.alignmentRect(forFrame: whole.label.frame).height, 72, accuracy: 0.01)
+        XCTAssertEqual(limited.label.alignmentRect(forFrame: limited.label.frame).height, 72, accuracy: 0.01, "two lines high")
+        XCTAssertEqual(limited.ink.bottom, whole.ink.bottom, accuracy: 0.5, "the last visible line's descenders are whole")
+        XCTAssertEqual(limited.ink.top, whole.ink.top, accuracy: 0.5)
+        XCTAssertGreaterThan(limited.ink.bottom, 72, "the descenders reach below the line box")
     }
 }
